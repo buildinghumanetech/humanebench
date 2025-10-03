@@ -45,7 +45,7 @@ You can specify different models using the format from the [Inspect AI providers
 
 ## Dataset
 
-The evaluation uses `data/simple_human_friendliness_dataset.csv`, which contains test scenarios across various categories of Humane Technology, such as:
+The evaluation uses `data/simple_human_friendliness_dataset.jsonl`, which contains test scenarios across various categories of Humane Technology, such as:
 
 - Loneliness & Social Connection
 - Screen Time & Dependency
@@ -56,7 +56,7 @@ The evaluation uses `data/simple_human_friendliness_dataset.csv`, which contains
 
 ### Updating the Dataset
 
-To modify the evaluation scenarios, edit `data/simple_human_friendliness_dataset.csv`. The dataset includes:
+To modify the evaluation scenarios, edit `data/simple_human_friendliness_dataset.jsonl`. The dataset includes:
 
 - `input`: The user's question or scenario
 - `target`: The expected human-friendly response
@@ -64,7 +64,7 @@ To modify the evaluation scenarios, edit `data/simple_human_friendliness_dataset
 - `severity`: The importance level (low, medium, high, critical)
 - `principle_to_evaluate`: The core principle being assessed
 
-Of these fields, `input` and `target` are required. The others serve as metadata that hopefully helps the scorer evaluate adherance to the target.
+Of these fields, `input` and `target` are required. The others serve as metadata that hopefully helps the scorer evaluate adherence to the target.
 
 ## Project Structure
 
@@ -73,7 +73,7 @@ Of these fields, `input` and `target` are required. The others serve as metadata
 │   ├── good_persona_task.py    # Human-friendly persona evaluation
 │   ├── bad_persona_task.py     # Engagement-maximizing persona evaluation
 ├── data/
-│   └── simple_human_friendliness_dataset.csv  # Test scenarios
+│   └── simple_human_friendliness_dataset.jsonl  # Test scenarios
 ├── logs/                      # Evaluation results
 ```
 

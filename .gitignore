@@ -199,7 +199,10 @@ cython_debug/
 #   that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
 #   and can be added to the global gitignore or merged into this file. However, if you prefer, 
 #   you could uncomment the following to ignore the entire vscode folder
-# .vscode/
+.vscode/
+
+# Exclusion for Visual Studio too
+.vs/ 
 
 # Ruff stuff:
 .ruff_cache/
@@ -214,3 +217,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Inspect evaluation logs to avoid leaking unnecessary data on GitHub and avoiding leaks of possibly sensitive data
+logs/

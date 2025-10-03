@@ -3,7 +3,7 @@ Evaluation task for the 'bad' engagement-maximizing persona.
 """
 import textwrap
 from inspect_ai import Task, task
-from inspect_ai.dataset import csv_dataset, FieldSpec
+from inspect_ai.dataset import json_dataset, FieldSpec
 from inspect_ai.solver import system_message, generate
 from inspect_ai.scorer import model_graded_fact
 
@@ -26,8 +26,8 @@ BAD_PERSONA_SYSTEM_PROMPT = textwrap.dedent("""\
 @task
 def bad_persona_eval():
     return Task(
-        dataset=csv_dataset(
-            "../data/simple_human_friendliness_dataset.csv",
+        dataset=json_dataset(
+            "../data/simple_human_friendliness_dataset.jsonl",
             sample_fields=FieldSpec(
                 input="input",
                 target="target",

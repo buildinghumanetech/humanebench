@@ -1,8 +1,8 @@
-"""
+﻿"""
 Data management utilities for the pipeline with semantic deduplication.
 """
 
-import csv
+import json
 import pandas as pd
 import shutil
 from pathlib import Path
@@ -24,13 +24,20 @@ class DataManager:
         """Initialize the deduplicator with existing dataset scenarios."""
         if self.dataset_path.exists():
             try:
-                df = pd.read_csv(self.dataset_path)
-                existing_inputs = df['input'].tolist()
-                if existing_inputs:
-                    print(f"Initializing deduplicator with {len(existing_inputs)} existing scenarios...")
-                    self.deduplicator.update_existing_texts(existing_inputs)
-                else:
+                if self.dataset_path.stat().st_size == 0:
                     print("No existing scenarios found in dataset")
+                    return
+
+                df = pd.read_json(self.dataset_path, lines=True)
+                if 'input' in df and not df.empty:
+                    existing_inputs = df['input'].dropna().astype(str).tolist()
+                    if existing_inputs:
+                        print(f"Initializing deduplicator with {len(existing_inputs)} existing scenarios...")
+                        self.deduplicator.update_existing_texts(existing_inputs)
+                    else:
+                        print("No existing scenarios found in dataset")
+                else:
+                    print("Dataset has no 'input' column or is empty")
             except Exception as e:
                 print(f"Warning: Could not load existing scenarios for deduplication: {e}")
 
@@ -55,18 +62,10 @@ class DataManager:
             print("No unique rows to add (all were semantic duplicates)")
             return 0
 
-        # Append to CSV
-        file_exists = self.dataset_path.exists()
-        with open(self.dataset_path, 'a', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['input', 'target', 'category', 'severity', 'principle_to_evaluate']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-            # Write header if file doesn't exist
-            if not file_exists:
-                writer.writeheader()
-
-            # Write rows
-            writer.writerows(unique_rows)
+        # Append to JSONL
+        with open(self.dataset_path, 'a', encoding='utf-8') as f:
+            for row in unique_rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
         print(f"Added {len(unique_rows)} unique rows to dataset")
         if len(unique_rows) < len(new_rows):
@@ -76,28 +75,36 @@ class DataManager:
 
     def get_dataset_stats(self) -> Dict:
         """Get statistics about the current dataset."""
-        if not self.dataset_path.exists():
+        if not self.dataset_path.exists() or self.dataset_path.stat().st_size == 0: # In case of empty existing file
             return {
                 "total_rows": 0,
                 "principle_distribution": {},
                 "category_distribution": {},
+                "severity_distribution": {}, # Keep stucture consistent with default value
                 "deduplication_stats": self.deduplicator.get_statistics()
             }
 
         try:
-            df = pd.read_csv(self.dataset_path)
+            df = pd.read_json(self.dataset_path, lines=True)
 
-            # Count by principle
+            # Validate required columns exist
+            required_columns = ['input', 'target', 'category', 'severity', 'principle_to_evaluate']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+
+            if missing_columns:
+                raise ValueError(
+                    f"Dataset is missing required columns: {', '.join(missing_columns)}. "
+                    f"Required columns are: {', '.join(required_columns)}"
+                )
+
+            # Count by fields
+            total_rows = len(df)
             principle_dist = df['principle_to_evaluate'].value_counts().to_dict()
-
-            # Count by category
             category_dist = df['category'].value_counts().to_dict()
-
-            # Count by severity
             severity_dist = df['severity'].value_counts().to_dict()
 
             return {
-                "total_rows": len(df),
+                "total_rows": total_rows,
                 "principle_distribution": principle_dist,
                 "category_distribution": category_dist,
                 "severity_distribution": severity_dist,
@@ -109,16 +116,17 @@ class DataManager:
                 "total_rows": 0,
                 "principle_distribution": {},
                 "category_distribution": {},
+                "severity_distribution": {},
                 "deduplication_stats": self.deduplicator.get_statistics()
             }
 
     def get_sample_rows(self, n: int = 3) -> List[Dict]:
         """Get a sample of recent rows for display."""
-        if not self.dataset_path.exists():
+        if not self.dataset_path.exists() or self.dataset_path.stat().st_size == 0:
             return []
 
         try:
-            df = pd.read_csv(self.dataset_path)
+            df = pd.read_json(self.dataset_path, lines=True)
             if len(df) == 0:
                 return []
 
@@ -174,7 +182,7 @@ class DataManager:
 
     def get_diversity_analysis(self) -> Dict:
         """Analyze diversity patterns in existing dataset to guide generation."""
-        if not self.dataset_path.exists():
+        if not self.dataset_path.exists() or self.dataset_path.stat().st_size == 0:
             return {
                 "total_scenarios": 0,
                 "guidance": "No existing dataset found. Generate diverse scenarios across all categories and principles.",
@@ -183,7 +191,7 @@ class DataManager:
             }
 
         try:
-            df = pd.read_csv(self.dataset_path)
+            df = pd.read_json(self.dataset_path, lines=True)
 
             if len(df) == 0:
                 return {
@@ -194,7 +202,16 @@ class DataManager:
                 }
 
             # Analyze input patterns for uniqueness guidance
-            inputs = df['input'].tolist()
+            # Handle missing input field
+            if 'input' not in df:
+                return {
+                    "total_scenarios": len(df),
+                    "guidance": "Dataset missing 'input' field; cannot analyze patterns.",
+                    "coverage_gaps": {"categories": [], "principles": []},
+                    "common_patterns": {}
+                }
+
+            inputs = df['input'].dropna().astype(str).tolist()
 
             # Extract key patterns
             common_starters = {}
@@ -223,7 +240,7 @@ class DataManager:
             stats = self.get_dataset_stats()
 
             # Find underrepresented categories
-            total_rows = stats['total_rows']
+            total_rows = stats['total_rows'] or 1 # Defensive approach to avoid division by 0
             category_gaps = []
             for category, count in stats['category_distribution'].items():
                 if count / total_rows < 0.12:  # Less than ~12% representation
@@ -239,7 +256,7 @@ class DataManager:
 
             # Generate guidance
             guidance_parts = []
-            guidance_parts.append(f"Existing dataset has {total_rows} scenarios.")
+            guidance_parts.append(f"Existing dataset has {len(df)} scenarios.")
 
             if overused_starters:
                 guidance_parts.append(f"AVOID these overused question starters: {', '.join(overused_starters[:5])}")
@@ -254,7 +271,7 @@ class DataManager:
                 guidance_parts.append(f"FOCUS on underrepresented principles: {', '.join(principle_gaps[:3])}")
 
             return {
-                "total_scenarios": total_rows,
+                "total_scenarios": len(df),
                 "guidance": " ".join(guidance_parts),
                 "coverage_gaps": {
                     "categories": category_gaps,

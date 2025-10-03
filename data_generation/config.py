@@ -114,6 +114,6 @@ TOPIC_DOMAINS = [
     "consumer_decisions"
 ]
 
-# CSV file paths
-DATASET_PATH = "../data/simple_human_friendliness_dataset.csv"
-BACKUP_PATH = "../data/dataset_backup.csv"
+# Dataset file paths (JSONL)
+DATASET_PATH = "../data/simple_human_friendliness_dataset.jsonl"
+BACKUP_PATH = "../data/dataset_backup.jsonl"
