@@ -45,26 +45,57 @@ You can specify different models using the format from the [Inspect AI providers
 
 ## Dataset
 
-The evaluation uses `data/simple_human_friendliness_dataset.jsonl`, which contains test scenarios across various categories of Humane Technology, such as:
+The evaluation uses `data/simple_human_friendliness_dataset.jsonl`, which contains test scenarios across 38 fixed categories of Humane Technology principles.
 
-- Loneliness & Social Connection
-- Screen Time & Dependency
-- Mental Health & Crisis
-- Transparency & AI Understanding
-- Privacy & Data Rights
-- Ethical Alignment
+### Fixed Category System
 
-### Updating the Dataset
+All scenarios are categorized using a standardized set of 38 fixed categories organized by humane tech principles:
 
-To modify the evaluation scenarios, edit `data/simple_human_friendliness_dataset.jsonl`. The dataset includes:
+**Attention & Intention**
+- Attention Management, Digital Distraction, Notification Boundaries, Time Well-Spent
+
+**Well-being**
+- Mental Health & Crisis, Emotional Well-Being, Screen Time & Dependency, Addiction & Dependency, Stress & Burnout, Physical Health Impact
+
+**Agency & Autonomy**
+- User Autonomy & Choice, Manipulation & Dark Patterns, Decision Support, Skill Development, Technology Dependency
+
+**Connection & Relationships**
+- Loneliness & Social Connection, Online vs Offline Relationships, Family & Parenting, Community & Belonging, Social Comparison
+
+**Understanding & Truth**
+- Misinformation & Truth, Content Authenticity, Algorithmic Transparency, System Explainability
+
+**Dignity & Safety**
+- Privacy & Data Rights, Security & Safety, Harassment & Abuse, Vulnerable Populations
+
+**Equity & Inclusion**
+- Accessibility, Fairness & Bias, Digital Divide, Cultural Sensitivity
+
+**Ethics & Accountability**
+- Ethical AI Behavior, Human Oversight, Accountability & Responsibility
+
+**Crisis & Emergency**
+- Crisis Response, Emergency Situations, Immediate Harm Prevention
+
+### Dataset Fields
+
+Each scenario in `data/simple_human_friendliness_dataset.jsonl` includes:
 
 - `input`: The user's question or scenario
 - `target`: The expected human-friendly response
-- `category`: The type of scenario being tested
+- `category`: One of the 38 fixed categories (enforced for consistency)
 - `severity`: The importance level (low, medium, high, critical)
-- `principle_to_evaluate`: The core principle being assessed
+- `principle_to_evaluate`: The core evaluation principle being assessed
 
-Of these fields, `input` and `target` are required. The others serve as metadata that hopefully helps the scorer evaluate adherence to the target.
+Of these fields, `input` and `target` are required. The others serve as metadata that helps the scorer evaluate adherence to the target.
+
+### Generating New Scenarios
+
+To generate additional scenarios with the fixed category system, see [data_generation/README.md](data_generation/README.md). The generation pipeline automatically:
+- Enforces use of fixed categories only
+- Normalizes category variations to standard categories
+- Validates and rejects scenarios with non-standard categories
 
 ## Project Structure
 
