@@ -45,38 +45,20 @@ You can specify different models using the format from the [Inspect AI providers
 
 ## Dataset
 
-The evaluation uses `data/simple_human_friendliness_dataset.jsonl`, which contains test scenarios across 38 fixed categories of Humane Technology principles.
+The evaluation uses `data/simple_human_friendliness_dataset.jsonl`, which contains test scenarios categorized by the 8 core Humane Technology principles.
 
 ### Fixed Category System
 
-All scenarios are categorized using a standardized set of 38 fixed categories organized by humane tech principles:
+All scenarios are categorized using one of the 8 core humane technology principles:
 
-**Attention & Intention**
-- Attention Management, Digital Distraction, Notification Boundaries, Time Well-Spent
-
-**Well-being**
-- Mental Health & Crisis, Emotional Well-Being, Screen Time & Dependency, Addiction & Dependency, Stress & Burnout, Physical Health Impact
-
-**Agency & Autonomy**
-- User Autonomy & Choice, Manipulation & Dark Patterns, Decision Support, Skill Development, Technology Dependency
-
-**Connection & Relationships**
-- Loneliness & Social Connection, Online vs Offline Relationships, Family & Parenting, Community & Belonging, Social Comparison
-
-**Understanding & Truth**
-- Misinformation & Truth, Content Authenticity, Algorithmic Transparency, System Explainability
-
-**Dignity & Safety**
-- Privacy & Data Rights, Security & Safety, Harassment & Abuse, Vulnerable Populations
-
-**Equity & Inclusion**
-- Accessibility, Fairness & Bias, Digital Divide, Cultural Sensitivity
-
-**Ethics & Accountability**
-- Ethical AI Behavior, Human Oversight, Accountability & Responsibility
-
-**Crisis & Emergency**
-- Crisis Response, Emergency Situations, Immediate Harm Prevention
+1. **Respect User Attention** - Technology should respect user attention as a finite, precious resource
+2. **Enable Meaningful Choices** - Technology should empower users with meaningful choices and control
+3. **Enhance Human Capabilities** - Technology should complement and enhance human capabilities, not replace or diminish them
+4. **Protect Dignity and Safety** - Technology should protect human dignity, privacy, and safety
+5. **Foster Healthy Relationships** - Technology should foster healthy relationships with devices, systems, and other people
+6. **Prioritize Long-term Wellbeing** - Technology should prioritize long-term user wellbeing over short-term engagement metrics
+7. **Be Transparent and Honest** - Technology should be transparent about its operations and honest about its capabilities
+8. **Design for Equity and Inclusion** - Technology should be accessible and beneficial to diverse populations
 
 ### Dataset Fields
 
@@ -84,7 +66,7 @@ Each scenario in `data/simple_human_friendliness_dataset.jsonl` includes:
 
 - `input`: The user's question or scenario
 - `target`: The expected human-friendly response
-- `category`: One of the 38 fixed categories (enforced for consistency)
+- `category`: One of the 8 humane technology principles (enforced for consistency)
 - `severity`: The importance level (low, medium, high, critical)
 - `principle_to_evaluate`: The core evaluation principle being assessed
 
@@ -93,7 +75,7 @@ Of these fields, `input` and `target` are required. The others serve as metadata
 ### Generating New Scenarios
 
 To generate additional scenarios with the fixed category system, see [data_generation/README.md](data_generation/README.md). The generation pipeline automatically:
-- Enforces use of fixed categories only
+- Enforces use of the 8 fixed principle categories only
 - Normalizes category variations to standard categories
 - Validates and rejects scenarios with non-standard categories
 
