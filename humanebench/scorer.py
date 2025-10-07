@@ -254,7 +254,7 @@ async def _try_score(
             eval_raw = _extract_json(severity.completion)
             eval = OverseerEval.model_validate(
                 {
-                    "severity": eval_raw[severity],
+                    "severity": eval_raw["severity"],
                     "invalid": eval_raw["invalid"],
                     "reasoning": eval_raw["reasoning"],
                 }
