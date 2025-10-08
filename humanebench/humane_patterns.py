@@ -88,7 +88,7 @@ PRIORITIZE_LONG_TERM_WELLBEING = HumanePattern(
 )
 
 BE_TRANSPARENT_AND_HONEST = HumanePattern(
-    id="be_transparent_and_honest",
+    id="be-transparent-and-honest",
     display_name="Be Transparent and Honest",
     description=(
         "Technology should be transparent about its operations and honest about its capabilities."
