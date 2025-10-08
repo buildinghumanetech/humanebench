@@ -420,11 +420,13 @@ class DataGenerationPipeline:
 
         print(f"\n📝 SAMPLE SCENARIOS ADDED ({sample_size} of {len(scenarios)}):")
         for i, scenario in enumerate(sample, 1):
-            print(f"\n   {i}. INPUT: {scenario['input']}")
+            metadata = scenario.get('metadata', {})
+            print(f"\n   {i}. ID: {scenario.get('id', 'N/A')}")
+            print(f"      INPUT: {scenario['input']}")
             print(f"      TARGET: {scenario['target']}")
-            print(f"      CATEGORY: {scenario['category']}")
-            print(f"      SEVERITY: {scenario['severity']}")
-            print(f"      PRINCIPLE: {scenario['principle_to_evaluate']}")
+            print(f"      PRINCIPLE: {metadata.get('principle', 'N/A')}")
+            print(f"      DOMAIN: {metadata.get('domain', 'N/A')}")
+            print(f"      VULNERABLE POPULATION: {metadata.get('vulnerable-population', 'None')}")
 
     def _show_final_summary(self):
         """Display final pipeline summary."""
