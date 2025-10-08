@@ -7,7 +7,7 @@ import pandas as pd
 import shutil
 from pathlib import Path
 from typing import List, Dict
-from config import DATASET_PATH, BACKUP_PATH, HUMANE_PRINCIPLES, EVALUATION_TO_PRINCIPLE_MAP
+from config import DATASET_PATH, BACKUP_PATH, HUMANE_PRINCIPLES, TOPIC_DOMAINS
 from semantic_deduplication import SemanticDeduplicator
 
 
@@ -63,7 +63,18 @@ class DataManager:
             return 0
 
         # Append to JSONL
-        with open(self.dataset_path, 'a', encoding='utf-8') as f:
+        # Ensure file ends with newline before appending
+        if self.dataset_path.exists() and self.dataset_path.stat().st_size > 0:
+            with open(self.dataset_path, 'rb') as f:
+                f.seek(-1, 2)  # Go to last byte
+                last_char = f.read(1)
+                needs_newline = last_char != b'\n'
+        else:
+            needs_newline = False
+
+        with open(self.dataset_path, 'a', encoding='utf-8', newline='') as f:
+            if needs_newline:
+                f.write("\n")
             for row in unique_rows:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
@@ -79,8 +90,8 @@ class DataManager:
             return {
                 "total_rows": 0,
                 "principle_distribution": {},
-                "category_distribution": {},
-                "severity_distribution": {}, # Keep stucture consistent with default value
+                "domain_distribution": {},
+                "vulnerable_population_distribution": {},
                 "deduplication_stats": self.deduplicator.get_statistics()
             }
 
@@ -88,7 +99,7 @@ class DataManager:
             df = pd.read_json(self.dataset_path, lines=True)
 
             # Validate required columns exist
-            required_columns = ['input', 'target', 'category', 'severity', 'principle_to_evaluate']
+            required_columns = ['id', 'input', 'target', 'metadata']
             missing_columns = [col for col in required_columns if col not in df.columns]
 
             if missing_columns:
@@ -97,17 +108,22 @@ class DataManager:
                     f"Required columns are: {', '.join(required_columns)}"
                 )
 
+            # Extract metadata fields
+            df['principle'] = df['metadata'].apply(lambda x: x.get('principle', '') if isinstance(x, dict) else '')
+            df['domain'] = df['metadata'].apply(lambda x: x.get('domain', '') if isinstance(x, dict) else '')
+            df['vulnerable_population'] = df['metadata'].apply(lambda x: x.get('vulnerable-population', '') if isinstance(x, dict) else '')
+
             # Count by fields
             total_rows = len(df)
-            principle_dist = df['principle_to_evaluate'].value_counts().to_dict()
-            category_dist = df['category'].value_counts().to_dict()
-            severity_dist = df['severity'].value_counts().to_dict()
+            principle_dist = df['principle'].value_counts().to_dict()
+            domain_dist = df['domain'].value_counts().to_dict()
+            vuln_pop_dist = df['vulnerable_population'].value_counts().to_dict()
 
             return {
                 "total_rows": total_rows,
                 "principle_distribution": principle_dist,
-                "category_distribution": category_dist,
-                "severity_distribution": severity_dist,
+                "domain_distribution": domain_dist,
+                "vulnerable_population_distribution": vuln_pop_dist,
                 "deduplication_stats": self.deduplicator.get_statistics()
             }
         except Exception as e:
@@ -115,8 +131,8 @@ class DataManager:
             return {
                 "total_rows": 0,
                 "principle_distribution": {},
-                "category_distribution": {},
-                "severity_distribution": {},
+                "domain_distribution": {},
+                "vulnerable_population_distribution": {},
                 "deduplication_stats": self.deduplicator.get_statistics()
             }
 
@@ -155,28 +171,24 @@ class DataManager:
         if total == 0:
             return {}
 
-        # Map evaluation categories to core principles
-        principle_counts = {}
-        for eval_category, count in stats['principle_distribution'].items():
-            mapped_principle = EVALUATION_TO_PRINCIPLE_MAP.get(eval_category)
-            if mapped_principle:
-                principle_counts[mapped_principle] = principle_counts.get(mapped_principle, 0) + count
+        # Get principle counts directly from distribution
+        principle_counts = stats['principle_distribution']
 
         # Convert to ratios
         return {principle: count/total for principle, count in principle_counts.items()}
 
-    def suggest_needed_principles(self, target_balance: float = 0.167) -> List[str]:
-        """Suggest which core principles need more scenarios (target is ~1/6 each)."""
+    def suggest_needed_principles(self, target_balance: float = 0.125) -> List[str]:
+        """Suggest which core principles need more scenarios (target is ~1/8 each for 8 principles)."""
         balance = self.get_principle_balance()
 
         if not balance:
-            return list(HUMANE_PRINCIPLES.keys())  # All principles needed if no data
+            return list(HUMANE_PRINCIPLES)  # All principles needed if no data
 
         underrepresented = []
-        for principle_key, principle_name in HUMANE_PRINCIPLES.items():
-            current_ratio = balance.get(principle_key, 0)
+        for principle in HUMANE_PRINCIPLES:
+            current_ratio = balance.get(principle, 0)
             if current_ratio < target_balance:
-                underrepresented.append(principle_name)
+                underrepresented.append(principle)
 
         return underrepresented
 
@@ -239,20 +251,20 @@ class DataManager:
             # Analyze distribution gaps
             stats = self.get_dataset_stats()
 
-            # Find underrepresented categories
+            # Find underrepresented domains
             total_rows = stats['total_rows'] or 1 # Defensive approach to avoid division by 0
-            category_gaps = []
-            for category, count in stats['category_distribution'].items():
-                if count / total_rows < 0.12:  # Less than ~12% representation
-                    category_gaps.append(category)
+            domain_gaps = []
+            for domain, count in stats['domain_distribution'].items():
+                if count / total_rows < 0.08:  # Less than ~8% representation
+                    domain_gaps.append(domain)
 
-            # Find underrepresented core principles (using mapping)
+            # Find underrepresented core principles
             principle_gaps = []
             core_principle_balance = self.get_principle_balance()
-            for principle_key, principle_name in HUMANE_PRINCIPLES.items():
-                current_ratio = core_principle_balance.get(principle_key, 0)
-                if current_ratio < 0.12:  # Less than ~12% representation
-                    principle_gaps.append(principle_name)
+            for principle in HUMANE_PRINCIPLES:
+                current_ratio = core_principle_balance.get(principle, 0)
+                if current_ratio < 0.10:  # Less than ~10% representation
+                    principle_gaps.append(principle)
 
             # Generate guidance
             guidance_parts = []
@@ -264,8 +276,8 @@ class DataManager:
             if overused_topics:
                 guidance_parts.append(f"AVOID these overused topics: {', '.join(overused_topics[:8])}")
 
-            if category_gaps:
-                guidance_parts.append(f"FOCUS on underrepresented categories: {', '.join(category_gaps)}")
+            if domain_gaps:
+                guidance_parts.append(f"FOCUS on underrepresented domains: {', '.join(domain_gaps)}")
 
             if principle_gaps:
                 guidance_parts.append(f"FOCUS on underrepresented principles: {', '.join(principle_gaps[:3])}")
@@ -274,7 +286,7 @@ class DataManager:
                 "total_scenarios": len(df),
                 "guidance": " ".join(guidance_parts),
                 "coverage_gaps": {
-                    "categories": category_gaps,
+                    "domains": domain_gaps,
                     "principles": principle_gaps
                 },
                 "common_patterns": {
@@ -282,7 +294,7 @@ class DataManager:
                     "overused_topics": overused_topics[:8]
                 },
                 "distribution": {
-                    "categories": stats['category_distribution'],
+                    "domains": stats['domain_distribution'],
                     "principles": stats['principle_distribution']
                 }
             }
@@ -292,7 +304,7 @@ class DataManager:
             return {
                 "total_scenarios": 0,
                 "guidance": "Error analyzing existing dataset. Generate diverse scenarios.",
-                "coverage_gaps": {"categories": [], "principles": []},
+                "coverage_gaps": {"domains": [], "principles": []},
                 "common_patterns": {}
             }
 
