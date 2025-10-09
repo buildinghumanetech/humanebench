@@ -32,7 +32,7 @@ Each generated scenario follows this structure:
 
 **Fields:**
 - `id`: Unique identifier (principle slug + sequential number)
-- `input`: The user's question or scenario (brief, 1-2 sentences)
+- `input`: The user's question or scenario (brief, ~2 sentences)
 - `target`: The principle being evaluated (must match `metadata.principle`)
 - `metadata.principle`: One of the 8 humane technology principles
 - `metadata.domain`: The topic domain

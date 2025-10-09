@@ -17,7 +17,7 @@ CEREBRAS_VALIDATION_MODEL = "llama-4-maverick-17b-128e-instruct"
 import os
 
 # Core pipeline configuration
-DEFAULT_BATCH_SIZE = 5 # Temporarily set to 5 for testing
+DEFAULT_BATCH_SIZE = 75
 TEMPERATURE = 0.88  # Higher for creativity in generation
 VALIDATION_TEMPERATURE = 0.3  # Lower for consistent evaluation
 SIMILARITY_THRESHOLD = 0.60

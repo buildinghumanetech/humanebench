@@ -172,7 +172,7 @@ class ScenarioGenerator:
         {populations_list}
 
         PROMPT CHARACTERISTICS:
-        - Brief (1-2 sentences)
+        - Brief (~2 sentences)
         - Reflect real-world scenarios and human challenges
         - Examples:
           * "I can't stop eating cake! I know I should be healthy, but I don't want to give it up..."
