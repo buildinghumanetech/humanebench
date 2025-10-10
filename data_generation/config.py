@@ -39,79 +39,42 @@ ENABLE_DATASET_CONTEXT = True
 ENABLE_DEDUPLICATION_FEEDBACK = True
 CONTEXT_ANALYSIS_FREQUENCY = 1  # Analyze context every batch
 
-# Humane Tech Principles mapping
-HUMANE_PRINCIPLES = {
-    "protect_attention": "Protect Attention and Intention",
-    "support_wellbeing": "Support Well-being",
-    "enhance_agency": "Enhance Agency",
-    "foster_connection": "Foster Connection and Empathy",
-    "promote_understanding": "Promote Sense-making and Understanding",
-    "respect_diversity": "Respect Diversity and Inclusion"
-}
-
-# Primary evaluation categories used for scenario generation and validation
-PRIMARY_EVALUATION_CATEGORIES = [
-    "Fostering Meaningful Connection",
-    "Psychological Safety and Emotional Well-Being",
-    "User Autonomy and Freedom from Manipulation",
-    "Transparency and Explainability",
-    "Trustworthiness and Reliability",
-    "Fairness and Inclusivity",
-    "Privacy and Data Rights",
-    "Accountability and Human Oversight",
-    "Ethical Alignment and Moral Integrity",
-    "Human Well-Being and Flourishing",
-    "Crisis Response and Emergency Situations"
+# Humane Technology Principles - 8 fixed principles in kebab-case
+HUMANE_PRINCIPLES = [
+    "respect-user-attention",
+    "enable-meaningful-choices",
+    "enhance-human-capabilities",
+    "protect-dignity-safety",
+    "foster-healthy-relationships",
+    "prioritize-long-term-wellbeing",
+    "be-transparent-honest",
+    "design-for-equity-inclusion"
 ]
 
-# Map evaluation categories to core humane principles
-EVALUATION_TO_PRINCIPLE_MAP = {
-    "Fostering Meaningful Connection": "foster_connection",
-    "Psychological Safety and Emotional Well-Being": "support_wellbeing",
-    "User Autonomy and Freedom from Manipulation": "enhance_agency",
-    "Transparency and Explainability": "promote_understanding",
-    "Trustworthiness and Reliability": "promote_understanding",
-    "Fairness and Inclusivity": "respect_diversity",
-    "Privacy and Data Rights": "enhance_agency",
-    "Accountability and Human Oversight": "promote_understanding",
-    "Ethical Alignment and Moral Integrity": "support_wellbeing",
-    "Human Well-Being and Flourishing": "support_wellbeing",
-    "Crisis Response and Emergency Situations": "protect_attention"
-}
-
-# Scenario categories for balanced generation
-SCENARIO_CATEGORIES = [
-    "individual_advice",
-    "societal_questions",
-    "vulnerable_populations",
-    "moral_ambiguity",
-    "crisis_situations",
-    "everyday_decisions"
-]
-
-# Vulnerable population types to include
-VULNERABLE_POPULATIONS = [
-    "teenagers",
-    "elderly",
-    "people_in_crisis",
-    "people_with_disabilities",
-    "non_native_speakers",
-    "low_tech_literacy"
-]
-
-# Topic domains to cover
+# Topic domains - 12 fixed domains for scenario categorization
 TOPIC_DOMAINS = [
     "relationships",
-    "mental_health",
-    "financial_decisions",
-    "career_guidance",
+    "mental-health",
+    "financial-decisions",
+    "career-guidance",
     "parenting",
-    "health_wellness",
-    "technology_use",
-    "social_media",
-    "politics_society",
+    "health-wellness",
+    "technology-use",
+    "politics-society",
     "education",
-    "consumer_decisions"
+    "moral-ambiguity",
+    "crisis-situations",
+    "everyday-decisions"
+]
+
+# Vulnerable population types to consider
+VULNERABLE_POPULATIONS = [
+    "children",
+    "teenagers",
+    "elderly",
+    "people-with-disabilities",
+    "non-native-speakers",
+    "low-tech-literacy"
 ]
 
 # Dataset file paths (JSONL)
