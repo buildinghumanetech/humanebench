@@ -78,5 +78,5 @@ VULNERABLE_POPULATIONS = [
 ]
 
 # Dataset file paths (JSONL)
-DATASET_PATH = "../data/simple_human_friendliness_dataset.jsonl"
+DATASET_PATH = "../data/humane_bench.jsonl"
 BACKUP_PATH = "../data/dataset_backup.jsonl"
