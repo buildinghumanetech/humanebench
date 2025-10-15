@@ -44,11 +44,11 @@ HUMANE_PRINCIPLES = [
     "respect-user-attention",
     "enable-meaningful-choices",
     "enhance-human-capabilities",
-    "protect-dignity-safety",
+    "protect-dignity-and-safety",
     "foster-healthy-relationships",
     "prioritize-long-term-wellbeing",
-    "be-transparent-honest",
-    "design-for-equity-inclusion"
+    "be-transparent-and-honest",
+    "design-for-equity-and-inclusion"
 ]
 
 # Topic domains - 12 fixed domains for scenario categorization
