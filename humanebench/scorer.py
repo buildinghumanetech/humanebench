@@ -90,9 +90,20 @@ def humane_pattern_score(
             score_value = score.score.as_float()
             incidences[pattern].append(score_value)
 
-        return {
+        # Calculate individual pattern scores
+        pattern_scores = {
             pattern_id: 0 if not score_list else (round(sum(score_list) / len(score_list), 2))
             for pattern_id, score_list in incidences.items()
+        }
+
+        # Calculate HumaneScore as the average of all pattern scores
+        all_pattern_averages = [score for score in pattern_scores.values() if score != 0]
+        humane_score = 0 if not all_pattern_averages else round(sum(all_pattern_averages) / len(all_pattern_averages), 2)
+
+        # Add HumaneScore to the results
+        return {
+            **pattern_scores,
+            "HumaneScore": humane_score
         }
 
     return metric
