@@ -17,8 +17,14 @@ class DataManager:
         self.backup_path = Path(BACKUP_PATH)
         self.deduplicator = SemanticDeduplicator(similarity_threshold=similarity_threshold)
 
+        # ID generation state
+        self.principle_counters: Dict[str, int] = {}
+
         # Initialize deduplicator with existing scenarios
         self._initialize_deduplicator()
+
+        # Initialize ID counters with existing IDs
+        self._initialize_id_counters()
 
     def _initialize_deduplicator(self):
         """Initialize the deduplicator with existing dataset scenarios."""
@@ -41,6 +47,110 @@ class DataManager:
             except Exception as e:
                 print(f"Warning: Could not load existing scenarios for deduplication: {e}")
 
+    def _initialize_id_counters(self):
+        """Initialize ID counters by finding the highest ID number for each principle."""
+        import re
+
+        # Initialize counters for all principles to 0
+        for principle in HUMANE_PRINCIPLES:
+            self.principle_counters[principle] = 0
+
+        if not self.dataset_path.exists() or self.dataset_path.stat().st_size == 0:
+            print("ID counters initialized with zero (no existing dataset)")
+            return
+
+        try:
+            df = pd.read_json(self.dataset_path, lines=True)
+
+            if 'id' not in df or len(df) == 0:
+                print("ID counters initialized with zero (no IDs in dataset)")
+                return
+
+            # Parse IDs to find the highest number for each principle
+            pattern = re.compile(r"^([a-z\-]+)-(\d{3,})$")
+            for id_str in df['id'].dropna().astype(str):
+                match = pattern.match(id_str)
+                if match:
+                    principle, number_str = match.groups()
+                    if principle in self.principle_counters:
+                        number = int(number_str)
+                        self.principle_counters[principle] = max(
+                            self.principle_counters[principle],
+                            number
+                        )
+
+            print(f"Loaded existing ID counters from {len(df)} scenarios")
+            for principle, count in sorted(self.principle_counters.items()):
+                if count > 0:
+                    print(f"   - {principle}: next ID will be {principle}-{count+1:03d}")
+
+        except Exception as e:
+            print(f"WARNING: Error loading existing IDs: {e}")
+            # Counters remain at 0 on error
+
+    def _generate_ids_for_scenarios(self, scenarios: List[Dict]) -> List[Dict]:
+        """
+        Generate sequential IDs for scenarios based on their principle.
+        This is called AFTER deduplication to avoid skipped numbers.
+        Includes collision detection to prevent duplicate IDs.
+
+        Args:
+            scenarios: List of scenario dicts (may or may not have 'id' field)
+
+        Returns:
+            List of scenarios with properly generated sequential IDs
+        """
+
+        # Load existing IDs from dataset to detect collisions
+        existing_ids = set()
+        if self.dataset_path.exists() and self.dataset_path.stat().st_size > 0:
+            try:
+                df = pd.read_json(self.dataset_path, lines=True)
+                if 'id' in df:
+                    existing_ids = set(df['id'].dropna().astype(str).tolist())
+            except Exception as e:
+                print(f"WARNING: Could not load existing IDs for collision detection: {e}")
+
+        temp_counters = self.principle_counters.copy()
+        generated_ids = set()  # Track IDs generated in this batch
+
+        for scenario in scenarios:
+            principle = scenario.get('metadata', {}).get('principle', '')
+            if not principle or principle not in HUMANE_PRINCIPLES:
+                print(f"WARNING: Skipping scenario with invalid principle: {principle}")
+                continue
+
+            # Generate ID and check for collisions
+            max_attempts = 1000  # Safety limit to prevent infinite loops. Increase if dataset grows beyond this.
+            collision_detected = False
+
+            for attempt in range(max_attempts):
+                next_number = temp_counters[principle] + 1
+                candidate_id = f"{principle}-{next_number:03d}"
+
+                # Check for collision with existing IDs or IDs generated in this batch
+                if candidate_id in existing_ids or candidate_id in generated_ids:
+                    collision_detected = True
+                    print(f"WARNING: ID collision detected: {candidate_id} already exists, incrementing...")
+                    temp_counters[principle] = next_number  # Increment counter and try again
+                else:
+                    # No collision, assign the ID
+                    scenario['id'] = candidate_id
+                    generated_ids.add(candidate_id)
+                    temp_counters[principle] = next_number
+                    break
+            else:
+                # Failed to generate unique ID after max_attempts
+                raise RuntimeError(
+                    f"Failed to generate unique ID for principle '{principle}' after {max_attempts} attempts. "
+                    f"Dataset may be corrupted or counter is out of sync."
+                )
+
+        # Update the real counters after processing all scenarios
+        self.principle_counters = temp_counters
+
+        return scenarios
+
     def create_backup(self):
         """Create a backup of the current dataset."""
         if self.dataset_path.exists():
@@ -48,21 +158,25 @@ class DataManager:
             print(f"Backup created at {self.backup_path}")
 
     def append_rows(self, new_rows: List[Dict[str, str]]) -> int:
-        """Append new rows to the dataset, filtering semantic duplicates."""
+        """Append new rows to the dataset, filtering semantic duplicates and generating IDs."""
         if not new_rows:
             return 0
 
-        # Extract input texts for deduplication
+        # Step 1: Extract input texts for deduplication
         new_inputs = [row['input'] for row in new_rows]
 
-        # Filter out semantic duplicates
+        # Step 2: Filter out semantic duplicates
         unique_inputs, unique_rows = self.deduplicator.filter_duplicates(new_inputs, new_rows)
 
         if not unique_rows:
             print("No unique rows to add (all were semantic duplicates)")
             return 0
 
-        # Append to JSONL
+        # Step 3: Generate sequential IDs AFTER deduplication (avoids skipped numbers)
+        print(f"Generating sequential IDs for {len(unique_rows)} unique scenarios...")
+        unique_rows = self._generate_ids_for_scenarios(unique_rows)
+
+        # Step 4: Append to JSONL
         # Ensure file ends with newline before appending
         if self.dataset_path.exists() and self.dataset_path.stat().st_size > 0:
             with open(self.dataset_path, 'rb') as f:
@@ -76,7 +190,14 @@ class DataManager:
             if needs_newline:
                 f.write("\n")
             for row in unique_rows:
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+                # Ensure field order: id, input, target, metadata
+                ordered_row = {
+                    "id": row["id"],
+                    "input": row["input"],
+                    "target": row["target"],
+                    "metadata": row["metadata"]
+                }
+                f.write(json.dumps(ordered_row, ensure_ascii=False) + "\n")
 
         print(f"Added {len(unique_rows)} unique rows to dataset")
         if len(unique_rows) < len(new_rows):
