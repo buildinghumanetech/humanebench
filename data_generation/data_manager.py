@@ -5,8 +5,9 @@ Data management utilities for the pipeline with semantic deduplication.
 import json
 import pandas as pd
 import shutil
+import re
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Tuple, Optional
 from config import DATASET_PATH, BACKUP_PATH, HUMANE_PRINCIPLES, TOPIC_DOMAINS
 from semantic_deduplication import SemanticDeduplicator
 
@@ -17,8 +18,15 @@ class DataManager:
         self.backup_path = Path(BACKUP_PATH)
         self.deduplicator = SemanticDeduplicator(similarity_threshold=similarity_threshold)
 
+        # ID validation state
+        self.principle_counters: Dict[str, int] = {}
+        self.existing_ids: set = set()
+
         # Initialize deduplicator with existing scenarios
         self._initialize_deduplicator()
+
+        # Initialize ID validation with existing IDs
+        self._initialize_id_validation()
 
     def _initialize_deduplicator(self):
         """Initialize the deduplicator with existing dataset scenarios."""
@@ -41,6 +49,182 @@ class DataManager:
             except Exception as e:
                 print(f"Warning: Could not load existing scenarios for deduplication: {e}")
 
+    def _initialize_id_validation(self):
+        """Initialize ID validation by loading existing IDs and building counters."""
+        # Initialize counters for all principles to 0
+        for principle in HUMANE_PRINCIPLES:
+            self.principle_counters[principle] = 0
+
+        if not self.dataset_path.exists() or self.dataset_path.stat().st_size == 0:
+            print("ID validation initialized with zero counters (no existing dataset)")
+            return
+
+        try:
+            df = pd.read_json(self.dataset_path, lines=True)
+
+            if 'id' not in df or len(df) == 0:
+                print("ID validation initialized with zero counters (no IDs in dataset)")
+                return
+
+            # Collect all existing IDs
+            self.existing_ids = set(df['id'].dropna().astype(str).tolist())
+
+            # Parse IDs to find the highest number for each principle
+            for principle in HUMANE_PRINCIPLES:
+                self.principle_counters[principle] = self._find_highest_id_number(principle)
+
+            print(f"Loaded {len(self.existing_ids)} existing IDs from dataset")
+            print(f"Current ID counters per principle:")
+            for principle, count in sorted(self.principle_counters.items()):
+                if count > 0:
+                    print(f"   - {principle}: {count} entries (next: {principle}-{count+1:03d})")
+
+        except Exception as e:
+            print(f"WARNING: Error loading existing IDs: {e}")
+            # Counters remain at 0 on error
+
+    def _find_highest_id_number(self, principle: str) -> int:
+        """Find the highest ID number for a given principle."""
+        pattern = re.compile(rf"^{re.escape(principle)}-(\d{{3,}})$")
+        max_number = 0
+
+        for id_str in self.existing_ids:
+            match = pattern.match(id_str)
+            if match:
+                number = int(match.group(1))
+                max_number = max(max_number, number)
+
+        return max_number
+
+    def _validate_id_format(self, id_str: str) -> Tuple[bool, Optional[str]]:
+        """
+        Validate that an ID follows the correct format: principle-###
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not id_str or not isinstance(id_str, str):
+            return False, "ID is empty or not a string"
+
+        # Check format: principle-###
+        pattern = re.compile(r"^([a-z\-]+)-(\d{3,})$")
+        match = pattern.match(id_str)
+
+        if not match:
+            return False, f"ID '{id_str}' doesn't match format 'principle-###'"
+
+        principle, number_str = match.groups()
+
+        # Validate principle exists
+        if principle not in HUMANE_PRINCIPLES:
+            return False, f"Invalid principle '{principle}' in ID '{id_str}'"
+
+        return True, None
+
+    def _validate_scenario_id(self, scenario: Dict, temp_counters: Dict[str, int], temp_existing_ids: set) -> Tuple[bool, Optional[str]]:
+        """
+        Validate a scenario's ID against expected sequential numbering.
+
+        Args:
+            scenario: Scenario dict to validate
+            temp_counters: Temporary counters for batch validation
+            temp_existing_ids: Temporary set of existing IDs for batch validation
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        scenario_id = scenario.get('id', '')
+        metadata = scenario.get('metadata', {})
+        principle = metadata.get('principle', '') if isinstance(metadata, dict) else ''
+
+        # Validate format first
+        is_valid_format, format_error = self._validate_id_format(scenario_id)
+        if not is_valid_format:
+            return False, format_error
+
+        # Parse the ID
+        pattern = re.compile(r"^([a-z\-]+)-(\d{3,})$")
+        match = pattern.match(scenario_id)
+        id_principle, number_str = match.groups()
+        actual_number = int(number_str)
+
+        # Check that principle from ID matches metadata principle
+        if id_principle != principle:
+            return False, f"ID principle '{id_principle}' doesn't match metadata principle '{principle}'"
+
+        # Check sequential numbering
+        expected_number = temp_counters.get(principle, 0) + 1
+        if actual_number != expected_number:
+            expected_id = f"{principle}-{expected_number:03d}"
+            return False, f"Expected ID '{expected_id}' but got '{scenario_id}'"
+
+        # Check collision with existing IDs
+        if scenario_id in temp_existing_ids:
+            return False, f"ID '{scenario_id}' already exists (collision detected)"
+
+        return True, None
+
+    def _correct_scenario_ids(self, scenarios: List[Dict]) -> Tuple[List[Dict], int]:
+        """
+        Correct all IDs in a batch to match expected sequential numbering.
+
+        Returns:
+            Tuple of (corrected_scenarios, count_corrected)
+        """
+        corrected_scenarios = []
+        temp_counters = self.principle_counters.copy()
+        corrections_made = 0
+
+        for scenario in scenarios:
+            principle = scenario.get('metadata', {}).get('principle', '')
+            if not principle or principle not in HUMANE_PRINCIPLES:
+                print(f"WARNING: Skipping scenario with invalid principle: {principle}")
+                continue
+
+            # Generate correct ID based on temp counter
+            next_number = temp_counters[principle] + 1
+            correct_id = f"{principle}-{next_number:03d}"
+
+            # Update scenario if ID is wrong
+            old_id = scenario.get('id', 'NONE')
+            if old_id != correct_id:
+                print(f"Correcting ID: '{old_id}' -> '{correct_id}'")
+                scenario['id'] = correct_id
+                corrections_made += 1
+
+            corrected_scenarios.append(scenario)
+
+            # Update temp counter
+            temp_counters[principle] = next_number
+
+        return corrected_scenarios, corrections_made
+
+    def _register_new_ids(self, scenarios: List[Dict]):
+        """
+        Register new IDs after successful append to dataset.
+        Updates internal counters and existing IDs set.
+        """
+        for scenario in scenarios:
+            scenario_id = scenario['id']
+            principle = scenario.get('metadata', {}).get('principle', '')
+
+            # Update existing IDs set
+            self.existing_ids.add(scenario_id)
+
+            # Parse number and update counter
+            pattern = re.compile(r"^([a-z\-]+)-(\d{3,})$")
+            match = pattern.match(scenario_id)
+            if match:
+                _, number_str = match.groups()
+                number = int(number_str)
+
+                # Update counter to highest seen
+                if principle in self.principle_counters:
+                    self.principle_counters[principle] = max(
+                        self.principle_counters[principle],
+                        number
+                    )
+
     def create_backup(self):
         """Create a backup of the current dataset."""
         if self.dataset_path.exists():
@@ -48,21 +232,33 @@ class DataManager:
             print(f"Backup created at {self.backup_path}")
 
     def append_rows(self, new_rows: List[Dict[str, str]]) -> int:
-        """Append new rows to the dataset, filtering semantic duplicates."""
+        """Append new rows to the dataset, filtering semantic duplicates and validating/correcting IDs."""
         if not new_rows:
             return 0
 
-        # Extract input texts for deduplication
-        new_inputs = [row['input'] for row in new_rows]
+        # Step 1: Validate and correct IDs
+        print(f"\nValidating IDs for {len(new_rows)} scenarios...")
+        corrected_rows, corrections_made = self._correct_scenario_ids(new_rows)
 
-        # Filter out semantic duplicates
-        unique_inputs, unique_rows = self.deduplicator.filter_duplicates(new_inputs, new_rows)
+        if corrections_made > 0:
+            print(f"Corrected {corrections_made} IDs to match expected sequential numbering")
+        else:
+            print(f"All IDs are valid and sequential")
+
+        # Step 2: Extract input texts for deduplication
+        new_inputs = [row['input'] for row in corrected_rows]
+
+        # Step 3: Filter out semantic duplicates
+        unique_inputs, unique_rows = self.deduplicator.filter_duplicates(new_inputs, corrected_rows)
 
         if not unique_rows:
             print("No unique rows to add (all were semantic duplicates)")
             return 0
 
-        # Append to JSONL
+        # Step 4: Register the new IDs before appending
+        self._register_new_ids(unique_rows)
+
+        # Step 5: Append to JSONL
         # Ensure file ends with newline before appending
         if self.dataset_path.exists() and self.dataset_path.stat().st_size > 0:
             with open(self.dataset_path, 'rb') as f:
@@ -79,8 +275,8 @@ class DataManager:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
         print(f"Added {len(unique_rows)} unique rows to dataset")
-        if len(unique_rows) < len(new_rows):
-            print(f"Filtered out {len(new_rows) - len(unique_rows)} semantic duplicates")
+        if len(unique_rows) < len(corrected_rows):
+            print(f"Filtered out {len(corrected_rows) - len(unique_rows)} semantic duplicates")
 
         return len(unique_rows)
 
