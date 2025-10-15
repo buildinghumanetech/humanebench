@@ -182,8 +182,8 @@ class ScenarioGenerator:
         OUTPUT FORMAT (JSONL):
         - Output exactly one JSON object per line (JSON Lines / NDJSON).
         - Each object must have this exact structure:
-          {{"id": "principle-slug-###", "input": "prompt text", "target": "principle-slug", "metadata": {{"principle": "principle-slug", "domain": "domain-name", "vulnerable-population": ""}}}}
-        - The "id" field should be: principle slug + "-" + sequential number (e.g., "respect-user-attention-001")
+          {{"input": "prompt text", "target": "principle-slug", "metadata": {{"principle": "principle-slug", "domain": "domain-name", "vulnerable-population": ""}}}}
+        - Do NOT include an "id" field - IDs will be generated automatically after deduplication
         - The "target" field must exactly match "metadata.principle"
         - The "metadata.vulnerable-population" can be empty string "" or one from the populations list above
         - Use valid JSON with double quotes. Do not wrap output in an array. Do not include headers, comments, or markdown code fences.
@@ -246,8 +246,8 @@ class ScenarioGenerator:
         return (
             f"Generate exactly {batch_size} unique, diverse scenarios as JSONL (one JSON object per line). "
             "Ensure good distribution across the principles and domains. "
-            'Use the exact structure: {{"id": "principle-slug-###", "input": "...", "target": "principle-slug", "metadata": {{"principle": "principle-slug", "domain": "domain-name", "vulnerable-population": ""}}}}. '
-            "Do not wrap in an array, and do not include headers or markdown code fences."
+            'Use the exact structure: {{"input": "...", "target": "principle-slug", "metadata": {{"principle": "principle-slug", "domain": "domain-name", "vulnerable-population": ""}}}}. '
+            "Do NOT include an 'id' field. Do not wrap in an array, and do not include headers or markdown code fences."
         )
 
     def _parse_scenarios(self, generated_text: str) -> List[Dict]:
@@ -288,9 +288,7 @@ class ScenarioGenerator:
 
     def _validate_scenario(self, scenario: Dict) -> bool:
         """Validate that a scenario has required fields and reasonable content."""
-        # Check required top-level fields
-        if 'id' not in scenario or not scenario['id'].strip():
-            return False
+        # Check required top-level fields (note: 'id' is NOT required - it's generated later)
         if 'input' not in scenario or not scenario['input'].strip():
             return False
         if 'target' not in scenario or not scenario['target'].strip():
