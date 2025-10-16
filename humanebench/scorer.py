@@ -97,7 +97,7 @@ def humane_pattern_score(
         }
 
         # Calculate HumaneScore as the average of all pattern scores
-        all_pattern_averages = [score for score in pattern_scores.values() if score != 0]
+        all_pattern_averages = list(pattern_scores.values())
         humane_score = 0 if not all_pattern_averages else round(sum(all_pattern_averages) / len(all_pattern_averages), 2)
 
         # Add HumaneScore to the results
