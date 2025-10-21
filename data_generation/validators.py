@@ -14,7 +14,7 @@ from typing import List, Dict, Optional, Tuple
 from llm_client import FallbackLLMClient
 from config import (OPENROUTER_VALIDATION_MODEL, CEREBRAS_VALIDATION_MODEL, VALIDATION_TEMPERATURE,
                     VALIDATION_MAX_TOKENS, VALIDATION_SAMPLE_PERCENTAGE, VALIDATION_FAILURE_THRESHOLD,
-                    VALIDATION_ESCALATION_THRESHOLD, HUMANE_PRINCIPLES, TOPIC_DOMAINS)
+                    VALIDATION_ESCALATION_THRESHOLD, SKIP_VALIDATION, HUMANE_PRINCIPLES, TOPIC_DOMAINS)
 
 
 class ScenarioValidator:
@@ -46,6 +46,11 @@ class ScenarioValidator:
         """
         if not scenarios:
             return [], [], None
+
+        # Skip validation if configured to bypass
+        if SKIP_VALIDATION:
+            print(f"⏭️  Validation bypassed - accepting all {len(scenarios)} scenarios")
+            return scenarios, [], None
 
         print(f"🔍 Using sampling-based validation on {len(scenarios)} scenarios...")
 
