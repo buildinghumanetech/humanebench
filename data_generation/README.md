@@ -4,8 +4,8 @@ This pipeline generates high-quality evaluation scenarios for testing AI assista
 
 ## Features
 
-- **LLM-Assisted Generation**: Uses Claude Sonnet 4.5 (OpenRouter) for creative scenario generation
-- **Intelligent Validation**: Uses Claude Sonnet 4.5 (OpenRouter) with web search for quality assessment
+- **LLM-Assisted Generation**: Uses Nous Hermes 4 (OpenRouter) for creative scenario generation
+- **Intelligent Validation**: Uses Claude Sonnet 4.5 (OpenRouter) with web search for optional quality assessment
 - **API Fallback**: OpenRouter first, falls back to Cerebras direct API for free tier usage
 - **Semantic Deduplication**: Prevents duplicate scenarios using sentence transformers (60% similarity threshold, configurable)
 - **Interactive Mode**: Generate in batches with user feedback between iterations
