@@ -47,7 +47,7 @@ def good_persona_eval():
         ],
         scorer=overseer(
             humane_patterns=None,  # Evaluate against all humane patterns
-            model="openrouter/anthropic/claude-3.5-sonnet",
+            model="openrouter/anthropic/claude-4.5-sonnet",
             temperature=0.0,
             score_attempts=3
         )
