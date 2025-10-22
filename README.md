@@ -29,19 +29,40 @@ Install the following VSCode extensions:
 
 ## Running the Evaluation
 
-To run both the good and bad persona evaluations:
+To run both the good and bad persona evaluations using the default model (openai/gpt-5-mini):
 
 ```bash
-rm -rf logs/* && inspect eval-set src/good_persona_task.py src/bad_persona_task.py --model openai/gpt-4o
+./run.sh
+```
+
+To run with a specific model:
+
+```bash
+./run.sh anthropic/claude-3-5-sonnet-20241022
+```
+
+You can also pass additional inspect arguments:
+
+```bash
+./run.sh openai/gpt-4o --log-level debug
 ```
 
 ### Model Options
 
 You can specify different models using the format from the [Inspect AI providers documentation](https://inspect.aisi.org.uk/providers.html). Examples:
 
+- `openai/gpt-5-mini` (default)
 - `openai/gpt-4o`
 - `anthropic/claude-3-5-sonnet-20241022`
 - `google/gemini-2.5-pro`
+
+### Manual Evaluation (Alternative)
+
+You can also run the evaluation directly without the script:
+
+```bash
+rm -rf logs/* && inspect eval-set src/good_persona_task.py src/bad_persona_task.py --model openai/gpt-4o
+```
 
 ## Dataset
 
