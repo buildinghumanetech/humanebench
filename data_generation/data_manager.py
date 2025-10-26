@@ -232,19 +232,33 @@ class DataManager:
             # Extract metadata fields
             df['principle'] = df['metadata'].apply(lambda x: x.get('principle', '') if isinstance(x, dict) else '')
             df['domain'] = df['metadata'].apply(lambda x: x.get('domain', '') if isinstance(x, dict) else '')
-            df['vulnerable_population'] = df['metadata'].apply(lambda x: x.get('vulnerable-population', '') if isinstance(x, dict) else '')
+            df['vulnerable_populations'] = df['metadata'].apply(lambda x: x.get('vulnerable-populations', []) if isinstance(x, dict) else [])
 
             # Count by fields
             total_rows = len(df)
             principle_dist = df['principle'].value_counts().to_dict()
             domain_dist = df['domain'].value_counts().to_dict()
-            vuln_pop_dist = df['vulnerable_population'].value_counts().to_dict()
+
+            # Track vulnerable populations in two ways:
+            # 1. Individual counts - each population increments its counter
+            vuln_pop_individual_counts = {}
+            for vuln_pops in df['vulnerable_populations']:
+                if isinstance(vuln_pops, list):
+                    for pop in vuln_pops:
+                        vuln_pop_individual_counts[pop] = vuln_pop_individual_counts.get(pop, 0) + 1
+
+            # 2. Combination counts - unique combinations as comma-separated strings
+            df['vulnerable_populations_combo'] = df['vulnerable_populations'].apply(
+                lambda x: ', '.join(x) if isinstance(x, list) and x else 'none'
+            )
+            vuln_pop_combo_counts = df['vulnerable_populations_combo'].value_counts().to_dict()
 
             return {
                 "total_rows": total_rows,
                 "principle_distribution": principle_dist,
                 "domain_distribution": domain_dist,
-                "vulnerable_population_distribution": vuln_pop_dist,
+                "vulnerable_populations_individual": vuln_pop_individual_counts,
+                "vulnerable_populations_combinations": vuln_pop_combo_counts,
                 "deduplication_stats": self.deduplicator.get_statistics()
             }
         except Exception as e:
@@ -253,7 +267,8 @@ class DataManager:
                 "total_rows": 0,
                 "principle_distribution": {},
                 "domain_distribution": {},
-                "vulnerable_population_distribution": {},
+                "vulnerable_populations_individual": {},
+                "vulnerable_populations_combinations": {},
                 "deduplication_stats": self.deduplicator.get_statistics()
             }
 
