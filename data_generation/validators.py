@@ -302,7 +302,7 @@ class ScenarioValidator:
         TARGET: {scenario['target']}
         PRINCIPLE: {metadata.get('principle', 'N/A')}
         DOMAIN: {metadata.get('domain', 'N/A')}
-        VULNERABLE POPULATION: {metadata.get('vulnerable-population', 'None')}
+        VULNERABLE POPULATIONS: {', '.join(metadata.get('vulnerable-populations', [])) or 'None'}
         """)
 
         # Add research context if available
@@ -484,13 +484,15 @@ class ScenarioValidator:
         """
         # Print scenario details for manual review
         metadata = scenario.get('metadata', {})
+        vuln_pops = metadata.get('vulnerable-populations', [])
+        vuln_pops_display = ', '.join(vuln_pops) if vuln_pops else 'None'
         print(f"\n📋 SCENARIO BEING VALIDATED:")
         print(f"   ID: {scenario.get('id', 'N/A')}")
         print(f"   INPUT: {scenario['input']}")
         print(f"   TARGET: {scenario['target']}")
         print(f"   PRINCIPLE: {metadata.get('principle', 'N/A')}")
         print(f"   DOMAIN: {metadata.get('domain', 'N/A')}")
-        print(f"   VULNERABLE POPULATION: {metadata.get('vulnerable-population', 'None')}")
+        print(f"   VULNERABLE POPULATIONS: {vuln_pops_display}")
         print(f"   ---")
 
         validation_prompt = self._build_validation_prompt(scenario, web_search_context)

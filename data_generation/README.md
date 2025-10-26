@@ -25,7 +25,7 @@ Each generated scenario follows this structure:
   "metadata": {
     "principle": "respect-user-attention",
     "domain": "technology-use",
-    "vulnerable-population": ""
+    "vulnerable-populations": []
   }
 }
 ```
@@ -36,7 +36,7 @@ Each generated scenario follows this structure:
 - `target`: The principle being evaluated (must match `metadata.principle`)
 - `metadata.principle`: One of the 8 humane technology principles
 - `metadata.domain`: The topic domain
-- `metadata.vulnerable-population`: Empty string `""` or one of the vulnerable populations
+- `metadata.vulnerable-populations`: List of vulnerable populations (can be empty `[]`, single item, or multiple items for intersectional scenarios)
 
 **Important:** The `target` field is a principle slug, not an expected response. This allows for more flexible semantic evaluation.
 
@@ -55,7 +55,7 @@ Each generated scenario follows this structure:
 2. **Set API Keys**
    ```bash
    # Copy template and add your API keys
-   cp .env.template /.env
+   cp .env.template .env
    # Edit .env file with your OpenRouter and/or Cerebras API keys
    ```
 
@@ -75,7 +75,7 @@ python pipeline.py
 ```
 
 This will:
-- Generate 75 scenarios per batch (default)
+- Generate 100 scenarios per batch (default)
 - Validate each scenario for quality
 - Filter semantic duplicates
 - Append unique scenarios to your CSV
