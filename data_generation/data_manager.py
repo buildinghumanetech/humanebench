@@ -7,7 +7,7 @@ import pandas as pd
 import shutil
 from pathlib import Path
 from typing import List, Dict
-from config import DATASET_PATH, BACKUP_PATH, HUMANE_PRINCIPLES, TOPIC_DOMAINS
+from config import DATASET_PATH, BACKUP_PATH, HUMANE_PRINCIPLES, TOPIC_DOMAINS, VULNERABLE_POPULATIONS
 from semantic_deduplication import SemanticDeduplicator
 
 
@@ -253,12 +253,18 @@ class DataManager:
             )
             vuln_pop_combo_counts = df['vulnerable_populations_combo'].value_counts().to_dict()
 
+            # Calculate vulnerable population coverage (% of scenarios with at least one VP)
+            scenarios_with_vp = sum(1 for vuln_pops in df['vulnerable_populations'] if isinstance(vuln_pops, list) and vuln_pops)
+            vuln_pop_coverage = scenarios_with_vp / total_rows if total_rows > 0 else 0
+
             return {
                 "total_rows": total_rows,
                 "principle_distribution": principle_dist,
                 "domain_distribution": domain_dist,
                 "vulnerable_populations_individual": vuln_pop_individual_counts,
                 "vulnerable_populations_combinations": vuln_pop_combo_counts,
+                "vulnerable_populations_coverage": vuln_pop_coverage,
+                "vulnerable_populations_count_with_vp": scenarios_with_vp,
                 "deduplication_stats": self.deduplicator.get_statistics()
             }
         except Exception as e:
@@ -269,6 +275,8 @@ class DataManager:
                 "domain_distribution": {},
                 "vulnerable_populations_individual": {},
                 "vulnerable_populations_combinations": {},
+                "vulnerable_populations_coverage": 0,
+                "vulnerable_populations_count_with_vp": 0,
                 "deduplication_stats": self.deduplicator.get_statistics()
             }
 
@@ -334,7 +342,7 @@ class DataManager:
             return {
                 "total_scenarios": 0,
                 "guidance": "No existing dataset found. Generate diverse scenarios across all categories and principles.",
-                "coverage_gaps": {"categories": [], "principles": []},
+                "coverage_gaps": {"domains": [], "principles": [], "vulnerable_populations": [], "vulnerable_populations_coverage_status": None},
                 "common_patterns": {}
             }
 
@@ -345,7 +353,7 @@ class DataManager:
                 return {
                     "total_scenarios": 0,
                     "guidance": "Empty dataset. Generate diverse scenarios across all categories and principles.",
-                    "coverage_gaps": {"categories": [], "principles": []},
+                    "coverage_gaps": {"domains": [], "principles": [], "vulnerable_populations": [], "vulnerable_populations_coverage_status": None},
                     "common_patterns": {}
                 }
 
@@ -355,7 +363,7 @@ class DataManager:
                 return {
                     "total_scenarios": len(df),
                     "guidance": "Dataset missing 'input' field; cannot analyze patterns.",
-                    "coverage_gaps": {"categories": [], "principles": []},
+                    "coverage_gaps": {"domains": [], "principles": [], "vulnerable_populations": [], "vulnerable_populations_coverage_status": None},
                     "common_patterns": {}
                 }
 
@@ -402,6 +410,24 @@ class DataManager:
                 if current_ratio < 0.10:  # Less than ~10% representation
                     principle_gaps.append(principle)
 
+            # Find underrepresented vulnerable populations (individual balancing)
+            from config import VULNERABLE_POPULATION_COVERAGE_TARGET, VULNERABLE_POPULATION_COVERAGE_TOLERANCE
+
+            vuln_pop_gaps = []
+            vuln_pop_individual_counts = stats.get('vulnerable_populations_individual', {})
+
+            # Calculate dynamic threshold
+            ideal_per_VP = VULNERABLE_POPULATION_COVERAGE_TARGET / len(VULNERABLE_POPULATIONS)
+            tolerance_factor = VULNERABLE_POPULATION_COVERAGE_TOLERANCE / VULNERABLE_POPULATION_COVERAGE_TARGET
+            vp_threshold = ideal_per_VP * (1 - tolerance_factor)
+
+            # Check all VPs (including those with zero representation)
+            for vp in VULNERABLE_POPULATIONS:
+                current_count = vuln_pop_individual_counts.get(vp, 0)
+                current_ratio = current_count / total_rows
+                if current_ratio < vp_threshold:
+                    vuln_pop_gaps.append(vp)
+
             # Generate guidance
             guidance_parts = []
             guidance_parts.append(f"Existing dataset has {len(df)} scenarios.")
@@ -418,12 +444,37 @@ class DataManager:
             if principle_gaps:
                 guidance_parts.append(f"FOCUS on underrepresented principles: {', '.join(principle_gaps[:3])}")
 
+            if vuln_pop_gaps:
+                guidance_parts.append(f"FOCUS on underrepresented vulnerable populations: {', '.join(vuln_pop_gaps)}")
+
+            # Check vulnerable population coverage against target (bidirectional)
+            from config import VULNERABLE_POPULATION_COVERAGE_TARGET, VULNERABLE_POPULATION_COVERAGE_TOLERANCE
+
+            vuln_pop_coverage = stats.get('vulnerable_populations_coverage', 0)
+            target_min = VULNERABLE_POPULATION_COVERAGE_TARGET - VULNERABLE_POPULATION_COVERAGE_TOLERANCE
+            target_max = VULNERABLE_POPULATION_COVERAGE_TARGET + VULNERABLE_POPULATION_COVERAGE_TOLERANCE
+
+            coverage_status = None  # "below", "above", or None (within tolerance)
+
+            if vuln_pop_coverage < target_min:
+                coverage_status = "below"
+                guidance_parts.append(
+                    f"INCREASE vulnerable population scenarios (currently {vuln_pop_coverage:.1%}, target {VULNERABLE_POPULATION_COVERAGE_TARGET:.0%}±{VULNERABLE_POPULATION_COVERAGE_TOLERANCE:.0%})"
+                )
+            elif vuln_pop_coverage > target_max:
+                coverage_status = "above"
+                guidance_parts.append(
+                    f"DECREASE vulnerable population scenarios (currently {vuln_pop_coverage:.1%}, target {VULNERABLE_POPULATION_COVERAGE_TARGET:.0%}±{VULNERABLE_POPULATION_COVERAGE_TOLERANCE:.0%})"
+                )
+
             return {
                 "total_scenarios": len(df),
                 "guidance": " ".join(guidance_parts),
                 "coverage_gaps": {
                     "domains": domain_gaps,
-                    "principles": principle_gaps
+                    "principles": principle_gaps,
+                    "vulnerable_populations": vuln_pop_gaps,
+                    "vulnerable_populations_coverage_status": coverage_status
                 },
                 "common_patterns": {
                     "overused_starters": overused_starters[:5],
@@ -440,7 +491,7 @@ class DataManager:
             return {
                 "total_scenarios": 0,
                 "guidance": "Error analyzing existing dataset. Generate diverse scenarios.",
-                "coverage_gaps": {"domains": [], "principles": []},
+                "coverage_gaps": {"domains": [], "principles": [], "vulnerable_populations": [], "vulnerable_populations_coverage_status": None},
                 "common_patterns": {}
             }
 

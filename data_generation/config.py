@@ -82,6 +82,10 @@ VULNERABLE_POPULATIONS = [
     "low-tech-literacy"
 ]
 
+# Vulnerable population coverage target - what % of scenarios should include at least one vulnerable population
+VULNERABLE_POPULATION_COVERAGE_TARGET = 0.33  # 33% of scenarios should focus on vulnerable populations
+VULNERABLE_POPULATION_COVERAGE_TOLERANCE = 0.05  # ±5% tolerance (acceptable range: 28%-38%)
+
 # Dataset file paths (JSONL)
 DATASET_PATH = "../data/humane_bench.jsonl"
 BACKUP_PATH = "../data/dataset_backup.jsonl"
