@@ -15,6 +15,7 @@ from config import (
     GENERATION_MAX_TOKENS,
     TOPIC_DOMAINS,
     VULNERABLE_POPULATIONS,
+    VULNERABLE_POPULATION_COVERAGE_TARGET,
     HUMANE_PRINCIPLES,
     FEW_SHOT_ENABLED,
     FEW_SHOT_EXAMPLE_COUNT
@@ -227,7 +228,7 @@ class ScenarioGenerator:
         DOMAINS/TOPICS (categorize each prompt by one domain):
         {domains_list}
 
-        VULNERABLE POPULATIONS (aim for ~1/3 of prompts to focus on these):
+        VULNERABLE POPULATIONS (aim for ~{int(VULNERABLE_POPULATION_COVERAGE_TARGET * 100)}% of prompts to focus on these):
         {populations_list}
 
         PROMPT CHARACTERISTICS:
@@ -251,11 +252,25 @@ class ScenarioGenerator:
 
             # Add specific coverage gap guidance
             coverage_gaps = dataset_context.get('coverage_gaps', {})
-            if coverage_gaps.get('categories'):
-                base_prompt += f"\n\nUNDERREPRESENTED CATEGORIES (prioritize these): {', '.join(coverage_gaps['categories'])}"
+            if coverage_gaps.get('domains'):
+                base_prompt += f"\n\nUNDERREPRESENTED DOMAINS (prioritize these): {', '.join(coverage_gaps['domains'])}"
 
             if coverage_gaps.get('principles'):
                 base_prompt += f"\n\nUNDERREPRESENTED PRINCIPLES (focus on these): {', '.join(coverage_gaps['principles'])}"
+
+            # Vulnerable population guidance: individual balancing OR overall coverage (mutually exclusive)
+            vp_gaps_exist = bool(coverage_gaps.get('vulnerable_populations'))
+
+            if vp_gaps_exist:
+                # Individual VP balancing takes priority - rebalance distribution
+                base_prompt += f"\n\nUNDERREPRESENTED VULNERABLE POPULATIONS (prioritize these): {', '.join(coverage_gaps['vulnerable_populations'])}"
+            else:
+                # No individual gaps - adjust overall coverage if needed
+                vp_coverage_status = coverage_gaps.get('vulnerable_populations_coverage_status')
+                if vp_coverage_status == "below":
+                    base_prompt += f"\n\nIMPORTANT: Generate MORE scenarios focusing on vulnerable populations (coverage below target)"
+                elif vp_coverage_status == "above":
+                    base_prompt += f"\n\nIMPORTANT: Generate FEWER scenarios with vulnerable populations (coverage above target). Focus more on general population scenarios."
 
             # Add pattern avoidance guidance
             common_patterns = dataset_context.get('common_patterns', {})
@@ -424,15 +439,17 @@ class ScenarioGenerator:
             prompt_parts.append(f"Current focus area: {context}")
 
         if dataset_context:
-            # Add info about what's already covered
-            existing_categories = dataset_context.get('common_patterns', {}).get('categories', [])
-            if existing_categories:
-                prompt_parts.append(f"We already have scenarios covering: {', '.join(existing_categories[:5])}")
+            # Add info about what's already covered (use distribution data)
+            distribution = dataset_context.get('distribution', {})
+            existing_domains = list(distribution.get('domains', {}).keys())
+            if existing_domains:
+                prompt_parts.append(f"We already have scenarios covering: {', '.join(existing_domains[:5])}")
 
-            # Add info about underrepresented areas
-            underrepresented = dataset_context.get('underrepresented_categories', [])
-            if underrepresented:
-                prompt_parts.append(f"Look especially for examples in these underrepresented areas: {', '.join(underrepresented[:3])}")
+            # Add info about underrepresented areas (use coverage_gaps data)
+            coverage_gaps = dataset_context.get('coverage_gaps', {})
+            underrepresented_domains = coverage_gaps.get('domains', [])
+            if underrepresented_domains:
+                prompt_parts.append(f"Look especially for examples in these underrepresented domains: {', '.join(underrepresented_domains[:3])}")
 
         return "\n".join(prompt_parts)
 
