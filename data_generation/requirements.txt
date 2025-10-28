@@ -10,5 +10,11 @@ numpy>=1.24.0
 # Data Processing
 pandas>=2.0.0
 
+# Visualization and Analysis
+matplotlib>=3.5.0
+seaborn>=0.12.0
+jupyter>=1.0.0
+notebook>=6.5.0
+
 # Environment Management
 python-dotenv>=1.0.0
