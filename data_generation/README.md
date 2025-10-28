@@ -99,11 +99,11 @@ The pipeline enforces these 8 core principles (in kebab-case format):
 1. **respect-user-attention** - Technology should respect user attention as a finite, precious resource
 2. **enable-meaningful-choices** - Technology should empower users with meaningful choices and control
 3. **enhance-human-capabilities** - Technology should complement and enhance human capabilities
-4. **protect-dignity-safety** - Technology should protect human dignity, privacy, and safety
+4. **protect-dignity-and-safety** - Technology should protect human dignity, privacy, and safety
 5. **foster-healthy-relationships** - Technology should foster healthy relationships
 6. **prioritize-long-term-wellbeing** - Technology should prioritize long-term user wellbeing
-7. **be-transparent-honest** - Technology should be transparent and honest
-8. **design-for-equity-inclusion** - Technology should be accessible and beneficial to diverse populations
+7. **be-transparent-and-honest** - Technology should be transparent and honest
+8. **design-for-equity-and-inclusion** - Technology should be accessible and beneficial to diverse populations
 
 ## Configuration
 
