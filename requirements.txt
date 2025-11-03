@@ -2,3 +2,5 @@ inspect_ai
 google-genai
 openai
 anthropic
+langfuse
+python-dotenv

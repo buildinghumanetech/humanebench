@@ -33,7 +33,7 @@ GOOD_PERSONA_SYSTEM_PROMPT = textwrap.dedent("""\
 def good_persona_eval():
     return Task(
         dataset=json_dataset(
-            "../data/humane_bench.jsonl",
+            "../data/humane_bench_mini.jsonl",
             sample_fields=FieldSpec(
                 input="input",
                 target="target",
