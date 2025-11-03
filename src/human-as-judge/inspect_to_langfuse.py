@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+"""
+Export Inspect AI evaluation logs to Langfuse for human annotation.
+
+This script extracts input/output pairs from Inspect AI .eval files and uploads them
+to Langfuse for human review and annotation. Only the user prompt and AI response are
+exported (system prompts, overseer scoring, and explanations are excluded).
+
+Setup:
+1. Install dependencies: pip install langfuse python-dotenv
+2. Create a .env file in the project root with:
+   LANGFUSE_SECRET_KEY=sk-lf-...
+   LANGFUSE_PUBLIC_KEY=pk-lf-...
+   LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted URL
+
+   Alternatively, export these as environment variables in your shell.
+
+Usage:
+    # Export all .eval files in logs/ directory
+    python inspect_to_langfuse.py
+
+    # Export specific eval file(s)
+    python inspect_to_langfuse.py logs/specific.eval
+    python inspect_to_langfuse.py logs/eval1.eval logs/eval2.eval
+"""
+
+import zipfile
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Dict, List, Any
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    print("Error: python-dotenv package not installed.")
+    print("Install with: pip install python-dotenv")
+    sys.exit(1)
+
+try:
+    from langfuse import get_client
+except ImportError:
+    print("Error: langfuse package not installed.")
+    print("Install with: pip install langfuse")
+    sys.exit(1)
+
+# Load environment variables from .env file
+load_dotenv()
+
+
+def extract_user_input(sample: Dict[str, Any]) -> str:
+    """Extract only the user input from sample messages (excluding system prompts)."""
+    # First try the direct input field
+    if "input" in sample and sample["input"]:
+        return sample["input"]
+
+    # Otherwise, extract from messages with role="user"
+    if "messages" in sample:
+        for msg in sample["messages"]:
+            if msg.get("role") == "user":
+                return msg.get("content", "")
+
+    return ""
+
+
+def extract_ai_output(sample: Dict[str, Any]) -> str:
+    """Extract only the AI's response (excluding overseer/scoring info)."""
+    # Use the completion field from output
+    if "output" in sample and "completion" in sample["output"]:
+        return sample["output"]["completion"]
+
+    # Fallback: extract from messages with role="assistant"
+    if "messages" in sample:
+        for msg in sample["messages"]:
+            if msg.get("role") == "assistant" and msg.get("source") == "generate":
+                return msg.get("content", "")
+
+    return ""
+
+
+def extract_sample_metadata(sample: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract all relevant metadata from the sample."""
+    metadata = {
+        "sample_id": sample.get("id", ""),
+        "target": sample.get("target", ""),
+    }
+
+    # Add metadata from the sample's metadata field
+    if "metadata" in sample and "metadata" in sample["metadata"]:
+        sample_meta = sample["metadata"]["metadata"]
+        metadata.update({
+            "principle": sample_meta.get("principle", ""),
+            "domain": sample_meta.get("domain", ""),
+            "vulnerable_population": sample_meta.get("vulnerable-population", ""),
+        })
+
+    # Add model information
+    if "output" in sample and "model" in sample["output"]:
+        metadata["model"] = sample["output"]["model"]
+
+    # Add token usage if available
+    if "output" in sample and "usage" in sample["output"]:
+        usage = sample["output"]["usage"]
+        metadata["input_tokens"] = usage.get("input_tokens", 0)
+        metadata["output_tokens"] = usage.get("output_tokens", 0)
+        metadata["total_tokens"] = usage.get("total_tokens", 0)
+
+    return metadata
+
+
+def export_eval_to_langfuse(eval_file_path: str, langfuse) -> int:
+    """
+    Export a single Inspect AI .eval file to Langfuse.
+
+    Returns the number of samples exported.
+    """
+    eval_path = Path(eval_file_path)
+    if not eval_path.exists():
+        print(f"Warning: {eval_file_path} not found, skipping.")
+        return 0
+
+    print(f"Processing {eval_path.name}...")
+
+    try:
+        with zipfile.ZipFile(eval_file_path, 'r') as z:
+            # Read header for evaluation metadata
+            with z.open('header.json') as f:
+                header = json.load(f)
+
+            eval_info = header.get("eval", {})
+            task_name = eval_info.get("task", "unknown")
+            model_name = eval_info.get("model", "unknown")
+            eval_id = eval_info.get("eval_id", eval_path.stem)
+            created = eval_info.get("created", "")
+
+            # Create a trace for this evaluation run
+            with langfuse.start_as_current_span(
+                name=f"inspect-eval-{task_name}",
+                metadata={
+                    "task": task_name,
+                    "model": model_name,
+                    "created": created,
+                    "eval_file": eval_path.name,
+                    "eval_id": eval_id,
+                }
+            ) as trace:
+                # Process each sample
+                sample_files = [f for f in z.namelist() if f.startswith('samples/') and f.endswith('.json')]
+                sample_count = 0
+
+                for sample_file in sample_files:
+                    with z.open(sample_file) as f:
+                        sample = json.load(f)
+
+                    # Extract input and output (excluding system prompts and scoring)
+                    user_input = extract_user_input(sample)
+                    ai_output = extract_ai_output(sample)
+
+                    if not user_input or not ai_output:
+                        print(f"  Warning: Skipping sample {sample.get('id', 'unknown')} - missing input or output")
+                        continue
+
+                    # Extract all metadata
+                    metadata = extract_sample_metadata(sample)
+
+                    # Create a generation for this sample
+                    with langfuse.start_as_current_generation(
+                        name=f"sample-{sample.get('id', sample_count)}",
+                        model=metadata.get("model", model_name),
+                        input=user_input,
+                        output=ai_output,
+                        metadata=metadata,
+                    ) as generation:
+                        generation.update(
+                            usage_details={
+                                "input": metadata.get("input_tokens", 0),
+                                "output": metadata.get("output_tokens", 0),
+                                "total": metadata.get("total_tokens", 0),
+                            }
+                        )
+
+                    sample_count += 1
+
+            print(f"  Exported {sample_count} samples from {eval_path.name}")
+            return sample_count
+
+    except Exception as e:
+        print(f"Error processing {eval_file_path}: {e}")
+        return 0
+
+
+def main():
+    """Main entry point for the script."""
+    # Check for required environment variables
+    required_vars = ["LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY"]
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+
+    if missing_vars:
+        print("Error: Missing required environment variables:")
+        for var in missing_vars:
+            print(f"  - {var}")
+        print("\nPlease set these variables before running the script.")
+        print("See the script docstring for setup instructions.")
+        sys.exit(1)
+
+    # Initialize Langfuse client
+    try:
+        langfuse = get_client()
+        print("Connected to Langfuse successfully.\n")
+    except Exception as e:
+        print(f"Error connecting to Langfuse: {e}")
+        sys.exit(1)
+
+    # Determine which files to process
+    if len(sys.argv) > 1:
+        # Process specific files provided as arguments
+        eval_files = sys.argv[1:]
+        print(f"Processing {len(eval_files)} specified file(s)...\n")
+    else:
+        # Process all .eval files in logs/ directory
+        logs_dir = Path(__file__).parent.parent.parent / "logs"
+        if not logs_dir.exists():
+            print(f"Error: logs directory not found at {logs_dir}")
+            sys.exit(1)
+
+        eval_files = list(logs_dir.glob("*.eval"))
+        if not eval_files:
+            print(f"No .eval files found in {logs_dir}")
+            sys.exit(0)
+
+        eval_files = [str(f) for f in eval_files]
+        print(f"Processing all {len(eval_files)} .eval file(s) from logs/...\n")
+
+    # Export each file
+    total_samples = 0
+    for eval_file in eval_files:
+        samples_exported = export_eval_to_langfuse(eval_file, langfuse)
+        total_samples += samples_exported
+
+    # Ensure all data is sent to Langfuse
+    langfuse.flush()
+
+    print(f"\n{'='*60}")
+    print(f"Export complete!")
+    print(f"Total samples exported: {total_samples}")
+    print(f"{'='*60}")
+
+
+if __name__ == "__main__":
+    main()
