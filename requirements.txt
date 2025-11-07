@@ -4,3 +4,4 @@ openai
 anthropic
 langfuse
 python-dotenv
+requests

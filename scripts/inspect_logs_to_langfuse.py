@@ -12,24 +12,30 @@ Setup:
    LANGFUSE_SECRET_KEY=sk-lf-...
    LANGFUSE_PUBLIC_KEY=pk-lf-...
    LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted URL
+   LANGFUSE_ANNOTATION_QUEUE_ID=queue-id-here  # Optional: for annotation queue
 
    Alternatively, export these as environment variables in your shell.
 
 Usage:
     # Export all .eval files in logs/ directory
-    python inspect_to_langfuse.py
+    python inspect_logs_to_langfuse.py
 
     # Export specific eval file(s)
-    python inspect_to_langfuse.py logs/specific.eval
-    python inspect_to_langfuse.py logs/eval1.eval logs/eval2.eval
+    python inspect_logs_to_langfuse.py logs/specific.eval
+    python inspect_logs_to_langfuse.py logs/eval1.eval logs/eval2.eval
+
+    # Export AND add to annotation queue
+    python inspect_logs_to_langfuse.py --enqueue
 """
 
 import zipfile
 import json
 import os
 import sys
+import argparse
+import requests
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 try:
     from dotenv import load_dotenv
@@ -109,7 +115,46 @@ def extract_sample_metadata(sample: Dict[str, Any]) -> Dict[str, Any]:
     return metadata
 
 
-def export_eval_to_langfuse(eval_file_path: str, langfuse) -> int:
+def add_to_annotation_queue(
+    span_id: str,
+    queue_id: str,
+    public_key: str,
+    secret_key: str,
+    host: str = "https://cloud.langfuse.com"
+) -> bool:
+    """
+    Add a span/generation to an annotation queue via Langfuse API.
+
+    Returns True if successful, False otherwise.
+    """
+    url = f"{host}/api/public/annotation-queues/{queue_id}/items"
+
+    try:
+        response = requests.post(
+            url,
+            auth=(public_key, secret_key),
+            json={
+                "objectId": span_id,
+                "objectType": "OBSERVATION"
+            },
+            timeout=10
+        )
+        response.raise_for_status()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"    Warning: Failed to add to annotation queue: {e}")
+        return False
+
+
+def export_eval_to_langfuse(
+    eval_file_path: str,
+    langfuse,
+    enqueue: bool = False,
+    queue_id: Optional[str] = None,
+    public_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    host: str = "https://cloud.langfuse.com"
+) -> int:
     """
     Export a single Inspect AI .eval file to Langfuse.
 
@@ -165,8 +210,9 @@ def export_eval_to_langfuse(eval_file_path: str, langfuse) -> int:
                     metadata = extract_sample_metadata(sample)
 
                     # Create a generation for this sample
-                    with langfuse.start_as_current_generation(
+                    with langfuse.start_as_current_observation(
                         name=f"sample-{sample.get('id', sample_count)}",
+                        as_type="generation",
                         model=metadata.get("model", model_name),
                         input=user_input,
                         output=ai_output,
@@ -180,6 +226,19 @@ def export_eval_to_langfuse(eval_file_path: str, langfuse) -> int:
                             }
                         )
 
+                        # Add to annotation queue if requested
+                        if enqueue and queue_id:
+                            # Get the span ID from the generation object
+                            span_id = generation.id
+                            if span_id:
+                                add_to_annotation_queue(
+                                    span_id=span_id,
+                                    queue_id=queue_id,
+                                    public_key=public_key,
+                                    secret_key=secret_key,
+                                    host=host
+                                )
+
                     sample_count += 1
 
             print(f"  Exported {sample_count} samples from {eval_path.name}")
@@ -192,6 +251,23 @@ def export_eval_to_langfuse(eval_file_path: str, langfuse) -> int:
 
 def main():
     """Main entry point for the script."""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Export Inspect AI evaluation logs to Langfuse for human annotation."
+    )
+    parser.add_argument(
+        "--enqueue",
+        action="store_true",
+        help="Add exported items to annotation queue (requires LANGFUSE_ANNOTATION_QUEUE_ID)"
+    )
+    parser.add_argument(
+        "eval_files",
+        nargs="*",
+        help="Specific .eval files to process (if not provided, processes all files in logs/)"
+    )
+
+    args = parser.parse_args()
+
     # Check for required environment variables
     required_vars = ["LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
@@ -204,6 +280,21 @@ def main():
         print("See the script docstring for setup instructions.")
         sys.exit(1)
 
+    # Get credentials for API calls
+    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+    host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+
+    # Check for annotation queue ID if --enqueue is used
+    queue_id = None
+    if args.enqueue:
+        queue_id = os.getenv("LANGFUSE_ANNOTATION_QUEUE_ID")
+        if not queue_id:
+            print("Error: --enqueue flag requires LANGFUSE_ANNOTATION_QUEUE_ID environment variable")
+            print("Please set it in your .env file or as an environment variable.")
+            sys.exit(1)
+        print(f"Annotation queue enabled (Queue ID: {queue_id})\n")
+
     # Initialize Langfuse client
     try:
         langfuse = get_client()
@@ -213,13 +304,13 @@ def main():
         sys.exit(1)
 
     # Determine which files to process
-    if len(sys.argv) > 1:
+    if args.eval_files:
         # Process specific files provided as arguments
-        eval_files = sys.argv[1:]
+        eval_files = args.eval_files
         print(f"Processing {len(eval_files)} specified file(s)...\n")
     else:
         # Process all .eval files in logs/ directory
-        logs_dir = Path(__file__).parent.parent.parent / "logs"
+        logs_dir = Path(__file__).parent.parent / "logs"
         if not logs_dir.exists():
             print(f"Error: logs directory not found at {logs_dir}")
             sys.exit(1)
@@ -235,7 +326,15 @@ def main():
     # Export each file
     total_samples = 0
     for eval_file in eval_files:
-        samples_exported = export_eval_to_langfuse(eval_file, langfuse)
+        samples_exported = export_eval_to_langfuse(
+            eval_file,
+            langfuse,
+            enqueue=args.enqueue,
+            queue_id=queue_id,
+            public_key=public_key,
+            secret_key=secret_key,
+            host=host
+        )
         total_samples += samples_exported
 
     # Ensure all data is sent to Langfuse
@@ -244,6 +343,8 @@ def main():
     print(f"\n{'='*60}")
     print(f"Export complete!")
     print(f"Total samples exported: {total_samples}")
+    if args.enqueue:
+        print(f"Items added to annotation queue: {queue_id}")
     print(f"{'='*60}")
 
 
