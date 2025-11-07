@@ -8,20 +8,47 @@ import shutil
 from pathlib import Path
 from typing import List, Dict
 from config import DATASET_PATH, BACKUP_PATH, HUMANE_PRINCIPLES, TOPIC_DOMAINS
-from semantic_deduplication import SemanticDeduplicator
+from semantic_deduplication import SemanticDeduplicator, OpenAIDeduplicator
 
 
 class DataManager:
-    def __init__(self, similarity_threshold: float = 0.60):
+    def __init__(self,
+                 similarity_threshold: float = 0.60,
+                 use_openai_deduplicator: bool = False,
+                 principle: str = None,
+                 dataset_path: str = None):
+        """
+        Initialize data manager.
+
+        Args:
+            similarity_threshold: Threshold for semantic deduplication
+            use_openai_deduplicator: Whether to use OpenAI embeddings instead of sentence-transformer
+            principle: Optional principle for focused deduplication
+            dataset_path: Path to dataset (for loading existing scenarios in focused mode)
+        """
         self.dataset_path = Path(DATASET_PATH)
         self.backup_path = Path(BACKUP_PATH)
-        self.deduplicator = SemanticDeduplicator(similarity_threshold=similarity_threshold)
+
+        # Create appropriate deduplicator
+        if use_openai_deduplicator:
+            self.deduplicator = OpenAIDeduplicator(
+                similarity_threshold=similarity_threshold,
+                principle=principle,
+                dataset_path=dataset_path or str(self.dataset_path)
+            )
+            # Skip _initialize_deduplicator() for OpenAI deduplicator
+            # It already handles loading principle-specific scenarios in its __init__
+            self.use_openai_deduplicator = True
+        else:
+            self.deduplicator = SemanticDeduplicator(similarity_threshold=similarity_threshold)
+            self.use_openai_deduplicator = False
 
         # ID generation state
         self.principle_counters: Dict[str, int] = {}
 
-        # Initialize deduplicator with existing scenarios
-        self._initialize_deduplicator()
+        # Initialize deduplicator with existing scenarios (skip for OpenAI focused mode)
+        if not use_openai_deduplicator:
+            self._initialize_deduplicator()
 
         # Initialize ID counters with existing IDs
         self._initialize_id_counters()

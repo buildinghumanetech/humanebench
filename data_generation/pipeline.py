@@ -4,6 +4,7 @@ Main pipeline controller for data generation.
 
 import os
 import sys
+import argparse
 from pathlib import Path
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
@@ -18,19 +19,54 @@ from generators import ScenarioGenerator
 from validators import ScenarioValidator
 from data_manager import DataManager
 from config import (DEFAULT_BATCH_SIZE, SIMILARITY_THRESHOLD, TARGET_ROWS,
-                    ENABLE_DATASET_CONTEXT, ENABLE_DEDUPLICATION_FEEDBACK, CONTEXT_ANALYSIS_FREQUENCY)
+                    ENABLE_DATASET_CONTEXT, ENABLE_DEDUPLICATION_FEEDBACK, CONTEXT_ANALYSIS_FREQUENCY,
+                    OPENAI_DEDUP_THRESHOLD, VS_TAIL_PROBABILITY, HUMANE_PRINCIPLES, DATASET_PATH)
 
 
 class DataGenerationPipeline:
-    def __init__(self, api_key: Optional[str] = None, similarity_threshold: Optional[float] = None):
-        """Initialize the data generation pipeline."""
-        # Use config value if not explicitly provided
-        if similarity_threshold is None:
-            similarity_threshold = SIMILARITY_THRESHOLD
+    def __init__(self,
+                 api_key: Optional[str] = None,
+                 similarity_threshold: Optional[float] = None,
+                 principle: Optional[str] = None,
+                 use_verbalized_sampling: bool = False,
+                 tail_probability_threshold: float = VS_TAIL_PROBABILITY):
+        """
+        Initialize the data generation pipeline.
 
-        self.generator = ScenarioGenerator(api_key)
+        Args:
+            api_key: API key for generation/validation
+            similarity_threshold: Deduplication threshold
+            principle: Single principle for focused generation (enables OpenAI deduplicator)
+            use_verbalized_sampling: Whether to use Verbalized Sampling for generation
+            tail_probability_threshold: Threshold for tail probability filtering in VS
+        """
+        # Store focused mode settings
+        self.principle = principle
+        self.use_verbalized_sampling = use_verbalized_sampling or (principle is not None)
+        self.tail_probability_threshold = tail_probability_threshold
+
+        # Use stricter threshold for focused mode
+        if similarity_threshold is None:
+            similarity_threshold = OPENAI_DEDUP_THRESHOLD if principle else SIMILARITY_THRESHOLD
+
+        self.generator = ScenarioGenerator(api_key, focus_principle=principle)
         self.validator = ScenarioValidator(api_key)
-        self.data_manager = DataManager(similarity_threshold)
+
+        # Use OpenAI deduplicator for focused mode, otherwise standard
+        if principle:
+            from semantic_deduplication import OpenAIDeduplicator
+            dataset_path = str(Path(__file__).parent / DATASET_PATH)
+            self.data_manager = DataManager(
+                similarity_threshold,
+                use_openai_deduplicator=True,
+                principle=principle,
+                dataset_path=dataset_path
+            )
+            print(f"🎯 FOCUSED MODE: Principle '{principle}'")
+            print(f"   Using OpenAI text-embedding-3-large with threshold {similarity_threshold}")
+            print(f"   Verbalized Sampling: {'ENABLED' if self.use_verbalized_sampling else 'DISABLED'}")
+        else:
+            self.data_manager = DataManager(similarity_threshold)
 
         # Initialize context tracking
         self.batch_counter = 0
@@ -117,13 +153,26 @@ class DataGenerationPipeline:
                 print(f"🔍 High duplicate rate ({deduplication_feedback['duplicate_rate']:.1f}%) - using web search for fresh inspiration")
                 use_web_search = True
 
-            scenarios = self.generator.generate_batch(
-                batch_size=batch_size,
-                context=user_context,
-                dataset_context=dataset_context,
-                deduplication_feedback=deduplication_feedback,
-                search_for_inspiration=use_web_search
-            )
+            # Generate scenarios using appropriate method
+            if self.use_verbalized_sampling:
+                # Use Verbalized Sampling for focused generation
+                scenarios = self.generator.generate_batch_verbalized_sampling(
+                    batch_size=batch_size,
+                    context=user_context,
+                    focus_principles=[self.principle] if self.principle else None,
+                    dataset_context=dataset_context,
+                    deduplication_feedback=deduplication_feedback
+                )
+            else:
+                # Standard generation
+                scenarios = self.generator.generate_batch(
+                    batch_size=batch_size,
+                    context=user_context,
+                    focus_principles=[self.principle] if self.principle else None,
+                    dataset_context=dataset_context,
+                    deduplication_feedback=deduplication_feedback,
+                    search_for_inspiration=use_web_search
+                )
 
             # Increment batch counter
             self.batch_counter += 1
@@ -148,13 +197,24 @@ class DataGenerationPipeline:
 
                     # Regenerate with feedback (use fresh context analysis)
                     enhanced_context = f"{user_context}\n\nPREVIOUS BATCH FEEDBACK:\n{feedback}" if user_context else f"PREVIOUS BATCH FEEDBACK:\n{feedback}"
-                    scenarios = self.generator.generate_batch(
-                        batch_size=batch_size,
-                        context=enhanced_context,
-                        dataset_context=dataset_context,
-                        deduplication_feedback=deduplication_feedback,
-                        search_for_inspiration=True  # Use web search when struggling
-                    )
+
+                    if self.use_verbalized_sampling:
+                        scenarios = self.generator.generate_batch_verbalized_sampling(
+                            batch_size=batch_size,
+                            context=enhanced_context,
+                            focus_principles=[self.principle] if self.principle else None,
+                            dataset_context=dataset_context,
+                            deduplication_feedback=deduplication_feedback
+                        )
+                    else:
+                        scenarios = self.generator.generate_batch(
+                            batch_size=batch_size,
+                            context=enhanced_context,
+                            focus_principles=[self.principle] if self.principle else None,
+                            dataset_context=dataset_context,
+                            deduplication_feedback=deduplication_feedback,
+                            search_for_inspiration=True  # Use web search when struggling
+                        )
 
                     if scenarios:
                         print(f"\n🔍 Re-validating {len(scenarios)} improved scenarios...")
@@ -333,7 +393,7 @@ class DataGenerationPipeline:
             total_generated += len(scenarios)
 
             # Validate scenarios
-            approved_scenarios, validation_reports = self.validator.validate_batch(scenarios)
+            approved_scenarios, validation_reports, _ = self.validator.validate_batch(scenarios)
             all_validation_reports.extend(validation_reports)
 
             # Add to dataset
@@ -441,16 +501,114 @@ class DataGenerationPipeline:
 
 def main():
     """Main entry point for the pipeline."""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="HumaneBench Data Generation Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Normal mode (all principles)
+  python pipeline.py
+
+  # Focused mode for a single principle
+  python pipeline.py --principle respect-user-attention --count 100
+
+  # Custom deduplication threshold
+  python pipeline.py --principle respect-user-attention --dedup-threshold 0.45
+
+  # Disable Verbalized Sampling (use standard generation)
+  python pipeline.py --principle respect-user-attention --no-verbalized-sampling
+        """
+    )
+
+    parser.add_argument(
+        '--principle',
+        type=str,
+        choices=HUMANE_PRINCIPLES,
+        help='Single principle for focused generation (enables OpenAI deduplicator and Verbalized Sampling)'
+    )
+    parser.add_argument(
+        '--count',
+        type=int,
+        help='Target number of scenarios to generate (used with --principle)'
+    )
+    parser.add_argument(
+        '--use-verbalized-sampling',
+        action='store_true',
+        default=None,
+        help='Enable Verbalized Sampling for generation (auto-enabled with --principle)'
+    )
+    parser.add_argument(
+        '--no-verbalized-sampling',
+        action='store_true',
+        help='Disable Verbalized Sampling even in focused mode'
+    )
+    parser.add_argument(
+        '--tail-probability-threshold',
+        type=float,
+        default=VS_TAIL_PROBABILITY,
+        help=f'Tail probability threshold for VS filtering (default: {VS_TAIL_PROBABILITY})'
+    )
+    parser.add_argument(
+        '--dedup-threshold',
+        type=float,
+        help=f'Semantic similarity threshold for deduplication (default: {OPENAI_DEDUP_THRESHOLD} for focused mode, {SIMILARITY_THRESHOLD} for normal mode)'
+    )
+
+    args = parser.parse_args()
+
+    # Validate arguments
+    if args.count and not args.principle:
+        parser.error("--count requires --principle to be specified")
+
+    # Determine Verbalized Sampling setting
+    use_verbalized_sampling = False
+    if args.no_verbalized_sampling:
+        use_verbalized_sampling = False
+    elif args.use_verbalized_sampling is not None:
+        use_verbalized_sampling = args.use_verbalized_sampling
+    elif args.principle:
+        use_verbalized_sampling = True  # Auto-enable for focused mode
+
     # Check for environment variables
-    if not os.getenv("OPENROUTER_API_KEY"):
-        print("❌ Error: OPENROUTER_API_KEY environment variable not set")
-        print("   Please set your OpenRouter API key:")
-        print("   export OPENROUTER_API_KEY='your-api-key-here'")
+    if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("CEREBRAS_API_KEY"):
+        print("❌ Error: No API keys found")
+        print("   Please set at least one of:")
+        print("   - OPENROUTER_API_KEY")
+        print("   - CEREBRAS_API_KEY")
+        return
+
+    # Check for OpenAI API key if using focused mode
+    if args.principle and not os.getenv("OPENAI_API_KEY"):
+        print("❌ Error: OPENAI_API_KEY required for focused mode (--principle)")
+        print("   Focused mode uses OpenAI's text-embedding-3-large for deduplication")
+        print("   Please set your OpenAI API key:")
+        print("   export OPENAI_API_KEY='your-api-key-here'")
         return
 
     try:
-        pipeline = DataGenerationPipeline()
-        pipeline.run_interactive()
+        # Create pipeline with focused mode settings
+        pipeline = DataGenerationPipeline(
+            similarity_threshold=args.dedup_threshold,
+            principle=args.principle,
+            use_verbalized_sampling=use_verbalized_sampling,
+            tail_probability_threshold=args.tail_probability_threshold
+        )
+
+        # Run in appropriate mode
+        if args.count:
+            # Automated mode with target count
+            # Use smaller batch size for small targets to avoid waste
+            smart_batch_size = min(args.count, DEFAULT_BATCH_SIZE)
+
+            pipeline.run_automated(
+                target_additional_rows=args.count,
+                batch_size=smart_batch_size,
+                context=f"Focused generation for principle: {args.principle}" if args.principle else ""
+            )
+        else:
+            # Interactive mode
+            pipeline.run_interactive()
 
     except KeyboardInterrupt:
         print("\n\n🛑 Pipeline interrupted by user")
