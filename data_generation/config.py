@@ -22,6 +22,14 @@ TEMPERATURE = 0.88  # Higher for creativity in generation
 VALIDATION_TEMPERATURE = 0.3  # Lower for consistent evaluation
 SIMILARITY_THRESHOLD = 0.60
 
+# Verbalized Sampling settings - for focused single-principle generation
+VS_TAIL_PROBABILITY = 0.10  # Keep only responses with probability < 0.10 for maximum diversity
+VS_BATCH_MULTIPLIER = 2  # Generate 2x batch size to account for tail probability filtering
+
+# OpenAI deduplication settings - stricter deduplication for focused mode
+OPENAI_DEDUP_THRESHOLD = 0.50  # More strict than default 0.60 for sentence-transformer
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-large"  # Superior to sentence-transformer models
+
 # Token limits - balanced for quality vs speed
 GENERATION_MAX_TOKENS = 8000
 VALIDATION_MAX_TOKENS = 2000
