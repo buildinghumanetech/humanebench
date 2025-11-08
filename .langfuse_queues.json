@@ -1,0 +1,11 @@
+{
+  "description": "Mapping of humane principles to Langfuse annotation queue IDs. Fill in your actual queue IDs from Langfuse UI.",
+  "be-transparent-and-honest": "",
+  "design-for-equity-and-inclusion": "",
+  "enable-meaningful-choices": "",
+  "enhance-human-capabilities": "",
+  "foster-healthy-relationships": "",
+  "prioritize-long-term-wellbeing": "",
+  "protect-dignity-and-safety": "",
+  "respect-user-attention": "cmhplwb6y0028l7078g4mv5ek"
+}
