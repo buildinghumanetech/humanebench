@@ -72,8 +72,11 @@ def run_evaluation(task_type: str, model: str, log_dir: Path) -> dict:
 
     except subprocess.CalledProcessError as e:
         result["duration"] = time.time() - start_time
-        result["error"] = f"Exit code {e.returncode}: {e.stderr[:200]}"
-        print(f"✗ Failed: {task_type} with {model} - {result['error']}")
+        # Show stderr if available, otherwise stdout
+        error_msg = e.stderr.strip() if e.stderr.strip() else e.stdout.strip()
+        result["error"] = f"Exit code {e.returncode}: {error_msg[:500]}"
+        print(f"✗ Failed: {task_type} with {model}")
+        print(f"   Error: {error_msg[:300]}")
     except Exception as e:
         result["duration"] = time.time() - start_time
         result["error"] = str(e)
