@@ -18,11 +18,14 @@ Setup:
    Copy .langfuse_queues.example.json to .langfuse_queues.json and fill in your queue IDs
 
 Usage:
-    # Export all traces from all .eval files (no filtering)
+    # Export all traces from all .eval files (no filtering, recursive)
     python inspect_logs_to_langfuse.py
 
     # Export only traces for a specific principle
     python inspect_logs_to_langfuse.py --principle respect-user-attention
+
+    # Export with sampling: 100 random samples evenly distributed across models
+    python inspect_logs_to_langfuse.py --principle respect-user-attention --sample-limit 100
 
     # Export specific principle AND add to its annotation queue
     python inspect_logs_to_langfuse.py --principle respect-user-attention --enqueue
@@ -47,8 +50,9 @@ import os
 import sys
 import argparse
 import requests
+import random
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 try:
     from dotenv import load_dotenv
@@ -198,6 +202,104 @@ def add_to_annotation_queue(
         return False
 
 
+def collect_samples_for_sampling(
+    eval_files: List[str],
+    filter_principle: Optional[str] = None
+) -> Dict[str, List[Tuple[str, Dict[str, Any]]]]:
+    """
+    Collect all samples from eval files, grouped by model.
+
+    Returns:
+        Dictionary mapping model names to list of (eval_file, sample) tuples
+    """
+    samples_by_model = {}
+
+    for eval_file_path in eval_files:
+        eval_path = Path(eval_file_path)
+        if not eval_path.exists():
+            continue
+
+        try:
+            with zipfile.ZipFile(eval_file_path, 'r') as z:
+                # Read header for model info
+                with z.open('header.json') as f:
+                    header = json.load(f)
+
+                eval_info = header.get("eval", {})
+                model_name = eval_info.get("model", "unknown")
+
+                # Process each sample
+                sample_files = [f for f in z.namelist() if f.startswith('samples/') and f.endswith('.json')]
+
+                for sample_file in sample_files:
+                    with z.open(sample_file) as f:
+                        sample = json.load(f)
+
+                    # Extract metadata for filtering
+                    metadata = extract_sample_metadata(sample)
+
+                    # Filter by principle if specified
+                    if filter_principle:
+                        sample_principle = metadata.get("principle", "")
+                        if sample_principle != filter_principle:
+                            continue
+
+                    # Validate input and output exist
+                    user_input = extract_user_input(sample)
+                    ai_output = extract_ai_output(sample)
+                    if not user_input or not ai_output:
+                        continue
+
+                    # Add to samples by model
+                    if model_name not in samples_by_model:
+                        samples_by_model[model_name] = []
+
+                    samples_by_model[model_name].append((eval_file_path, sample))
+
+        except Exception as e:
+            print(f"Warning: Error collecting samples from {eval_file_path}: {e}")
+            continue
+
+    return samples_by_model
+
+
+def sample_evenly_across_models(
+    samples_by_model: Dict[str, List[Tuple[str, Dict[str, Any]]]],
+    target_count: int
+) -> Dict[str, List[Tuple[str, Dict[str, Any]]]]:
+    """
+    Sample evenly across models to get target_count total samples.
+
+    Returns:
+        Dictionary with sampled items (same structure as input)
+    """
+    if not samples_by_model:
+        return {}
+
+    # Calculate samples per model (distribute evenly)
+    num_models = len(samples_by_model)
+    samples_per_model = target_count // num_models
+    remainder = target_count % num_models
+
+    sampled = {}
+    models = sorted(samples_by_model.keys())  # Sort for deterministic ordering
+
+    for i, model in enumerate(models):
+        available = samples_by_model[model]
+
+        # Give one extra sample to first 'remainder' models
+        target_for_model = samples_per_model + (1 if i < remainder else 0)
+
+        # Sample randomly from available samples
+        num_to_sample = min(target_for_model, len(available))
+        if num_to_sample > 0:
+            sampled[model] = random.sample(available, num_to_sample)
+        else:
+            sampled[model] = []
+
+    return sampled
+
+
 def export_eval_to_langfuse(
     eval_file_path: str,
     langfuse,
@@ -206,13 +308,15 @@ def export_eval_to_langfuse(
     queue_id: Optional[str] = None,
     public_key: Optional[str] = None,
     secret_key: Optional[str] = None,
-    host: str = "https://cloud.langfuse.com"
+    host: str = "https://cloud.langfuse.com",
+    sample_ids_to_export: Optional[set] = None
 ) -> int:
     """
     Export a single Inspect AI .eval file to Langfuse.
 
     Args:
         filter_principle: If provided, only export samples matching this principle.
+        sample_ids_to_export: If provided, only export samples with IDs in this set.
 
     Returns the number of samples exported.
     """
@@ -259,11 +363,18 @@ def export_eval_to_langfuse(
                     with z.open(sample_file) as f:
                         sample = json.load(f)
 
+                    # If sampling is enabled, only export selected samples
+                    if sample_ids_to_export is not None:
+                        sample_id = sample.get("id", "")
+                        if sample_id not in sample_ids_to_export:
+                            skipped_count += 1
+                            continue
+
                     # Extract all metadata first (needed for filtering)
                     metadata = extract_sample_metadata(sample)
 
-                    # Filter by principle if specified
-                    if filter_principle:
+                    # Filter by principle if specified (when not using sampling)
+                    if filter_principle and sample_ids_to_export is None:
                         sample_principle = metadata.get("principle", "")
                         if sample_principle != filter_principle:
                             skipped_count += 1
@@ -339,9 +450,14 @@ def main():
         help="Add exported items to annotation queue (requires --principle and .langfuse_queues.json)"
     )
     parser.add_argument(
+        "--sample-limit",
+        type=int,
+        help="Limit total samples exported with even distribution across models (e.g., 100)"
+    )
+    parser.add_argument(
         "eval_files",
         nargs="*",
-        help="Specific .eval files to process (if not provided, processes all files in logs/)"
+        help="Specific .eval files to process (if not provided, recursively processes all files in logs/)"
     )
 
     args = parser.parse_args()
@@ -405,19 +521,49 @@ def main():
         eval_files = args.eval_files
         print(f"Processing {len(eval_files)} specified file(s)...\n")
     else:
-        # Process all .eval files in logs/ directory
+        # Process all .eval files in logs/ directory (recursively)
         logs_dir = Path(__file__).parent.parent / "logs"
         if not logs_dir.exists():
             print(f"Error: logs directory not found at {logs_dir}")
             sys.exit(1)
 
-        eval_files = list(logs_dir.glob("*.eval"))
+        eval_files = list(logs_dir.glob("**/*.eval"))
         if not eval_files:
             print(f"No .eval files found in {logs_dir}")
             sys.exit(0)
 
         eval_files = [str(f) for f in eval_files]
-        print(f"Processing all {len(eval_files)} .eval file(s) from logs/...\n")
+        print(f"Processing all {len(eval_files)} .eval file(s) from logs/ (recursive)...\n")
+
+    # Determine if we need to sample
+    sample_ids_to_export = None
+    if args.sample_limit:
+        print(f"Sampling mode: collecting samples for even distribution across models...\n")
+
+        # Collect all samples grouped by model
+        samples_by_model = collect_samples_for_sampling(eval_files, args.principle)
+
+        # Display pre-sampling statistics
+        total_available = sum(len(samples) for samples in samples_by_model.values())
+        print(f"Found {total_available} matching samples across {len(samples_by_model)} model(s):")
+        for model, samples in sorted(samples_by_model.items()):
+            print(f"  - {model}: {len(samples)} samples")
+
+        # Sample evenly across models
+        sampled = sample_evenly_across_models(samples_by_model, args.sample_limit)
+
+        # Display post-sampling statistics
+        total_sampled = sum(len(samples) for samples in sampled.values())
+        print(f"\nSampled {total_sampled} samples for export:")
+        for model, samples in sorted(sampled.items()):
+            print(f"  - {model}: {len(samples)} samples")
+        print()
+
+        # Build set of sample IDs to export
+        sample_ids_to_export = set()
+        for samples in sampled.values():
+            for eval_file, sample in samples:
+                sample_ids_to_export.add(sample.get("id", ""))
 
     # Export each file
     total_samples = 0
@@ -430,7 +576,8 @@ def main():
             queue_id=queue_id,
             public_key=public_key,
             secret_key=secret_key,
-            host=host
+            host=host,
+            sample_ids_to_export=sample_ids_to_export
         )
         total_samples += samples_exported
 
@@ -441,6 +588,8 @@ def main():
     print(f"Export complete!")
     if args.principle:
         print(f"Principle filter: {args.principle}")
+    if args.sample_limit:
+        print(f"Sample limit: {args.sample_limit} (evenly distributed across models)")
     print(f"Total samples exported: {total_samples}")
     if args.enqueue:
         print(f"Items added to annotation queue: {queue_id}")
