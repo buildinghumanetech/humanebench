@@ -8,24 +8,37 @@ exported (system prompts, overseer scoring, and explanations are excluded).
 
 Setup:
 1. Install dependencies: pip install langfuse python-dotenv
+
 2. Create a .env file in the project root with:
    LANGFUSE_SECRET_KEY=sk-lf-...
    LANGFUSE_PUBLIC_KEY=pk-lf-...
    LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted URL
-   LANGFUSE_ANNOTATION_QUEUE_ID=queue-id-here  # Optional: for annotation queue
 
-   Alternatively, export these as environment variables in your shell.
+3. (Optional) For annotation queues, create .langfuse_queues.json mapping principles to queue IDs:
+   Copy .langfuse_queues.example.json to .langfuse_queues.json and fill in your queue IDs
 
 Usage:
-    # Export all .eval files in logs/ directory
+    # Export all traces from all .eval files (no filtering)
     python inspect_logs_to_langfuse.py
 
-    # Export specific eval file(s)
-    python inspect_logs_to_langfuse.py logs/specific.eval
-    python inspect_logs_to_langfuse.py logs/eval1.eval logs/eval2.eval
+    # Export only traces for a specific principle
+    python inspect_logs_to_langfuse.py --principle respect-user-attention
 
-    # Export AND add to annotation queue
-    python inspect_logs_to_langfuse.py --enqueue
+    # Export specific principle AND add to its annotation queue
+    python inspect_logs_to_langfuse.py --principle respect-user-attention --enqueue
+
+    # Export specific eval file(s), filtered by principle
+    python inspect_logs_to_langfuse.py --principle enable-meaningful-choices logs/specific.eval
+
+Valid principles:
+    - be-transparent-and-honest
+    - design-for-equity-and-inclusion
+    - enable-meaningful-choices
+    - enhance-human-capabilities
+    - foster-healthy-relationships
+    - prioritize-long-term-wellbeing
+    - protect-dignity-and-safety
+    - respect-user-attention
 """
 
 import zipfile
@@ -53,6 +66,45 @@ except ImportError:
 
 # Load environment variables from .env file
 load_dotenv()
+
+# List of valid humane principles
+VALID_PRINCIPLES = [
+    "be-transparent-and-honest",
+    "design-for-equity-and-inclusion",
+    "enable-meaningful-choices",
+    "enhance-human-capabilities",
+    "foster-healthy-relationships",
+    "prioritize-long-term-wellbeing",
+    "protect-dignity-and-safety",
+    "respect-user-attention"
+]
+
+
+def load_queue_config(config_path: str = ".langfuse_queues.json") -> Dict[str, str]:
+    """
+    Load the principle-to-queue mapping from config file.
+
+    Returns a dictionary mapping principle names to queue IDs.
+    """
+    config_file = Path(__file__).parent.parent / config_path
+    if not config_file.exists():
+        return {}
+
+    try:
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+
+        # Remove 'description' field if present
+        if "description" in config:
+            del config["description"]
+
+        return config
+    except json.JSONDecodeError as e:
+        print(f"Error: Failed to parse config file {config_path}: {e}")
+        return {}
+    except Exception as e:
+        print(f"Error: Failed to load config file {config_path}: {e}")
+        return {}
 
 
 def extract_user_input(sample: Dict[str, Any]) -> str:
@@ -149,6 +201,7 @@ def add_to_annotation_queue(
 def export_eval_to_langfuse(
     eval_file_path: str,
     langfuse,
+    filter_principle: Optional[str] = None,
     enqueue: bool = False,
     queue_id: Optional[str] = None,
     public_key: Optional[str] = None,
@@ -157,6 +210,9 @@ def export_eval_to_langfuse(
 ) -> int:
     """
     Export a single Inspect AI .eval file to Langfuse.
+
+    Args:
+        filter_principle: If provided, only export samples matching this principle.
 
     Returns the number of samples exported.
     """
@@ -180,23 +236,38 @@ def export_eval_to_langfuse(
             created = eval_info.get("created", "")
 
             # Create a trace for this evaluation run
+            trace_metadata = {
+                "task": task_name,
+                "model": model_name,
+                "created": created,
+                "eval_file": eval_path.name,
+                "eval_id": eval_id,
+            }
+            if filter_principle:
+                trace_metadata["filter_principle"] = filter_principle
+
             with langfuse.start_as_current_span(
                 name=f"inspect-eval-{task_name}",
-                metadata={
-                    "task": task_name,
-                    "model": model_name,
-                    "created": created,
-                    "eval_file": eval_path.name,
-                    "eval_id": eval_id,
-                }
+                metadata=trace_metadata
             ) as trace:
                 # Process each sample
                 sample_files = [f for f in z.namelist() if f.startswith('samples/') and f.endswith('.json')]
                 sample_count = 0
+                skipped_count = 0
 
                 for sample_file in sample_files:
                     with z.open(sample_file) as f:
                         sample = json.load(f)
+
+                    # Extract all metadata first (needed for filtering)
+                    metadata = extract_sample_metadata(sample)
+
+                    # Filter by principle if specified
+                    if filter_principle:
+                        sample_principle = metadata.get("principle", "")
+                        if sample_principle != filter_principle:
+                            skipped_count += 1
+                            continue
 
                     # Extract input and output (excluding system prompts and scoring)
                     user_input = extract_user_input(sample)
@@ -205,9 +276,6 @@ def export_eval_to_langfuse(
                     if not user_input or not ai_output:
                         print(f"  Warning: Skipping sample {sample.get('id', 'unknown')} - missing input or output")
                         continue
-
-                    # Extract all metadata
-                    metadata = extract_sample_metadata(sample)
 
                     # Create a generation for this sample
                     with langfuse.start_as_current_observation(
@@ -241,7 +309,11 @@ def export_eval_to_langfuse(
 
                     sample_count += 1
 
-            print(f"  Exported {sample_count} samples from {eval_path.name}")
+            # Print summary
+            if filter_principle:
+                print(f"  Exported {sample_count} samples from {eval_path.name} (skipped {skipped_count} not matching '{filter_principle}')")
+            else:
+                print(f"  Exported {sample_count} samples from {eval_path.name}")
             return sample_count
 
     except Exception as e:
@@ -256,9 +328,15 @@ def main():
         description="Export Inspect AI evaluation logs to Langfuse for human annotation."
     )
     parser.add_argument(
+        "--principle",
+        type=str,
+        choices=VALID_PRINCIPLES,
+        help="Filter traces by humane principle (required when using --enqueue)"
+    )
+    parser.add_argument(
         "--enqueue",
         action="store_true",
-        help="Add exported items to annotation queue (requires LANGFUSE_ANNOTATION_QUEUE_ID)"
+        help="Add exported items to annotation queue (requires --principle and .langfuse_queues.json)"
     )
     parser.add_argument(
         "eval_files",
@@ -267,6 +345,16 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Validate --enqueue requires --principle
+    if args.enqueue and not args.principle:
+        parser.error("--enqueue requires --principle to be specified")
+
+    # Validate principle if provided
+    if args.principle and args.principle not in VALID_PRINCIPLES:
+        print(f"Error: Invalid principle '{args.principle}'")
+        print(f"Valid principles: {', '.join(VALID_PRINCIPLES)}")
+        sys.exit(1)
 
     # Check for required environment variables
     required_vars = ["LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY"]
@@ -285,15 +373,23 @@ def main():
     secret_key = os.getenv("LANGFUSE_SECRET_KEY")
     host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
 
-    # Check for annotation queue ID if --enqueue is used
+    # Load queue configuration and determine queue ID if --enqueue is used
     queue_id = None
     if args.enqueue:
-        queue_id = os.getenv("LANGFUSE_ANNOTATION_QUEUE_ID")
-        if not queue_id:
-            print("Error: --enqueue flag requires LANGFUSE_ANNOTATION_QUEUE_ID environment variable")
-            print("Please set it in your .env file or as an environment variable.")
+        queue_config = load_queue_config()
+        if not queue_config:
+            print("Error: --enqueue requires .langfuse_queues.json config file")
+            print("Copy .langfuse_queues.example.json to .langfuse_queues.json and fill in your queue IDs.")
             sys.exit(1)
-        print(f"Annotation queue enabled (Queue ID: {queue_id})\n")
+
+        # Get queue ID for the specified principle
+        queue_id = queue_config.get(args.principle)
+        if not queue_id:
+            print(f"Error: No queue ID found for principle '{args.principle}' in .langfuse_queues.json")
+            print(f"Please add a queue ID for this principle in the config file.")
+            sys.exit(1)
+
+        print(f"Annotation queue enabled for principle '{args.principle}' (Queue ID: {queue_id})\n")
 
     # Initialize Langfuse client
     try:
@@ -329,6 +425,7 @@ def main():
         samples_exported = export_eval_to_langfuse(
             eval_file,
             langfuse,
+            filter_principle=args.principle,
             enqueue=args.enqueue,
             queue_id=queue_id,
             public_key=public_key,
@@ -342,6 +439,8 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"Export complete!")
+    if args.principle:
+        print(f"Principle filter: {args.principle}")
     print(f"Total samples exported: {total_samples}")
     if args.enqueue:
         print(f"Items added to annotation queue: {queue_id}")

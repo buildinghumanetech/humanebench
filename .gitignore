@@ -160,6 +160,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Langfuse queue configuration (contains sensitive queue IDs)
+.langfuse_queues.json
+
 # Spyder project settings
 .spyderproject
 .spyproject

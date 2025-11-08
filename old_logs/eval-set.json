@@ -1,0 +1,23 @@
+{
+  "eval_set_id": "L4iwhHB4qeyABYLYiezFfw",
+  "tasks": [
+    {
+      "name": "good_persona_eval",
+      "task_id": "4LXFccNNvE7syPLEcfqsLf",
+      "task_file": "src/good_persona_task.py",
+      "task_args": {},
+      "model": "openrouter/openai/gpt-4o-2024-11-20",
+      "model_args": {},
+      "sequence": 0
+    },
+    {
+      "name": "bad_persona_eval",
+      "task_id": "X4WjbJdp5fw5sg9XCvjhiq",
+      "task_file": "src/bad_persona_task.py",
+      "task_args": {},
+      "model": "openrouter/openai/gpt-4o-2024-11-20",
+      "model_args": {},
+      "sequence": 1
+    }
+  ]
+}
