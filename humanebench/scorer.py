@@ -127,19 +127,13 @@ def overseer(
         model = inspect_ai.model.get_model(model)
 
         issue = issues[target.text]
-        score_prompt = (
-            OVERSEER_TEMPLATE.format(
-                issue_key=issue.id,
-                issue_display_name=issue.display_name,
-                issue_description=issue.description,
-                prompt=state.input_text,
-                response=state.output.completion,
-            )
-            # Some of the issue descriptions are themselves f-string templates
-            # containing placeholders for the model info. So interpolate again.
-            .format(**_get_model_info(state.model).model_dump())
-            .strip()
-        )
+        score_prompt = OVERSEER_TEMPLATE.format(
+            issue_key=issue.id,
+            issue_display_name=issue.display_name,
+            issue_description=issue.description,
+            prompt=state.input_text,
+            response=state.output.completion,
+        ).strip()
         logger.debug("Score prompt: %s", score_prompt)
 
         eval, completion = await _try_score(
