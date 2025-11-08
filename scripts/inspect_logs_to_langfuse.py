@@ -309,7 +309,8 @@ def export_eval_to_langfuse(
     public_key: Optional[str] = None,
     secret_key: Optional[str] = None,
     host: str = "https://cloud.langfuse.com",
-    sample_ids_to_export: Optional[set] = None
+    sample_ids_to_export: Optional[set] = None,
+    exported_sample_ids: Optional[set] = None
 ) -> int:
     """
     Export a single Inspect AI .eval file to Langfuse.
@@ -370,6 +371,11 @@ def export_eval_to_langfuse(
                             skipped_count += 1
                             continue
 
+                        # Skip if already exported (prevents duplicates across eval files)
+                        if exported_sample_ids is not None and sample_id in exported_sample_ids:
+                            skipped_count += 1
+                            continue
+
                     # Extract all metadata first (needed for filtering)
                     metadata = extract_sample_metadata(sample)
 
@@ -386,6 +392,12 @@ def export_eval_to_langfuse(
 
                     if not user_input or not ai_output:
                         print(f"  Warning: Skipping sample {sample.get('id', 'unknown')} - missing input or output")
+                        continue
+
+                    # Skip samples without scores
+                    if not sample.get('scores') or len(sample.get('scores', {})) == 0:
+                        print(f"  Warning: Skipping sample {sample.get('id', 'unknown')} - missing scores")
+                        skipped_count += 1
                         continue
 
                     # Create a generation for this sample
@@ -419,6 +431,11 @@ def export_eval_to_langfuse(
                                 )
 
                     sample_count += 1
+
+                    # Mark this sample as exported (prevents duplicates across eval files)
+                    if exported_sample_ids is not None and sample_ids_to_export is not None:
+                        sample_id = sample.get("id", "")
+                        exported_sample_ids.add(sample_id)
 
             # Print summary
             if filter_principle:
@@ -565,6 +582,9 @@ def main():
             for eval_file, sample in samples:
                 sample_ids_to_export.add(sample.get("id", ""))
 
+    # Track exported sample IDs to prevent duplicates across eval files
+    exported_sample_ids = set() if sample_ids_to_export is not None else None
+
     # Export each file
     total_samples = 0
     for eval_file in eval_files:
@@ -577,7 +597,8 @@ def main():
             public_key=public_key,
             secret_key=secret_key,
             host=host,
-            sample_ids_to_export=sample_ids_to_export
+            sample_ids_to_export=sample_ids_to_export,
+            exported_sample_ids=exported_sample_ids
         )
         total_samples += samples_exported
 

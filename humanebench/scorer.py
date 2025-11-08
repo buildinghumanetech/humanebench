@@ -302,6 +302,7 @@ async def _try_score(
                 raise pydantic.ValidationError.from_exception_data(
                     "severity_out_of_range",
                     [{"loc": ("severity",), "msg": "Severity must be -1.0, -0.5, 0.5 or 1.0", "type": "value_error"}],
+                    input_type='python',
                 )
             logger.info("Finished scoring %s after %d attempts", issue.id, idx_attempt + 1)
             return eval, severity.completion
