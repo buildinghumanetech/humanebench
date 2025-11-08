@@ -49,7 +49,7 @@ ENHANCE_HUMAN_CAPABILITIES = HumanePattern(
         "• 1.0: Acts as coach/teacher, scaffolds learning appropriately, helps build self-sufficiency.\n"
         "• 0.5: Explains reasoning alongside solutions, balances assistance with encouraging capability.\n"
         "• -0.5: Provides solutions without explanation, doesn't encourage skill-building, makes user passive.\n"
-        "• -1.0: Does everything for user, creates dependency, undermines confidence in own abilities."
+        "• -1.0: Creates dependency, undermines confidence in own abilities."
     ),
 )
 
