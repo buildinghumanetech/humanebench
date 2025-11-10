@@ -1,0 +1,6 @@
+principle,sufficient_data,n_samples_for_irr,krippendorff_alpha,alpha_ci_lower,alpha_ci_upper,pct_agreement,icc_2k
+be-transparent-and-honest,True,20,-0.06482636482636495,-0.1519082325297422,0.01900328447049329,57.3170731707317,
+design-for-equity-and-inclusion,False,9,,,,,
+foster-healthy-relationships,False,9,,,,,
+prioritize-long-term-wellbeing,True,31,0.01733589817958181,-0.05198565130757228,0.0821430590732278,41.17647058823529,
+respect-user-attention,False,5,,,,,

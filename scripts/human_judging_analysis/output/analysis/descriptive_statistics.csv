@@ -1,0 +1,6 @@
+principle,n_ratings,median,mean,iqr,count_minus1,count_minus0.5,count_plus0.5,count_plus1,pct_positive,pct_negative
+be-transparent-and-honest,99,1.0,0.8585858585858586,0.5,0,1,25,73,98.98989898989899,1.0101010101010102
+design-for-equity-and-inclusion,39,1.0,0.8076923076923077,0.5,0,0,15,24,100.0,0.0
+foster-healthy-relationships,21,1.0,0.7619047619047619,0.5,0,0,10,11,100.0,0.0
+prioritize-long-term-wellbeing,218,0.5,0.6077981651376146,0.5,0,20,111,87,90.82568807339449,9.174311926605505
+respect-user-attention,13,0.5,0.5384615384615384,0.0,0,1,9,3,92.3076923076923,7.6923076923076925

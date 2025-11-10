@@ -214,12 +214,110 @@ def add_to_annotation_queue(
         return False
 
 
+def get_sample_ids_from_queue(
+    queue_id: str,
+    public_key: str,
+    secret_key: str,
+    host: str = "https://cloud.langfuse.com"
+) -> set:
+    """
+    Query an existing annotation queue to extract sample IDs.
+
+    Returns a set of sample IDs that were already uploaded to this queue.
+    """
+    print(f"  Querying queue {queue_id} to extract existing sample IDs...")
+
+    sample_ids = set()
+    page = 1
+    limit = 100
+
+    try:
+        langfuse = get_client()
+
+        while True:
+            # Get queue items (paginated)
+            url = f"{host}/api/public/annotation-queues/{queue_id}/items"
+            response = requests.get(
+                url,
+                auth=(public_key, secret_key),
+                params={"page": page, "limit": limit},
+                timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Handle both array response and paginated response
+            items = data if isinstance(data, list) else data.get("data", [])
+
+            if not items:
+                break
+
+            # Extract sample IDs from each queue item
+            for item in items:
+                object_id = item.get("objectId")
+                object_type = item.get("objectType")
+
+                if not object_id:
+                    continue
+
+                # Fetch the actual observation/trace to get metadata
+                try:
+                    if object_type == "OBSERVATION":
+                        # Get observation details
+                        obs_url = f"{host}/api/public/observations/{object_id}"
+                        obs_response = requests.get(
+                            obs_url,
+                            auth=(public_key, secret_key),
+                            timeout=10
+                        )
+                        obs_response.raise_for_status()
+                        observation = obs_response.json()
+
+                        # Extract sample_id from metadata
+                        metadata = observation.get("metadata", {})
+                        sample_id = metadata.get("sample_id")
+                        if sample_id:
+                            sample_ids.add(sample_id)
+
+                except requests.exceptions.RequestException as e:
+                    print(f"    Warning: Failed to fetch object {object_id}: {e}")
+                    continue
+
+            # Check if there are more pages
+            if isinstance(data, dict) and "meta" in data:
+                total_pages = data["meta"].get("totalPages", 1)
+                if page >= total_pages:
+                    break
+            else:
+                # If no pagination metadata, assume we got all items
+                break
+
+            page += 1
+
+        print(f"  Found {len(sample_ids)} sample IDs in reference queue")
+        return sample_ids
+
+    except requests.exceptions.RequestException as e:
+        print(f"  Error querying annotation queue: {e}")
+        print(f"  Falling back to empty sample set")
+        return set()
+    except Exception as e:
+        print(f"  Unexpected error querying queue: {e}")
+        print(f"  Falling back to empty sample set")
+        return set()
+
+
 def collect_samples_for_sampling(
     eval_files: List[str],
-    filter_principle: Optional[str] = None
+    filter_principle: Optional[str] = None,
+    filter_sample_ids: Optional[set] = None
 ) -> Dict[str, List[Tuple[str, Dict[str, Any]]]]:
     """
     Collect all samples from eval files, grouped by model.
+
+    Args:
+        filter_principle: Only include samples matching this principle
+        filter_sample_ids: If provided, only include samples with IDs in this set
 
     Returns:
         Dictionary mapping model names to list of (eval_file, sample) tuples
@@ -254,6 +352,12 @@ def collect_samples_for_sampling(
                     if filter_principle:
                         sample_principle = metadata.get("principle", "")
                         if sample_principle != filter_principle:
+                            continue
+
+                    # Filter by sample IDs if specified (for reference user mode)
+                    if filter_sample_ids is not None:
+                        sample_id = sample.get("id", "")
+                        if sample_id not in filter_sample_ids:
                             continue
 
                     # Validate input and output exist
@@ -452,6 +556,11 @@ def main():
         help="Limit total samples exported with even distribution across models (e.g., 100)"
     )
     parser.add_argument(
+        "--reference-user",
+        type=str,
+        help="Query this user's queue to use their exact sample IDs (for late-arriving evaluators)"
+    )
+    parser.add_argument(
         "eval_files",
         nargs="*",
         help="Specific .eval files to process (if not provided, recursively processes all files in logs/)"
@@ -525,9 +634,46 @@ def main():
         eval_files = [str(f) for f in eval_files]
         print(f"Processing all {len(eval_files)} .eval file(s) from logs/ (recursive)...\n")
 
+    # Check if using reference user mode
+    reference_sample_ids = None
+    if args.reference_user:
+        # Validate reference user exists in CSV
+        if args.reference_user not in user_queues:
+            print(f"Error: Reference user '{args.reference_user}' not found in queue CSV")
+            sys.exit(1)
+
+        # Validate reference user has queue for this principle
+        if args.principle not in user_queues[args.reference_user]:
+            print(f"Error: Reference user '{args.reference_user}' has no queue for principle '{args.principle}'")
+            sys.exit(1)
+
+        # Warn if both --reference-user and --sample-limit are provided
+        if args.sample_limit:
+            print(f"Warning: --sample-limit ignored when using --reference-user\n")
+
+        # Get reference user's queue ID and query for sample IDs
+        reference_queue_id = user_queues[args.reference_user][args.principle]
+        print(f"Reference user mode: Using samples from '{args.reference_user}'")
+        reference_sample_ids = get_sample_ids_from_queue(
+            queue_id=reference_queue_id,
+            public_key=public_key,
+            secret_key=secret_key,
+            host=host
+        )
+
+        if not reference_sample_ids:
+            print(f"Error: No samples found in reference user's queue")
+            sys.exit(1)
+
+        print()
+
     # Collect and sample data ONCE (same samples for all users)
     print(f"Collecting samples for principle '{args.principle}'...\n")
-    samples_by_model = collect_samples_for_sampling(eval_files, args.principle)
+    samples_by_model = collect_samples_for_sampling(
+        eval_files,
+        args.principle,
+        filter_sample_ids=reference_sample_ids
+    )
 
     # Display pre-sampling statistics
     total_available = sum(len(samples) for samples in samples_by_model.values())
@@ -536,8 +682,8 @@ def main():
         print(f"  - {model}: {len(samples)} samples")
     print()
 
-    # Sample if requested
-    if args.sample_limit:
+    # Sample if requested (only applies when NOT using reference user)
+    if args.sample_limit and not args.reference_user:
         print(f"Sampling {args.sample_limit} samples evenly across models...\n")
         sampled = sample_evenly_across_models(samples_by_model, args.sample_limit)
 
@@ -548,7 +694,8 @@ def main():
         print()
     else:
         sampled = samples_by_model
-        print(f"No sampling limit specified, using all {total_available} samples\n")
+        if not args.reference_user:
+            print(f"No sampling limit specified, using all {total_available} samples\n")
 
     # Flatten sampled data into a list of (eval_file, sample) tuples
     eval_files_and_samples = []
@@ -585,7 +732,9 @@ def main():
     print(f"{'='*60}")
     print(f"Multi-user export complete!")
     print(f"Principle: {args.principle}")
-    if args.sample_limit:
+    if args.reference_user:
+        print(f"Reference user: {args.reference_user} (using their exact samples)")
+    elif args.sample_limit:
         print(f"Sample limit: {args.sample_limit} (evenly distributed across models)")
     print(f"Users processed: {len(users_with_queue)}")
     for username, count in total_samples_per_user.items():
