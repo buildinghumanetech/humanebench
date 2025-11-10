@@ -18,7 +18,7 @@ from humanebench.scorer import overseer
 def baseline_eval():
     return Task(
         dataset=json_dataset(
-            "../data/humane_bench.jsonl",
+            "../data/humane_bench_test.jsonl",
             sample_fields=FieldSpec(
                 input="input",
                 target="target",
@@ -33,7 +33,7 @@ def baseline_eval():
             humane_patterns=None,  # Evaluate against all humane patterns
             model=[
                 "openrouter/anthropic/claude-4.5-sonnet",
-                "openrouter/openai/gpt-4",
+                "openrouter/openai/gpt-4.1",
                 "openrouter/google/gemini-2.5-pro"
             ],
             temperature=0.0,
