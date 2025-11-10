@@ -1,5 +1,7 @@
+./claude
 data_generation/embeddings_cache/
 .DS_Store
+scripts/human_judging_analysis/cache
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
