@@ -33,6 +33,17 @@ Usage:
     # Export specific eval file(s), filtered by principle
     python inspect_logs_to_langfuse.py --principle enable-meaningful-choices logs/specific.eval
 
+    # Export to CSV instead of uploading to Langfuse
+    python inspect_logs_to_langfuse.py --principle respect-user-attention --sample-limit 100 --export-csv
+
+CSV Export:
+    When using --export-csv, the script will:
+    - Skip Langfuse upload and export data to a CSV file instead
+    - Create csv_exports/ directory in the project root
+    - Save file as {principle}_{timestamp}.csv (e.g., respect-user-attention_20250108_143022.csv)
+    - Include core fields: sample_id, principle, domain, user_input, ai_output, model, overseer_score
+    - Work with all existing flags like --principle and --sample-limit
+
 Valid principles:
     - be-transparent-and-honest
     - design-for-equity-and-inclusion
@@ -51,6 +62,8 @@ import sys
 import argparse
 import requests
 import random
+import csv
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
@@ -300,6 +313,130 @@ def sample_evenly_across_models(
     return sampled
 
 
+def export_samples_to_csv(
+    eval_files: List[str],
+    csv_writer,
+    filter_principle: Optional[str] = None,
+    sample_ids_to_export: Optional[set] = None,
+    exported_sample_ids: Optional[set] = None
+) -> int:
+    """
+    Export samples from eval files to CSV.
+
+    Args:
+        eval_files: List of eval file paths to process
+        csv_writer: CSV DictWriter object
+        filter_principle: If provided, only export samples matching this principle
+        sample_ids_to_export: If provided, only export samples with IDs in this set
+        exported_sample_ids: Set to track which samples have been exported
+
+    Returns the number of samples exported.
+    """
+    total_exported = 0
+
+    for eval_file_path in eval_files:
+        eval_path = Path(eval_file_path)
+        if not eval_path.exists():
+            print(f"Warning: {eval_file_path} not found, skipping.")
+            continue
+
+        print(f"Processing {eval_path.name}...")
+
+        try:
+            with zipfile.ZipFile(eval_file_path, 'r') as z:
+                # Read header for evaluation metadata
+                with z.open('header.json') as f:
+                    header = json.load(f)
+
+                eval_info = header.get("eval", {})
+                model_name = eval_info.get("model", "unknown")
+
+                # Process each sample
+                sample_files = [f for f in z.namelist() if f.startswith('samples/') and f.endswith('.json')]
+                sample_count = 0
+                skipped_count = 0
+
+                for sample_file in sample_files:
+                    with z.open(sample_file) as f:
+                        sample = json.load(f)
+
+                    # If sampling is enabled, only export selected samples
+                    if sample_ids_to_export is not None:
+                        sample_id = sample.get("id", "")
+                        if sample_id not in sample_ids_to_export:
+                            skipped_count += 1
+                            continue
+
+                        # Skip if already exported (prevents duplicates across eval files)
+                        if exported_sample_ids is not None and sample_id in exported_sample_ids:
+                            skipped_count += 1
+                            continue
+
+                    # Extract all metadata first (needed for filtering)
+                    metadata = extract_sample_metadata(sample)
+
+                    # Filter by principle if specified (when not using sampling)
+                    if filter_principle and sample_ids_to_export is None:
+                        sample_principle = metadata.get("principle", "")
+                        if sample_principle != filter_principle:
+                            skipped_count += 1
+                            continue
+
+                    # Extract input and output
+                    user_input = extract_user_input(sample)
+                    ai_output = extract_ai_output(sample)
+
+                    if not user_input or not ai_output:
+                        print(f"  Warning: Skipping sample {sample.get('id', 'unknown')} - missing input or output")
+                        continue
+
+                    # Skip samples without scores
+                    if not sample.get('scores') or len(sample.get('scores', {})) == 0:
+                        print(f"  Warning: Skipping sample {sample.get('id', 'unknown')} - missing scores")
+                        skipped_count += 1
+                        continue
+
+                    # Extract overseer score
+                    scores = sample.get('scores', {})
+                    overseer_score = None
+                    for score_name, score_data in scores.items():
+                        if 'overseer' in score_name.lower():
+                            overseer_score = score_data.get('value', '')
+                            break
+
+                    # Write row to CSV
+                    csv_writer.writerow({
+                        'sample_id': metadata.get('sample_id', ''),
+                        'principle': metadata.get('principle', ''),
+                        'domain': metadata.get('domain', ''),
+                        'user_input': user_input,
+                        'ai_output': ai_output,
+                        'model': metadata.get('model', model_name),
+                        'overseer_score': overseer_score if overseer_score is not None else ''
+                    })
+
+                    sample_count += 1
+
+                    # Mark this sample as exported (prevents duplicates across eval files)
+                    if exported_sample_ids is not None and sample_ids_to_export is not None:
+                        sample_id = sample.get("id", "")
+                        exported_sample_ids.add(sample_id)
+
+                # Print summary
+                if filter_principle:
+                    print(f"  Exported {sample_count} samples from {eval_path.name} (skipped {skipped_count} not matching '{filter_principle}')")
+                else:
+                    print(f"  Exported {sample_count} samples from {eval_path.name}")
+
+                total_exported += sample_count
+
+        except Exception as e:
+            print(f"Error processing {eval_file_path}: {e}")
+            continue
+
+    return total_exported
+
+
 def export_eval_to_langfuse(
     eval_file_path: str,
     langfuse,
@@ -467,6 +604,11 @@ def main():
         help="Add exported items to annotation queue (requires --principle and .langfuse_queues.json)"
     )
     parser.add_argument(
+        "--export-csv",
+        action="store_true",
+        help="Export to CSV file instead of uploading to Langfuse (mutually exclusive with --enqueue)"
+    )
+    parser.add_argument(
         "--sample-limit",
         type=int,
         help="Limit total samples exported with even distribution across models (e.g., 100)"
@@ -479,6 +621,10 @@ def main():
 
     args = parser.parse_args()
 
+    # Validate --export-csv and --enqueue are mutually exclusive
+    if args.export_csv and args.enqueue:
+        parser.error("--export-csv and --enqueue are mutually exclusive")
+
     # Validate --enqueue requires --principle
     if args.enqueue and not args.principle:
         parser.error("--enqueue requires --principle to be specified")
@@ -489,48 +635,50 @@ def main():
         print(f"Valid principles: {', '.join(VALID_PRINCIPLES)}")
         sys.exit(1)
 
-    # Check for required environment variables
-    required_vars = ["LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY"]
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    # Skip Langfuse setup if using CSV export
+    if not args.export_csv:
+        # Check for required environment variables
+        required_vars = ["LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY"]
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
 
-    if missing_vars:
-        print("Error: Missing required environment variables:")
-        for var in missing_vars:
-            print(f"  - {var}")
-        print("\nPlease set these variables before running the script.")
-        print("See the script docstring for setup instructions.")
-        sys.exit(1)
-
-    # Get credentials for API calls
-    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-    secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-    host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-
-    # Load queue configuration and determine queue ID if --enqueue is used
-    queue_id = None
-    if args.enqueue:
-        queue_config = load_queue_config()
-        if not queue_config:
-            print("Error: --enqueue requires .langfuse_queues.json config file")
-            print("Copy .langfuse_queues.example.json to .langfuse_queues.json and fill in your queue IDs.")
+        if missing_vars:
+            print("Error: Missing required environment variables:")
+            for var in missing_vars:
+                print(f"  - {var}")
+            print("\nPlease set these variables before running the script.")
+            print("See the script docstring for setup instructions.")
             sys.exit(1)
 
-        # Get queue ID for the specified principle
-        queue_id = queue_config.get(args.principle)
-        if not queue_id:
-            print(f"Error: No queue ID found for principle '{args.principle}' in .langfuse_queues.json")
-            print(f"Please add a queue ID for this principle in the config file.")
+        # Get credentials for API calls
+        public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+        secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+        host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+
+        # Load queue configuration and determine queue ID if --enqueue is used
+        queue_id = None
+        if args.enqueue:
+            queue_config = load_queue_config()
+            if not queue_config:
+                print("Error: --enqueue requires .langfuse_queues.json config file")
+                print("Copy .langfuse_queues.example.json to .langfuse_queues.json and fill in your queue IDs.")
+                sys.exit(1)
+
+            # Get queue ID for the specified principle
+            queue_id = queue_config.get(args.principle)
+            if not queue_id:
+                print(f"Error: No queue ID found for principle '{args.principle}' in .langfuse_queues.json")
+                print(f"Please add a queue ID for this principle in the config file.")
+                sys.exit(1)
+
+            print(f"Annotation queue enabled for principle '{args.principle}' (Queue ID: {queue_id})\n")
+
+        # Initialize Langfuse client
+        try:
+            langfuse = get_client()
+            print("Connected to Langfuse successfully.\n")
+        except Exception as e:
+            print(f"Error connecting to Langfuse: {e}")
             sys.exit(1)
-
-        print(f"Annotation queue enabled for principle '{args.principle}' (Queue ID: {queue_id})\n")
-
-    # Initialize Langfuse client
-    try:
-        langfuse = get_client()
-        print("Connected to Langfuse successfully.\n")
-    except Exception as e:
-        print(f"Error connecting to Langfuse: {e}")
-        sys.exit(1)
 
     # Determine which files to process
     if args.eval_files:
@@ -585,36 +733,79 @@ def main():
     # Track exported sample IDs to prevent duplicates across eval files
     exported_sample_ids = set() if sample_ids_to_export is not None else None
 
-    # Export each file
+    # Export based on mode
     total_samples = 0
-    for eval_file in eval_files:
-        samples_exported = export_eval_to_langfuse(
-            eval_file,
-            langfuse,
-            filter_principle=args.principle,
-            enqueue=args.enqueue,
-            queue_id=queue_id,
-            public_key=public_key,
-            secret_key=secret_key,
-            host=host,
-            sample_ids_to_export=sample_ids_to_export,
-            exported_sample_ids=exported_sample_ids
-        )
-        total_samples += samples_exported
 
-    # Ensure all data is sent to Langfuse
-    langfuse.flush()
+    if args.export_csv:
+        # CSV export mode
+        # Create csv_exports directory
+        csv_dir = Path(__file__).parent.parent / "csv_exports"
+        csv_dir.mkdir(exist_ok=True)
 
-    print(f"\n{'='*60}")
-    print(f"Export complete!")
-    if args.principle:
-        print(f"Principle filter: {args.principle}")
-    if args.sample_limit:
-        print(f"Sample limit: {args.sample_limit} (evenly distributed across models)")
-    print(f"Total samples exported: {total_samples}")
-    if args.enqueue:
-        print(f"Items added to annotation queue: {queue_id}")
-    print(f"{'='*60}")
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if args.principle:
+            csv_filename = f"{args.principle}_{timestamp}.csv"
+        else:
+            csv_filename = f"export_{timestamp}.csv"
+        csv_path = csv_dir / csv_filename
+
+        # Define CSV fields
+        csv_fields = ['sample_id', 'principle', 'domain', 'user_input', 'ai_output', 'model', 'overseer_score']
+
+        # Write to CSV
+        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=csv_fields)
+            writer.writeheader()
+
+            total_samples = export_samples_to_csv(
+                eval_files,
+                writer,
+                filter_principle=args.principle,
+                sample_ids_to_export=sample_ids_to_export,
+                exported_sample_ids=exported_sample_ids
+            )
+
+        print(f"\n{'='*60}")
+        print(f"CSV export complete!")
+        if args.principle:
+            print(f"Principle filter: {args.principle}")
+        if args.sample_limit:
+            print(f"Sample limit: {args.sample_limit} (evenly distributed across models)")
+        print(f"Total samples exported: {total_samples}")
+        print(f"CSV file saved to: {csv_path}")
+        print(f"{'='*60}")
+
+    else:
+        # Langfuse upload mode
+        for eval_file in eval_files:
+            samples_exported = export_eval_to_langfuse(
+                eval_file,
+                langfuse,
+                filter_principle=args.principle,
+                enqueue=args.enqueue,
+                queue_id=queue_id,
+                public_key=public_key,
+                secret_key=secret_key,
+                host=host,
+                sample_ids_to_export=sample_ids_to_export,
+                exported_sample_ids=exported_sample_ids
+            )
+            total_samples += samples_exported
+
+        # Ensure all data is sent to Langfuse
+        langfuse.flush()
+
+        print(f"\n{'='*60}")
+        print(f"Export complete!")
+        if args.principle:
+            print(f"Principle filter: {args.principle}")
+        if args.sample_limit:
+            print(f"Sample limit: {args.sample_limit} (evenly distributed across models)")
+        print(f"Total samples exported: {total_samples}")
+        if args.enqueue:
+            print(f"Items added to annotation queue: {queue_id}")
+        print(f"{'='*60}")
 
 
 if __name__ == "__main__":
