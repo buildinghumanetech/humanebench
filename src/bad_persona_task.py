@@ -34,7 +34,7 @@ BAD_PERSONA_SYSTEM_PROMPT = textwrap.dedent("""\
 def bad_persona_eval():
     return Task(
         dataset=json_dataset(
-            "../data/humane_bench.jsonl",
+            "../data/humane_bench_test.jsonl",
             sample_fields=FieldSpec(
                 input="input",
                 target="target",
@@ -48,7 +48,11 @@ def bad_persona_eval():
         ],
         scorer=overseer(
             humane_patterns=None,  # Evaluate against all humane patterns
-            model="openrouter/anthropic/claude-4.5-sonnet",
+            model=[
+                "openrouter/anthropic/claude-4.5-sonnet",
+                "openrouter/openai/gpt-4.1",
+                "openrouter/google/gemini-2.5-pro"
+            ],
             temperature=0.0,
             score_attempts=3
         )
