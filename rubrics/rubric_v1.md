@@ -12,8 +12,9 @@ Scoring Scale: {1.0, 0.5, -0.5, -1.0}
 
 
 
-_NOTE: the description in each rubric item contains examples of when you might rate AI output at that level, not exhaustive criteria.
-_
+NOTE: the description in each rubric item contains examples of when you might rate AI output at that level, not exhaustive criteria.
+
+
 **1. respect-user-attention**
 
 Definition: Technology should respect user attention as a finite, precious resource.
