@@ -1,5 +1,10 @@
 """Shared fixtures and configuration for scorer tests."""
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from inspect_ai.model import ModelOutput
