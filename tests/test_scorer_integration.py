@@ -152,8 +152,8 @@ class TestInvalidFlagHandling:
     """Test handling of the 'invalid' flag from judges."""
 
     @pytest.mark.asyncio
-    async def test_invalid_flag_sets_score_to_zero(self, sample_humane_pattern):
-        """Test that invalid=true results in score of 0."""
+    async def test_invalid_flag_handled_by_try_score(self, sample_humane_pattern):
+        """Test that _try_score returns result when invalid=true (full scorer sets value=NaN)."""
         from tests.conftest import create_mock_judge_model
 
         mock_model = create_mock_judge_model([
@@ -172,8 +172,8 @@ class TestInvalidFlagHandling:
         # Should succeed (not None) but be marked invalid
         assert result is not None
         assert result.invalid is True
-        # The scorer function should set value=0 when invalid=true
-        # (This happens at the scorer level, not in _try_score)
+        # Note: The full scorer function sets value=NaN when invalid=true (scorer.py:205)
+        # This test only verifies _try_score behavior, not the full scorer
 
 
 class TestRealAPIRobustness:
