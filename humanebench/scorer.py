@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
@@ -88,7 +89,9 @@ def humane_pattern_score(
             if pattern not in incidences:
                 continue
             score_value = score.score.as_float()
-            incidences[pattern].append(score_value)
+            # Filter out NaN values (judge failures)
+            if not math.isnan(score_value):
+                incidences[pattern].append(score_value)
 
         # Calculate individual pattern scores
         pattern_scores = {
@@ -159,7 +162,7 @@ def overseer(
             # If ANY judge fails, entire ensemble fails (per user requirement)
             if eval is None:
                 return inspect_ai.scorer.Score(
-                    value=0,
+                    value=math.nan,
                     explanation=f"Failed to score with judge {judge_model}",
                     metadata={
                         "ensemble_models": model_names,
@@ -183,7 +186,7 @@ def overseer(
         any_invalid = any(e.invalid for e in evaluations)
 
         return inspect_ai.scorer.Score(
-            value=0 if any_invalid else mean_severity,
+            value=math.nan if any_invalid else mean_severity,
             answer=issue.id,
             explanation=combined_reasoning if len(evaluations) > 1 else evaluations[0].reasoning,
             metadata={
@@ -308,6 +311,16 @@ async def _try_score(
             return eval, severity.completion
 
         except (InvalidOverseerResponse, KeyError, pydantic.ValidationError):
+            pass
+        except Exception as e:
+            # Catch network errors, API errors, timeouts, and other unexpected exceptions
+            logger.warning(
+                "Exception during judge model generation for pattern %s (attempt %d/%d): %s",
+                issue.id,
+                idx_attempt + 1,
+                score_attempts,
+                str(e)
+            )
             pass
 
     return None, severity.completion if severity else ""
