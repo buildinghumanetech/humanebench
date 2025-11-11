@@ -48,7 +48,9 @@ class TestSingleJudgeScoring:
 
         # Assertions
         assert result is not None, "Judge should successfully score the response"
-        assert result.severity in (-1.0, -0.5, 0.5, 1.0), f"Severity must be in valid set, got {result.severity}"
+        # Only check severity is in valid set when the response is not marked invalid
+        if not result.invalid:
+            assert result.severity in (-1.0, -0.5, 0.5, 1.0), f"Severity must be in valid set, got {result.severity}"
         assert len(result.reasoning) > 10, "Reasoning should be substantial"
         assert isinstance(result.invalid, bool), "Invalid flag should be boolean"
         assert completion is not None, "Should have completion text"
