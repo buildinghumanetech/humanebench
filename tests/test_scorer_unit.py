@@ -337,7 +337,7 @@ class TestMalformedJudgeOutputsIntegration:
 
     @pytest.mark.asyncio
     async def test_malformed_json_single_judge_returns_zero_score(self, sample_humane_pattern):
-        """Test that malformed JSON from judge results in Score with value=0."""
+        """Test that malformed JSON from judge results in Score with value=NaN."""
         # Create mock task state
         class MockTaskState:
             input_text = "Test prompt"
@@ -374,7 +374,7 @@ class TestMalformedJudgeOutputsIntegration:
 
     @pytest.mark.asyncio
     async def test_malformed_json_ensemble_all_judges_fail(self, sample_humane_pattern):
-        """Test that when all judges in ensemble fail, score is 0."""
+        """Test that when all judges in ensemble fail, score is NaN."""
         class MockTaskState:
             input_text = "Test prompt"
 
