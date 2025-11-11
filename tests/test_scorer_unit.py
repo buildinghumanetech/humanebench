@@ -1,5 +1,6 @@
 """Unit tests for scorer.py - focusing on failure modes with mocked judge models."""
 
+import math
 import pytest
 import json
 from unittest.mock import AsyncMock, patch
@@ -329,3 +330,348 @@ class TestPydanticValidationErrors:
         assert result is not None
         assert result.invalid is True
         assert result.severity == 1.0
+
+
+class TestMalformedJudgeOutputsIntegration:
+    """Test that the full overseer() scorer handles malformed judge outputs gracefully."""
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_single_judge_returns_zero_score(self, sample_humane_pattern):
+        """Test that malformed JSON from judge results in Score with value=0."""
+        # Create mock task state
+        class MockTaskState:
+            input_text = "Test prompt"
+
+            class Output:
+                completion = "Test response"
+
+            output = Output()
+
+        # Mock judge returning bad JSON on all attempts
+        mock_judge = create_mock_judge_model([
+            "This is not JSON",
+            "Still not JSON",
+            "Nope",
+        ])
+
+        # Patch get_model to return our mock directly
+        with patch('inspect_ai.model.get_model', return_value=mock_judge):
+            # Create scorer with the mock
+            scorer = overseer(
+                humane_patterns=[sample_humane_pattern],
+                model=mock_judge,
+                score_attempts=3,
+            )
+
+            # Call scorer
+            score = await scorer(MockTaskState(), Target(sample_humane_pattern.id))
+
+        # Assertions
+        assert math.isnan(score.value), "Failed judge should result in score of NaN"
+        assert "Failed to score" in score.explanation
+        assert score.metadata is not None
+        assert "failed_model" in score.metadata
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_ensemble_all_judges_fail(self, sample_humane_pattern):
+        """Test that when all judges in ensemble fail, score is 0."""
+        class MockTaskState:
+            input_text = "Test prompt"
+
+            class Output:
+                completion = "Test response"
+
+            output = Output()
+
+        # Create multiple judges that all fail
+        mock_judge_1 = create_mock_judge_model(["Not JSON"] * 3)
+        mock_judge_2 = create_mock_judge_model(["Also not JSON"] * 3)
+
+        # Patch get_model to return the appropriate mock for each call
+        with patch('inspect_ai.model.get_model', side_effect=[mock_judge_1, mock_judge_2]):
+            scorer = overseer(
+                humane_patterns=[sample_humane_pattern],
+                model=[mock_judge_1, mock_judge_2],
+                score_attempts=3,
+            )
+
+            score = await scorer(MockTaskState(), Target(sample_humane_pattern.id))
+
+        # All judges failed, should return NaN
+        assert math.isnan(score.value)
+        assert "Failed to score" in score.explanation
+        assert "failed_model" in score.metadata
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_ensemble_one_judge_fails(self, sample_humane_pattern):
+        """Test that if one judge in ensemble fails, entire ensemble fails."""
+        class MockTaskState:
+            input_text = "Test prompt"
+
+            class Output:
+                completion = "Test response"
+
+            output = Output()
+
+        # First judge succeeds, second fails
+        mock_judge_1 = create_mock_judge_model([
+            '{"severity": 1.0, "reasoning": "Good", "invalid": false}'
+        ])
+        mock_judge_2 = create_mock_judge_model(["Not JSON"] * 3)
+
+        with patch('inspect_ai.model.get_model', side_effect=[mock_judge_1, mock_judge_2]):
+            scorer = overseer(
+                humane_patterns=[sample_humane_pattern],
+                model=[mock_judge_1, mock_judge_2],
+                score_attempts=3,
+            )
+
+            score = await scorer(MockTaskState(), Target(sample_humane_pattern.id))
+
+        # Per current logic (line 160), if ANY judge fails, entire ensemble fails
+        assert math.isnan(score.value)
+        assert "Failed to score" in score.explanation
+        assert "failed_model" in score.metadata
+
+    @pytest.mark.asyncio
+    async def test_missing_severity_field_returns_zero_score(self, sample_humane_pattern):
+        """Test that missing severity field in judge response results in Score with value=NaN."""
+        class MockTaskState:
+            input_text = "Test prompt"
+
+            class Output:
+                completion = "Test response"
+
+            output = Output()
+
+        # Judge returns JSON without severity field
+        mock_judge = create_mock_judge_model([
+            '{"reasoning": "Good", "invalid": false}',
+            '{"reasoning": "Good", "invalid": false}',
+            '{"reasoning": "Good", "invalid": false}',
+        ])
+
+        with patch('inspect_ai.model.get_model', return_value=mock_judge):
+            scorer = overseer(
+                humane_patterns=[sample_humane_pattern],
+                model=mock_judge,
+                score_attempts=3,
+            )
+
+            score = await scorer(MockTaskState(), Target(sample_humane_pattern.id))
+
+        assert math.isnan(score.value)
+        assert "Failed to score" in score.explanation
+
+    @pytest.mark.asyncio
+    async def test_invalid_severity_exhausts_retries_returns_zero(self, sample_humane_pattern):
+        """Test that invalid severity after retry exhaustion results in Score with value=NaN."""
+        class MockTaskState:
+            input_text = "Test prompt"
+
+            class Output:
+                completion = "Test response"
+
+            output = Output()
+
+        # Judge returns severity=0 (invalid) on all attempts
+        mock_judge = create_mock_judge_model([
+            '{"severity": 0, "reasoning": "Neutral", "invalid": false}',
+            '{"severity": 0, "reasoning": "Neutral", "invalid": false}',
+            '{"severity": 0, "reasoning": "Neutral", "invalid": false}',
+        ])
+
+        with patch('inspect_ai.model.get_model', return_value=mock_judge):
+            scorer = overseer(
+                humane_patterns=[sample_humane_pattern],
+                model=mock_judge,
+                score_attempts=3,
+            )
+
+            score = await scorer(MockTaskState(), Target(sample_humane_pattern.id))
+
+        # Should call judge exactly 3 times
+        assert mock_judge.generate.call_count == 3
+        # Should return score of NaN after exhausting retries
+        assert math.isnan(score.value)
+        assert "Failed to score" in score.explanation
+
+
+class TestUnavailableJudgeLLM:
+    """Test handling of exceptions from judge model.generate()."""
+
+    @pytest.mark.asyncio
+    async def test_judge_network_timeout_is_caught(self, sample_humane_pattern):
+        """Test that TimeoutError from judge is handled gracefully."""
+        import asyncio
+
+        mock_judge = AsyncMock()
+        mock_judge.generate.side_effect = asyncio.TimeoutError("Connection timeout")
+
+        result, completion = await _try_score(
+            model=mock_judge,
+            score_prompt="Test prompt",
+            issue=sample_humane_pattern,
+            temperature=0.0,
+            system_message="Test system message",
+            score_attempts=3,
+        )
+
+        # Should not crash, should return None
+        assert result is None
+        assert mock_judge.generate.call_count == 3  # Should retry
+
+    @pytest.mark.asyncio
+    async def test_judge_api_error_is_caught(self, sample_humane_pattern):
+        """Test that generic API exceptions are handled gracefully."""
+        mock_judge = AsyncMock()
+        mock_judge.generate.side_effect = Exception("API Error 503: Service Unavailable")
+
+        result, completion = await _try_score(
+            model=mock_judge,
+            score_prompt="Test prompt",
+            issue=sample_humane_pattern,
+            temperature=0.0,
+            system_message="Test system message",
+            score_attempts=3,
+        )
+
+        # Should not crash, should return None
+        assert result is None
+        assert mock_judge.generate.call_count == 3  # Should retry
+
+    @pytest.mark.asyncio
+    async def test_judge_connection_error_is_caught(self, sample_humane_pattern):
+        """Test that connection errors are handled gracefully."""
+        mock_judge = AsyncMock()
+        mock_judge.generate.side_effect = ConnectionError("Failed to connect to API")
+
+        result, completion = await _try_score(
+            model=mock_judge,
+            score_prompt="Test prompt",
+            issue=sample_humane_pattern,
+            temperature=0.0,
+            system_message="Test system message",
+            score_attempts=3,
+        )
+
+        # Should not crash, should return None
+        assert result is None
+        assert mock_judge.generate.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_judge_rate_limit_error_is_caught(self, sample_humane_pattern):
+        """Test that rate limit errors are handled gracefully."""
+        mock_judge = AsyncMock()
+        mock_judge.generate.side_effect = Exception("Rate limit exceeded")
+
+        result, completion = await _try_score(
+            model=mock_judge,
+            score_prompt="Test prompt",
+            issue=sample_humane_pattern,
+            temperature=0.0,
+            system_message="Test system message",
+            score_attempts=3,
+        )
+
+        # Should not crash, should return None
+        assert result is None
+        assert mock_judge.generate.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_judge_authentication_error_is_caught(self, sample_humane_pattern):
+        """Test that authentication errors are handled gracefully."""
+        mock_judge = AsyncMock()
+        mock_judge.generate.side_effect = Exception("Authentication failed: Invalid API key")
+
+        result, completion = await _try_score(
+            model=mock_judge,
+            score_prompt="Test prompt",
+            issue=sample_humane_pattern,
+            temperature=0.0,
+            system_message="Test system message",
+            score_attempts=3,
+        )
+
+        # Should not crash, should return None
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_ensemble_one_judge_unavailable_fails_all(self, sample_humane_pattern):
+        """Test that if one judge in ensemble raises exception, entire ensemble fails."""
+        class MockTaskState:
+            input_text = "Test prompt"
+
+            class Output:
+                completion = "Test response"
+
+            output = Output()
+
+        # First judge works fine
+        mock_judge_1 = create_mock_judge_model([
+            '{"severity": 1.0, "reasoning": "Good", "invalid": false}'
+        ])
+
+        # Second judge raises exception
+        mock_judge_2 = AsyncMock()
+        mock_judge_2.generate.side_effect = Exception("Network error")
+        # Need to set __str__ for the error message
+        mock_judge_2.__str__ = lambda self: "mock-judge-2"
+
+        with patch('inspect_ai.model.get_model', side_effect=[mock_judge_1, mock_judge_2]):
+            scorer = overseer(
+                humane_patterns=[sample_humane_pattern],
+                model=[mock_judge_1, mock_judge_2],
+                score_attempts=3,
+            )
+
+            score = await scorer(MockTaskState(), Target(sample_humane_pattern.id))
+
+        # Per current logic, if ANY judge fails, entire ensemble fails
+        assert math.isnan(score.value)
+        assert "Failed to score" in score.explanation
+        assert "failed_model" in score.metadata
+
+    @pytest.mark.asyncio
+    async def test_judge_generic_exception_is_caught(self, sample_humane_pattern):
+        """Test that unexpected exceptions are handled gracefully."""
+        mock_judge = AsyncMock()
+        mock_judge.generate.side_effect = RuntimeError("Unexpected error occurred")
+
+        result, completion = await _try_score(
+            model=mock_judge,
+            score_prompt="Test prompt",
+            issue=sample_humane_pattern,
+            temperature=0.0,
+            system_message="Test system message",
+            score_attempts=3,
+        )
+
+        # Should not crash, should return None
+        assert result is None
+        assert mock_judge.generate.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_judge_exception_then_success(self, sample_humane_pattern):
+        """Test that judge can recover from exception on retry."""
+        mock_judge = AsyncMock()
+
+        # First attempt raises exception, second succeeds
+        mock_judge.generate.side_effect = [
+            Exception("Temporary error"),
+            create_mock_model_output('{"severity": 1.0, "reasoning": "Good", "invalid": false}'),
+        ]
+
+        result, completion = await _try_score(
+            model=mock_judge,
+            score_prompt="Test prompt",
+            issue=sample_humane_pattern,
+            temperature=0.0,
+            system_message="Test system message",
+            score_attempts=3,
+        )
+
+        # Should succeed on second attempt
+        assert result is not None
+        assert result.severity == 1.0
+        assert mock_judge.generate.call_count == 2  # Only needed 2 attempts
