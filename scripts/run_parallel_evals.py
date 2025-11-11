@@ -6,6 +6,11 @@ This script orchestrates running Inspect AI evaluations in parallel,
 organizing logs into subdirectories by task type and model name.
 """
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 import argparse
 import subprocess
 import sys
