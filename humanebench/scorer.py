@@ -332,6 +332,5 @@ async def _try_score(
                 score_attempts,
                 str(e)
             )
-            pass
 
     return None, severity.completion if severity else ""
