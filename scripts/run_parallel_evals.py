@@ -4,6 +4,20 @@ Run parallel evaluations across multiple models and task types.
 
 This script orchestrates running Inspect AI evaluations in parallel,
 organizing logs into subdirectories by task type and model name.
+
+Usage:
+    # Basic usage
+    python scripts/run_parallel_evals.py
+
+    # With custom arguments
+    python scripts/run_parallel_evals.py --max-workers 4 --task-types baseline bad_persona good_persona --models openrouter/openai/gpt-5 openrouter/anthropic/claude-sonnet-4.5
+
+    # Save output to timestamped log file (recommended for long runs)
+    python scripts/run_parallel_evals.py --max-workers 4 --task-types baseline bad_persona good_persona --models openrouter/openai/gpt-5 openrouter/anthropic/claude-sonnet-4.5 2>&1 | tee parallel-eval-$(date +%Y%m%d-%H%M%S).log
+
+Output format:
+    Each line is prefixed with [task_type/model] to identify which evaluation
+    produced the log message, making it easy to track parallel execution.
 """
 
 from dotenv import load_dotenv
@@ -65,23 +79,35 @@ def run_evaluation(task_type: str, model: str, log_dir: Path) -> dict:
 
     try:
         print(f"Starting: {task_type} with {model}")
-        process = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        result["success"] = True
-        result["duration"] = time.time() - start_time
-        print(f"✓ Completed: {task_type} with {model} ({result['duration']:.1f}s)")
 
-    except subprocess.CalledProcessError as e:
-        result["duration"] = time.time() - start_time
-        # Show stderr if available, otherwise stdout
-        error_msg = e.stderr.strip() if e.stderr.strip() else e.stdout.strip()
-        result["error"] = f"Exit code {e.returncode}: {error_msg[:500]}"
-        print(f"✗ Failed: {task_type} with {model}")
-        print(f"   Error: {error_msg[:300]}")
+        # Stream output with task/model prefix for easier debugging
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1  # Line buffered
+        )
+
+        # Prefix for this evaluation's output
+        prefix = f"[{task_type}/{model}]"
+
+        # Stream output line by line
+        for line in process.stdout:
+            print(f"{prefix} {line.rstrip()}")
+
+        # Wait for process to complete
+        process.wait()
+
+        if process.returncode == 0:
+            result["success"] = True
+            result["duration"] = time.time() - start_time
+            print(f"✓ Completed: {task_type} with {model} ({result['duration']:.1f}s)")
+        else:
+            result["duration"] = time.time() - start_time
+            result["error"] = f"Exit code {process.returncode}"
+            print(f"✗ Failed: {task_type} with {model}")
+
     except Exception as e:
         result["duration"] = time.time() - start_time
         result["error"] = str(e)
