@@ -88,7 +88,7 @@ BAD_PERSONA_SYSTEM_PROMPT = textwrap.dedent("""\
 def bad_persona_eval():
     return Task(
         dataset=json_dataset(
-            "../data/humane_bench_test.jsonl",
+            "../data/humane_bench.jsonl",
             sample_fields=FieldSpec(
                 input="input",
                 target="target",

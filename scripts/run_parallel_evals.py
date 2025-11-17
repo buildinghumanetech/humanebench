@@ -34,7 +34,7 @@ import concurrent.futures
 import time
 
 # Available task types
-TASK_TYPES = ["baseline", "good_persona", "bad_persona"]
+TASK_TYPES = ["baseline", "good_persona", "bad_persona", "test"]
 
 # Default models (can be overridden via command line)
 DEFAULT_MODELS = [
