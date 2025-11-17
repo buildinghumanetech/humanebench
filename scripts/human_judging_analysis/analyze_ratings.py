@@ -57,9 +57,10 @@ def load_data(filepath):
     df = pd.read_csv(filepath)
     print(f"\n✓ Loaded {len(df)} ratings")
     print(f"  Raters: {df['rater_name'].nunique()}")
-    print(f"  Samples: {df['sample_id'].nunique()}")
+    print(f"  Samples (prompts): {df['sample_id'].nunique() if 'sample_id' in df.columns else 'N/A'}")
+    print(f"  Observations (responses): {df['observation_id'].nunique() if 'observation_id' in df.columns else 'N/A'}")
     print(f"  Principles: {df['principle'].nunique()}")
-    
+
     return df
 
 
@@ -74,18 +75,18 @@ def calculate_coverage(df):
     for principle in sorted(df['principle'].unique()):
         principle_df = df[df['principle'] == principle]
         
-        # Count ratings per sample
-        sample_counts = principle_df.groupby('sample_id').size()
+        # Count ratings per observation (each observation is a unique model response)
+        observation_counts = principle_df.groupby('observation_id').size()
         
         stats = {
             'principle': principle,
-            'total_samples': len(sample_counts),
+            'total_observations': len(observation_counts),
             'total_ratings': len(principle_df),
-            'samples_2plus_raters': (sample_counts >= 2).sum(),
-            'samples_3plus_raters': (sample_counts >= 3).sum(),
-            'samples_5plus_raters': (sample_counts >= 5).sum(),
-            'avg_ratings_per_sample': sample_counts.mean(),
-            'max_ratings_per_sample': sample_counts.max(),
+            'observations_2plus_raters': (observation_counts >= 2).sum(),
+            'observations_3plus_raters': (observation_counts >= 3).sum(),
+            'observations_5plus_raters': (observation_counts >= 5).sum(),
+            'avg_ratings_per_observation': observation_counts.mean(),
+            'max_ratings_per_observation': observation_counts.max(),
             'unique_raters': principle_df['rater_name'].nunique()
         }
         
@@ -97,18 +98,18 @@ def calculate_coverage(df):
     print("-"*80)
     for _, row in coverage_df.iterrows():
         print(f"\n{row['principle']}")
-        print(f"  Total samples: {row['total_samples']}")
+        print(f"  Total observations: {row['total_observations']}")
         print(f"  Total ratings: {row['total_ratings']}")
-        print(f"  Samples with ≥2 raters: {row['samples_2plus_raters']}")
-        print(f"  Samples with ≥3 raters: {row['samples_3plus_raters']}")
-        print(f"  Avg ratings/sample: {row['avg_ratings_per_sample']:.1f}")
+        print(f"  Observations with ≥2 raters: {row['observations_2plus_raters']}")
+        print(f"  Observations with ≥3 raters: {row['observations_3plus_raters']}")
+        print(f"  Avg ratings/observation: {row['avg_ratings_per_observation']:.1f}")
         print(f"  Unique raters: {row['unique_raters']}")
-        
+
         # Determine if sufficient for IRR
-        if row['samples_2plus_raters'] >= MIN_SAMPLES_FOR_IRR:
-            print(f"  ✓ SUFFICIENT for IRR (≥{MIN_SAMPLES_FOR_IRR} samples with 2+ raters)")
+        if row['observations_2plus_raters'] >= MIN_SAMPLES_FOR_IRR:
+            print(f"  ✓ SUFFICIENT for IRR (≥{MIN_SAMPLES_FOR_IRR} observations with 2+ raters)")
         else:
-            print(f"  ✗ Insufficient for IRR (need {MIN_SAMPLES_FOR_IRR}, have {row['samples_2plus_raters']})")
+            print(f"  ✗ Insufficient for IRR (need {MIN_SAMPLES_FOR_IRR}, have {row['observations_2plus_raters']})")
     
     return coverage_df
 
@@ -159,50 +160,50 @@ def calculate_descriptive_stats(df):
 
 def prepare_irr_matrix(principle_df):
     """Prepare data matrix for IRR calculation (raters × items)"""
-    # Create pivot table: rows = raters, columns = samples
+    # Create pivot table: rows = raters, columns = observations
     # This creates a matrix suitable for Krippendorff's alpha
     pivot = principle_df.pivot_table(
         index='rater_name',
-        columns='sample_id',
+        columns='observation_id',
         values='rating',
         aggfunc='first'  # Use first rating if duplicates (shouldn't happen)
     )
-    
+
     # Convert to numpy array for krippendorff package
     # It expects shape (raters, items) with NaN for missing
     return pivot.values
 
 
 def calculate_percentage_agreement(principle_df):
-    """Calculate simple percentage agreement for samples with multiple raters"""
-    # Get samples with 2+ raters
-    sample_counts = principle_df.groupby('sample_id').size()
-    multi_rated_samples = sample_counts[sample_counts >= 2].index
-    
-    if len(multi_rated_samples) == 0:
+    """Calculate simple percentage agreement for observations with multiple raters"""
+    # Get observations with 2+ raters
+    observation_counts = principle_df.groupby('observation_id').size()
+    multi_rated_observations = observation_counts[observation_counts >= 2].index
+
+    if len(multi_rated_observations) == 0:
         return None, 0
-    
+
     agreements = []
     total_pairs = 0
-    
-    for sample_id in multi_rated_samples:
-        sample_ratings = principle_df[principle_df['sample_id'] == sample_id]['rating'].values
+
+    for observation_id in multi_rated_observations:
+        observation_ratings = principle_df[principle_df['observation_id'] == observation_id]['rating'].values
         
         # Count exact agreements among all pairs
-        n_raters = len(sample_ratings)
+        n_raters = len(observation_ratings)
         for i in range(n_raters):
             for j in range(i+1, n_raters):
                 total_pairs += 1
-                if sample_ratings[i] == sample_ratings[j]:
+                if observation_ratings[i] == observation_ratings[j]:
                     agreements.append(1)
                 else:
                     agreements.append(0)
     
     if total_pairs == 0:
         return None, 0
-    
+
     pct_agreement = (sum(agreements) / total_pairs) * 100
-    return pct_agreement, len(multi_rated_samples)
+    return pct_agreement, len(multi_rated_observations)
 
 
 def calculate_krippendorff_alpha(principle_df, principle_name):
@@ -261,22 +262,22 @@ def calculate_icc(principle_df, principle_name):
     """Calculate ICC(2,k) if sufficient data"""
     if not PINGOUIN_AVAILABLE:
         return None
-    
-    # Need at least 30 samples for ICC reliability
-    sample_counts = principle_df.groupby('sample_id').size()
-    multi_rated_samples = sample_counts[sample_counts >= 2].index
-    
-    if len(multi_rated_samples) < 30:
+
+    # Need at least 30 observations for ICC reliability
+    observation_counts = principle_df.groupby('observation_id').size()
+    multi_rated_observations = observation_counts[observation_counts >= 2].index
+
+    if len(multi_rated_observations) < 30:
         return None
-    
-    # Filter to only multi-rated samples
-    icc_df = principle_df[principle_df['sample_id'].isin(multi_rated_samples)].copy()
-    
+
+    # Filter to only multi-rated observations
+    icc_df = principle_df[principle_df['observation_id'].isin(multi_rated_observations)].copy()
+
     try:
         # Calculate ICC
         icc_result = pg.intraclass_corr(
             data=icc_df,
-            targets='sample_id',
+            targets='observation_id',
             raters='rater_name',
             ratings='rating'
         )
@@ -304,16 +305,16 @@ def calculate_irr_metrics(df, coverage_df):
         
         print(f"\n{principle}")
         print("-"*80)
-        
+
         # Check if sufficient data
-        if row['samples_2plus_raters'] < MIN_SAMPLES_FOR_IRR:
-            print(f"  ✗ Skipping: only {row['samples_2plus_raters']} samples with 2+ raters")
+        if row['observations_2plus_raters'] < MIN_SAMPLES_FOR_IRR:
+            print(f"  ✗ Skipping: only {row['observations_2plus_raters']} observations with 2+ raters")
             print(f"    (need {MIN_SAMPLES_FOR_IRR})")
-            
+
             irr_results.append({
                 'principle': principle,
                 'sufficient_data': False,
-                'n_samples_for_irr': row['samples_2plus_raters'],
+                'n_samples_for_irr': row['observations_2plus_raters'],
                 'krippendorff_alpha': None,
                 'alpha_ci_lower': None,
                 'alpha_ci_upper': None,
@@ -321,9 +322,9 @@ def calculate_irr_metrics(df, coverage_df):
                 'icc_2k': None
             })
             continue
-        
-        print(f"  ✓ Calculating IRR ({row['samples_2plus_raters']} samples with 2+ raters)")
-        
+
+        print(f"  ✓ Calculating IRR ({row['observations_2plus_raters']} observations with 2+ raters)")
+
         principle_df = df[df['principle'] == principle]
         
         # Calculate percentage agreement
@@ -347,7 +348,7 @@ def calculate_irr_metrics(df, coverage_df):
         irr_results.append({
             'principle': principle,
             'sufficient_data': True,
-            'n_samples_for_irr': row['samples_2plus_raters'],
+            'n_samples_for_irr': row['observations_2plus_raters'],
             'krippendorff_alpha': alpha,
             'alpha_ci_lower': ci_lower,
             'alpha_ci_upper': ci_upper,
@@ -386,21 +387,22 @@ def generate_summary_report(df, coverage_df, desc_df, irr_df):
     print("─"*80)
     print(f"Total ratings collected: {len(df)}")
     print(f"Number of raters: {df['rater_name'].nunique()}")
-    print(f"Unique samples evaluated: {df['sample_id'].nunique()}")
+    print(f"Unique prompts evaluated: {df['sample_id'].nunique() if 'sample_id' in df.columns else 'N/A'}")
+    print(f"Unique observations evaluated: {df['observation_id'].nunique() if 'observation_id' in df.columns else 'N/A'}")
     print(f"Principles evaluated: {df['principle'].nunique()}")
     print(f"Data sources: {', '.join(df['source'].unique())}")
-    
+
     print("\n" + "─"*80)
     print("DATA QUALITY")
     print("─"*80)
-    
+
     # Coverage summary
     total_principles = len(coverage_df)
-    principles_with_irr = (coverage_df['samples_2plus_raters'] >= MIN_SAMPLES_FOR_IRR).sum()
-    
+    principles_with_irr = (coverage_df['observations_2plus_raters'] >= MIN_SAMPLES_FOR_IRR).sum()
+
     print(f"Principles with sufficient overlap for IRR: {principles_with_irr}/{total_principles}")
-    
-    avg_overlap = coverage_df['samples_2plus_raters'].mean()
+
+    avg_overlap = coverage_df['observations_2plus_raters'].mean()
     print(f"Average samples with 2+ raters per principle: {avg_overlap:.1f}")
     
     print("\n" + "─"*80)

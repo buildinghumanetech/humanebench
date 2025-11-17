@@ -33,7 +33,7 @@ def baseline_eval():
             humane_patterns=None,  # Evaluate against all humane patterns
             model=[
                 "openrouter/anthropic/claude-4.5-sonnet",
-                "openrouter/openai/gpt-4.1",
+                "openrouter/openai/gpt-5.1",
                 "openrouter/google/gemini-2.5-pro"
             ],
             temperature=0.0,
