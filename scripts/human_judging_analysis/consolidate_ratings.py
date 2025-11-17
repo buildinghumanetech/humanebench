@@ -17,7 +17,7 @@ from datetime import datetime
 # CONFIGURATION - Edit these paths for your system
 # ============================================================================
 
-SPREADSHEET_DIR = "/Users/asamandari1/Downloads/human-eval-spreadsheets"  # Directory containing rater .xlsx files
+SPREADSHEET_DIR = "/Users/asamandari1/Downloads/redownloaded_human_evals"  # Directory containing rater .xlsx files
 OUTPUT_DIR = "./output"              # Where to save consolidated CSV
 CACHE_DIR = "./cache"                # Where to cache API responses
 ENV_FILE = "../../.env"              # Path to .env file with Langfuse credentials
@@ -128,7 +128,16 @@ def langfuse_obj_to_dict(obj):
     if isinstance(obj, dict):
         return obj
 
-    # Try to convert using __dict__
+    # Handle enum types specifically (they have __members__ on their class)
+    # Do this BEFORE checking for value attribute to avoid catching non-enum objects
+    if hasattr(obj, '__class__') and hasattr(obj.__class__, '__members__'):
+        # This is an enum - return its value or name
+        if hasattr(obj, 'value'):
+            return obj.value
+        elif hasattr(obj, 'name'):
+            return obj.name
+
+    # Try to convert using __dict__ (for regular objects like scores, observations, etc.)
     if hasattr(obj, '__dict__'):
         result = {}
         for key, value in obj.__dict__.items():
@@ -137,7 +146,7 @@ def langfuse_obj_to_dict(obj):
             # Recursively convert nested objects
             if isinstance(value, list):
                 result[key] = [langfuse_obj_to_dict(item) for item in value]
-            elif hasattr(value, '__dict__'):
+            elif hasattr(value, '__dict__') or (hasattr(value, '__class__') and hasattr(value.__class__, '__members__')):
                 result[key] = langfuse_obj_to_dict(value)
             else:
                 result[key] = value
@@ -389,12 +398,14 @@ def load_langfuse_ratings():
                     if isinstance(observation, dict):
                         metadata = observation.get('metadata', {})
                         sample_id = metadata.get('sample_id') if isinstance(metadata, dict) else None
+                        model = metadata.get('model') if isinstance(metadata, dict) else None
                         user_input = observation.get('input')
                         ai_output = observation.get('output')
                         trace_id = observation.get('trace_id')
                     else:
                         metadata = observation.metadata if hasattr(observation, 'metadata') else {}
                         sample_id = metadata.get('sample_id') if isinstance(metadata, dict) else None
+                        model = metadata.get('model') if isinstance(metadata, dict) else None
                         user_input = observation.input if hasattr(observation, 'input') else None
                         ai_output = observation.output if hasattr(observation, 'output') else None
                         trace_id = observation.trace_id if hasattr(observation, 'trace_id') else None
@@ -447,6 +458,8 @@ def load_langfuse_ratings():
                                 if numeric_rating is not None:
                                     rating_record = {
                                         'sample_id': sample_id,
+                                        'observation_id': object_id,
+                                        'model': model,
                                         'principle': principle,
                                         'rater_name': rater_name,
                                         'rating': numeric_rating,
@@ -506,18 +519,58 @@ def deduplicate_ratings(spreadsheet_df, langfuse_df):
     print("\n" + "="*80)
     print("DEDUPLICATING RATINGS")
     print("="*80)
-    
+
+    # Build observation_id lookup from Langfuse data (ai_output -> observation_id)
+    print("\nBuilding observation_id lookup from Langfuse data...")
+    observation_lookup = {}
+    if not langfuse_df.empty and 'observation_id' in langfuse_df.columns:
+        for _, row in langfuse_df.iterrows():
+            ai_output = row['ai_output']
+            obs_id = row['observation_id']
+            if ai_output and obs_id:
+                # Use ai_output as key for matching
+                observation_lookup[ai_output] = obs_id
+        print(f"  Created lookup with {len(observation_lookup)} unique AI outputs")
+
+    # Assign observation_ids to spreadsheet entries by matching ai_output
+    if not spreadsheet_df.empty:
+        print("\nMatching spreadsheet entries to Langfuse observations...")
+        matched = 0
+        unmatched = 0
+
+        # Create observation_id and model columns if they don't exist
+        if 'observation_id' not in spreadsheet_df.columns:
+            spreadsheet_df['observation_id'] = None
+        if 'model' not in spreadsheet_df.columns:
+            spreadsheet_df['model'] = None
+
+        for idx, row in spreadsheet_df.iterrows():
+            ai_output = row['ai_output']
+            if ai_output in observation_lookup:
+                spreadsheet_df.at[idx, 'observation_id'] = observation_lookup[ai_output]
+                matched += 1
+            else:
+                # Create synthetic observation_id for unmatched entries
+                # Use hash of ai_output to ensure consistency
+                import hashlib
+                obs_hash = hashlib.md5(str(ai_output).encode()).hexdigest()[:16]
+                spreadsheet_df.at[idx, 'observation_id'] = f"spreadsheet_{obs_hash}"
+                unmatched += 1
+
+        print(f"  Matched: {matched} entries")
+        print(f"  Unmatched (synthetic ID created): {unmatched} entries")
+
     # Combine both dataframes
     combined_df = pd.concat([spreadsheet_df, langfuse_df], ignore_index=True)
-    
+
     print(f"\nTotal ratings before deduplication: {len(combined_df)}")
     print(f"  From spreadsheets: {len(spreadsheet_df)}")
     print(f"  From Langfuse: {len(langfuse_df)}")
-    
-    # Create deduplication key
+
+    # Create deduplication key using observation_id instead of sample_id
     combined_df['dedup_key'] = (
-        combined_df['rater_name'].str.lower() + '|' + 
-        combined_df['sample_id'].astype(str) + '|' + 
+        combined_df['rater_name'].str.lower() + '|' +
+        combined_df['observation_id'].astype(str) + '|' +
         combined_df['principle'].str.lower()
     )
     
