@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""
+Create candlestick/range chart showing bidirectional steerability of LLMs.
+Shows how far each model can be steered toward humane (+) vs harmful (-) behavior.
+"""
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import pandas as pd
+import numpy as np
+import os
+
+# Configuration
+FIGURE_DIR = 'figures'
+os.makedirs(FIGURE_DIR, exist_ok=True)
+
+# Color scheme (colorblind-friendly)
+COLORS = {
+    'red': '#DC2626',      # Red for negative steerability
+    'green': '#16A34A',    # Green for positive steerability
+    'baseline': '#000000', # Black for baseline dot
+    'point_five_line': '#9CA3AF', # Gray for acceptable humaneness threshold
+    'zero_line': '#000000', # Black for anti-humane threshold
+    'grid': '#E5E7EB',     # Light gray for grid
+    'background': '#FFFFFF'
+}
+
+def create_steerability_chart(compact=False):
+    """Create the steerability candlestick chart."""
+
+    # Load data
+    df = pd.read_csv('steerability_comparison.csv')
+
+    # Sort by bad_persona_score (descending) - robust models at top
+    df = df.sort_values('bad_persona_score', ascending=False, na_position='last')
+
+    # For compact version, take top 10 models
+    if compact:
+        df = df.head(10)
+
+    n_models = len(df)
+
+    # Create figure with appropriate size
+    fig_height = max(8, n_models * 0.6) if not compact else 8
+    fig, ax = plt.subplots(figsize=(14, fig_height))
+
+    # Set background color
+    ax.set_facecolor(COLORS['background'])
+    fig.patch.set_facecolor(COLORS['background'])
+
+    # Track category boundaries for separators
+    robust_end = -1
+    moderate_end = -1
+
+    # Plot each model
+    for i, (idx, row) in enumerate(df.iterrows()):
+        y_pos = n_models - i - 1  # Invert so top is first
+
+        baseline = row['baseline_score']
+        good = row['good_persona_score']
+        bad = row['bad_persona_score']
+        status = row['robustness_status']
+
+        # Track category boundaries
+        if status == 'Robust':
+            robust_end = y_pos
+        elif status == 'Moderate':
+            moderate_end = y_pos
+
+        # Draw green bar (baseline → good persona)
+        if pd.notna(baseline) and pd.notna(good):
+            ax.plot([baseline, good], [y_pos, y_pos],
+                   color=COLORS['green'], linewidth=4, solid_capstyle='butt', zorder=2)
+            # Add cap at end
+            ax.plot([good], [y_pos], marker='|', markersize=10,
+                   color=COLORS['green'], markeredgewidth=2, zorder=2)
+
+        # Draw red bar (baseline → bad persona)
+        if pd.notna(baseline) and pd.notna(bad):
+            ax.plot([bad, baseline], [y_pos, y_pos],
+                   color=COLORS['red'], linewidth=4, solid_capstyle='butt', zorder=2)
+            # Add cap at end
+            ax.plot([bad], [y_pos], marker='|', markersize=10,
+                   color=COLORS['red'], markeredgewidth=2, zorder=2)
+
+        # Draw baseline dot (on top)
+        if pd.notna(baseline):
+            ax.plot([baseline], [y_pos], marker='o', markersize=10,
+                   color=COLORS['baseline'], markeredgecolor='white',
+                   markeredgewidth=1.5, zorder=3)
+
+    # Add vertical line at zero (harmful threshold)
+    ax.axvline(x=0, color=COLORS['zero_line'], linewidth=2,
+              linestyle='--', alpha=0.7, zorder=1, label='Harmful Threshold')
+
+    # Add vertical line at +0.5 (acceptable humaneness threshold)
+    ax.axvline(x=0.5, color=COLORS['point_five_line'], linewidth=2,
+              linestyle='--', alpha=0.7, zorder=1, label='Harmful Threshold')
+
+    # Add category separators
+    if robust_end >= 0 and robust_end < n_models - 1:
+        ax.axhline(y=robust_end - 0.5, color='#6B7280', linewidth=1,
+                  linestyle='-', alpha=0.3, zorder=1)
+    if moderate_end >= 0 and moderate_end < n_models - 1:
+        ax.axhline(y=moderate_end - 0.5, color='#6B7280', linewidth=1,
+                  linestyle='-', alpha=0.3, zorder=1)
+
+    # Configure axes
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(-0.5, n_models - 0.5)
+
+    # X-axis
+    ax.set_xlabel('HumaneScore', fontsize=12, fontweight='bold')
+    ax.set_xticks([-1.0, -0.5, 0.0, 0.5, 1.0])
+    ax.set_xticklabels(['-1.0\n(Harmful)', '-0.5', '0.0', '+0.5', '+1.0\n(Humane)'])
+    ax.tick_params(axis='x', labelsize=10)
+
+    # Y-axis - model names
+    model_labels = df['model'].tolist()
+    model_labels.reverse()  # Reverse to match y_pos inversion
+    ax.set_yticks(range(n_models))
+    ax.set_yticklabels(model_labels, fontsize=10)
+    ax.tick_params(axis='y', length=0)  # Remove tick marks
+
+    # Add category labels on right side
+    robust_models = df[df['robustness_status'] == 'Robust']
+    moderate_models = df[df['robustness_status'] == 'Moderate']
+    failed_models = df[df['robustness_status'] == 'Failed']
+
+    label_x = 1.05  # Position outside plot area
+    if len(robust_models) > 0:
+        robust_y = n_models - df[df['robustness_status'] == 'Robust'].index.tolist()[0] - 1
+        ax.text(label_x, robust_y, f'✓ Robust ({len(robust_models)})',
+               transform=ax.get_yaxis_transform(), fontsize=9,
+               color='#059669', fontweight='bold', va='center')
+
+    if len(moderate_models) > 0:
+        moderate_y = n_models - df[df['robustness_status'] == 'Moderate'].index.tolist()[0] - 1
+        ax.text(label_x, moderate_y, f'⚠ Moderate ({len(moderate_models)})',
+               transform=ax.get_yaxis_transform(), fontsize=9,
+               color='#D97706', fontweight='bold', va='center')
+
+    if len(failed_models) > 0:
+        failed_y = n_models - df[df['robustness_status'] == 'Failed'].index.tolist()[0] - 1
+        ax.text(label_x, failed_y, f'✗ Failed ({len(failed_models)})',
+               transform=ax.get_yaxis_transform(), fontsize=9,
+               color='#DC2626', fontweight='bold', va='center')
+
+    # Grid
+    ax.grid(True, axis='x', alpha=0.2, color=COLORS['grid'], linewidth=0.5, zorder=0)
+    ax.set_axisbelow(True)
+
+    # Remove spines
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+
+    # Title and subtitle
+    title_text = 'The Steerability Asymmetry Problem'
+    subtitle_text = 'All models improve with humane prompts (+12% avg), but 71% flip to harmful behavior under adversarial prompts'
+
+    fig.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
+    ax.set_title(subtitle_text, fontsize=11, pad=20, color='#374151')
+
+    # Legend
+    legend_elements = [
+        mpatches.Patch(facecolor=COLORS['green'], label='→ Good Persona (humane-aligned prompt)'),
+        mpatches.Patch(facecolor=COLORS['baseline'], label='● Baseline (default behavior)'),
+        mpatches.Patch(facecolor=COLORS['red'], label='← Bad Persona (adversarial prompt)'),
+        mpatches.Patch(facecolor='none', edgecolor=COLORS['zero_line'],
+                      linestyle='--', label='| Harmful Threshold (HumaneScore = 0)')
+    ]
+    ax.legend(handles=legend_elements, loc='upper left', fontsize=9,
+             frameon=True, fancybox=False, shadow=False)
+
+    # Adjust layout
+    plt.tight_layout()
+
+    return fig, ax
+
+def save_chart(fig, filename_base):
+    """Save chart in multiple formats."""
+    print(f"Saving {filename_base}...")
+
+    # PNG (high resolution)
+    fig.savefig(f'{FIGURE_DIR}/{filename_base}.png',
+               dpi=300, bbox_inches='tight', facecolor='white')
+
+    # SVG (vector)
+    fig.savefig(f'{FIGURE_DIR}/{filename_base}.svg',
+               bbox_inches='tight', facecolor='white')
+
+    # PDF (publication)
+    fig.savefig(f'{FIGURE_DIR}/{filename_base}.pdf',
+               bbox_inches='tight', facecolor='white')
+
+    print(f"  ✓ Saved PNG (300 DPI)")
+    print(f"  ✓ Saved SVG (vector)")
+    print(f"  ✓ Saved PDF (publication)")
+
+def create_alt_text():
+    """Generate accessibility alt-text description."""
+    df = pd.read_csv('steerability_comparison.csv')
+    df = df.sort_values('bad_persona_score', ascending=False, na_position='last')
+
+    robust = df[df['robustness_status'] == 'Robust']
+    moderate = df[df['robustness_status'] == 'Moderate']
+    failed = df[df['robustness_status'] == 'Failed']
+
+    alt_text = f"""Steerability range chart showing 14 AI models and their response to humane-aligned and adversarial prompts.
+
+The chart displays each model as a horizontal line showing:
+- Baseline HumaneScore (black dot): Default behavior without prompting
+- Good Persona (green bar extending right): Improvement with humane-aligned prompts
+- Bad Persona (red bar extending left): Degradation with adversarial prompts
+
+Key findings:
+- All 14 models improve with humane prompts (average +12%)
+- 71% of models (10/14) flip to harmful behavior (negative scores) under adversarial prompts
+- Only 21% (3/14) maintain positive scores under adversarial pressure: {', '.join(robust['model'].tolist())}
+
+Models are sorted by adversarial robustness:
+- Robust models ({len(robust)}): Maintain positive scores under adversarial prompts
+- Moderate models ({len(moderate)}): Degrade significantly but remain positive
+- Failed models ({len(failed)}): Flip to harmful behavior (negative scores)
+
+The vertical dashed line at HumaneScore=0 marks the threshold between humane and harmful behavior.
+"""
+
+    with open(f'{FIGURE_DIR}/steerability_candlestick_alttext.txt', 'w') as f:
+        f.write(alt_text)
+
+    print(f"  ✓ Saved alt-text description")
+
+def main():
+    print("\n" + "="*60)
+    print("Creating Steerability Candlestick Charts")
+    print("="*60 + "\n")
+
+    # Create full version
+    print("Creating full version (14 models)...")
+    fig_full, ax_full = create_steerability_chart(compact=False)
+    save_chart(fig_full, 'steerability_candlestick')
+    plt.close(fig_full)
+
+    # Create compact version
+    print("\nCreating compact version (10 models)...")
+    fig_compact, ax_compact = create_steerability_chart(compact=True)
+    save_chart(fig_compact, 'steerability_candlestick_compact')
+    plt.close(fig_compact)
+
+    # Create alt-text
+    print("\nCreating accessibility alt-text...")
+    create_alt_text()
+
+    print("\n" + "="*60)
+    print("✅ All visualizations created successfully!")
+    print("="*60)
+    print(f"\nOutputs in {FIGURE_DIR}/:")
+    print("  - steerability_candlestick.png (300 DPI)")
+    print("  - steerability_candlestick.svg (vector)")
+    print("  - steerability_candlestick.pdf (publication)")
+    print("  - steerability_candlestick_compact.png (10 models)")
+    print("  - steerability_candlestick_compact.svg")
+    print("  - steerability_candlestick_compact.pdf")
+    print("  - steerability_candlestick_alttext.txt")
+    print()
+
+if __name__ == "__main__":
+    main()
