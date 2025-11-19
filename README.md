@@ -325,4 +325,8 @@ Here is a video of Humane Tech member Jack Senechal running this Inspect framewo
 [![Inspect LLM Demo](https://p144.p3.n0.cdn.zight.com/items/6qupqLxX/293550a6-cea8-4cc4-bb0a-f7f6f530c577.png)](https://drodio.wistia.com/medias/njfoa1856w)
 
 ## Acknowledgements
-We thank [DarkBench](https://github.com/apartresearch/DarkBench/tree/main) open-sourcing their code and dataset, which offered significant guidance for our programmers in working with the Inspect AI framework.
+We thank the [DarkBench](https://github.com/apartresearch/DarkBench/tree/main) authors for open-sourcing their code and dataset, which offered significant guidance for our programmers in working with the Inspect AI framework.
+
+We thank Katy Graf (@MaeyekoGit) and Tenzin Tseten Changten (@ttch8752) for significant contributions to the codebase.
+
+We thank the following members of the Building Humane Tech community who helped us refine the human rating process: John Brennan, Selina Bian, Amarpreet Kaur, Manisha Jain, Sahithi, Julia Zhou, Sachin Keswani, Gabija Parnarauskaite, Lydia Huang, Lenz Dagohoy, Diego Lopez, Alan Rainbow, Belinda, Yaoli Mao, Wayne Boatwright, Yelyzaveta Radionova, Mark Lovell, Seth Caldwell, Evode Manirahari, Manjul Sachan, Value Economy, Travis F W
