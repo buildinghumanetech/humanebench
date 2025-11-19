@@ -1,4 +1,5 @@
 ./claude
+CLAUDE.md
 data_generation/embeddings_cache/
 .DS_Store
 scripts/human_judging_analysis/cache
