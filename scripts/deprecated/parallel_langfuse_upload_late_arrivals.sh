@@ -5,11 +5,11 @@
 # samples from a reference user who already completed their uploads.
 #
 # Usage:
-#   bash scripts/parallel_langfuse_upload_late_arrivals.sh erika.csv "Andalib Samandari"
+#   bash scripts/parallel_langfuse_upload_late_arrivals.sh erika.csv "rater-1"
 #
 # Arguments:
 #   queue_ids.csv: Path to CSV file with user queue IDs (must include reference user)
-#   reference_user: Name of user whose samples to copy (e.g., "Andalib Samandari")
+#   reference_user: Name of user whose samples to copy (e.g., "rater-1")
 
 # Check arguments
 if [ -z "$1" ] || [ -z "$2" ]; then

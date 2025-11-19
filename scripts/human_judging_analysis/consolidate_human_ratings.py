@@ -63,13 +63,13 @@ def load_rater_file(file_path: Path) -> pd.DataFrame:
     Returns:
         DataFrame with processed ratings
     """
-    # Extract rater name from filename (e.g., "andalib" from "andalib_ratings.csv")
+    # Extract rater name from filename (e.g., "rater-1" from "rater-1_ratings.csv")
     rater_name = file_path.stem.replace('_ratings', '').replace('_partial', '')
 
     # Read CSV
     df = pd.read_csv(file_path)
 
-    # Normalize column names (jack's file has "rating (rubric)" instead of "rating")
+    # Normalize column names (rater-3's file has "rating (rubric)" instead of "rating")
     if 'rating (rubric)' in df.columns:
         df = df.rename(columns={'rating (rubric)': 'rating'})
 

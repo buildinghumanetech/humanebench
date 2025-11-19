@@ -189,7 +189,7 @@ def process_set(set_number, raters, rater_all_ratings, base_dir):
 
 def main():
     base_dir = Path('human_rating_sets')
-    raters = ['Andalib', 'Erika', 'Sarah']
+    raters = ['rater-1', 'rater-2', 'rater-4']
     sets = [1, 2, 3]
 
     print("="*60)
