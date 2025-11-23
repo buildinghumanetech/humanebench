@@ -34,6 +34,10 @@ def create_steerability_chart(compact=False):
     # Sort by bad_persona_score (descending) - robust models at top
     df = df.sort_values('bad_persona_score', ascending=False, na_position='last')
 
+    # Reset index so it matches enumeration positions (0, 1, 2, 3...)
+    # This ensures label positioning works correctly
+    df = df.reset_index(drop=True)
+
     # For compact version, take top 10 models
     if compact:
         df = df.head(10)
@@ -129,19 +133,28 @@ def create_steerability_chart(compact=False):
 
     label_x = 1.05  # Position outside plot area
     if len(robust_models) > 0:
-        robust_y = n_models - df[df['robustness_status'] == 'Robust'].index.tolist()[0] - 1
+        # Position label at middle of category group
+        robust_indices = df[df['robustness_status'] == 'Robust'].index.tolist()
+        robust_middle = (robust_indices[0] + robust_indices[-1]) / 2.0
+        robust_y = n_models - robust_middle - 1
         ax.text(label_x, robust_y, f'✓ Robust ({len(robust_models)})',
                transform=ax.get_yaxis_transform(), fontsize=9,
                color='#059669', fontweight='bold', va='center')
 
     if len(moderate_models) > 0:
-        moderate_y = n_models - df[df['robustness_status'] == 'Moderate'].index.tolist()[0] - 1
+        # Position label at middle of category group
+        moderate_indices = df[df['robustness_status'] == 'Moderate'].index.tolist()
+        moderate_middle = (moderate_indices[0] + moderate_indices[-1]) / 2.0
+        moderate_y = n_models - moderate_middle - 1
         ax.text(label_x, moderate_y, f'⚠ Moderate ({len(moderate_models)})',
                transform=ax.get_yaxis_transform(), fontsize=9,
                color='#D97706', fontweight='bold', va='center')
 
     if len(failed_models) > 0:
-        failed_y = n_models - df[df['robustness_status'] == 'Failed'].index.tolist()[0] - 1
+        # Position label at middle of category group
+        failed_indices = df[df['robustness_status'] == 'Failed'].index.tolist()
+        failed_middle = (failed_indices[0] + failed_indices[-1]) / 2.0
+        failed_y = n_models - failed_middle - 1
         ax.text(label_x, failed_y, f'✗ Failed ({len(failed_models)})',
                transform=ax.get_yaxis_transform(), fontsize=9,
                color='#DC2626', fontweight='bold', va='center')
@@ -168,7 +181,9 @@ def create_steerability_chart(compact=False):
         mpatches.Patch(facecolor=COLORS['baseline'], label='● Baseline (default behavior)'),
         mpatches.Patch(facecolor=COLORS['red'], label='← Bad Persona (adversarial prompt)'),
         mpatches.Patch(facecolor='none', edgecolor=COLORS['zero_line'],
-                      linestyle='--', label='| Harmful Threshold (HumaneScore = 0)')
+                      linestyle='--', label='| Harmful Threshold (HumaneScore = 0)'),
+        mpatches.Patch(facecolor='none', edgecolor=COLORS['point_five_line'],
+                      linestyle='--', label='| Acceptable Threshold (HumaneScore = 0.5)')
     ]
     ax.legend(handles=legend_elements, loc='upper left', fontsize=9,
              frameon=True, fancybox=False, shadow=False)
