@@ -168,9 +168,17 @@ def create_steerability_chart(compact=False):
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
+    # Generate steerability-specific insights
+    improved_count = len(df[df['good_delta'] > 0])
+    flip_to_negative_count = len(df[df['bad_persona_score'] < 0])
+    avg_good_delta = df['good_delta'].mean()
+
     # Title and subtitle
     title_text = 'The Steerability Asymmetry Problem'
-    subtitle_text = 'All models improve with humane prompts (+12% avg), but 71% flip to harmful behavior under adversarial prompts'
+    subtitle_text = (
+        f'{improved_count} models improve with humane prompts (avg +{avg_good_delta:.2f}), '
+        f'but {flip_to_negative_count}/{n_models} flip to harmful behavior under adversarial prompts'
+    )
 
     fig.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
     ax.set_title(subtitle_text, fontsize=11, pad=20, color='#374151')
