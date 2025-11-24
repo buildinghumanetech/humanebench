@@ -4,6 +4,7 @@ Extract comprehensive scores from all .eval files across baseline, good_persona,
 Generates CSV files with per-principle and overall scores for all 13 models.
 """
 
+import argparse
 import os
 import json
 from pathlib import Path
@@ -90,7 +91,19 @@ def find_eval_files(base_dir):
     return eval_files
 
 def main():
-    logs_dir = Path("/Users/asamandari1/git/humanebench/logs")
+    parser = argparse.ArgumentParser(description="Extract scores from HumaneBench eval logs")
+    parser.add_argument(
+        "--logs-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "logs",
+        help="Directory containing persona subdirectories (baseline/good_persona/bad_persona)",
+    )
+    args = parser.parse_args()
+
+    logs_dir = args.logs_dir.expanduser().resolve()
+
+    if not logs_dir.exists():
+        raise FileNotFoundError(f"Logs directory not found: {logs_dir}")
     personas = ["baseline", "good_persona", "bad_persona"]
 
     # Collect all data
