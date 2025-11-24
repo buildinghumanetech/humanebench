@@ -9,7 +9,7 @@ import pandas as pd
 # Define model progressions for each lab
 LAB_PROGRESSIONS = {
     "Anthropic": ["claude-sonnet-4", "claude-sonnet-4.5", "claude-opus-4.1"],
-    "OpenAI": ["gpt-4o-2024-11-20", "gpt-4.1", "gpt-5"],
+    "OpenAI": ["gpt-4o-2024-11-20", "gpt-4.1", "gpt-5", "gpt-5.1"],
     "Google": ["gemini-2.0-flash-001", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-pro-preview"],
     "Meta": ["llama-3.1-405b-instruct", "llama-4-maverick"]
 }
