@@ -23,6 +23,8 @@ CELL_WIDTH = 80
 CELL_HEIGHT = 30
 CELL_MARGIN = 4
 LABEL_HEIGHT = 150
+# Extra visual gap after HumaneScore to separate it from per-principle columns.
+EXTRA_GAP_AFTER_HUMANE = 24
 
 # Principle ordering for column layout and labels (no details needed; website handles tooltips).
 PRINCIPLES: List[Dict[str, str]] = [
@@ -112,9 +114,17 @@ def load_models(data_dir: Path, dataset: str) -> Dict[str, Dict[str, float]]:
 
 
 def position_for_cell(row: int, col: int) -> CellPosition:
-    x = MODEL_NAME_WIDTH + col * (CELL_WIDTH + CELL_MARGIN)
+    x = column_x(col)
     y = row * (CELL_HEIGHT + CELL_MARGIN)
     return CellPosition(x=x, y=y)
+
+
+def column_x(col_index: int) -> float:
+    """Compute x position for a given column index, adding an extra gap after the first column (HumaneScore)."""
+    base = MODEL_NAME_WIDTH + col_index * (CELL_WIDTH + CELL_MARGIN)
+    if col_index > 0:
+        base += EXTRA_GAP_AFTER_HUMANE
+    return base
 
 
 def build_svg(
@@ -128,8 +138,14 @@ def build_svg(
     models_count = len(models_list)
     principles_count = len(principles_list)
 
-    svg_width = MODEL_NAME_WIDTH + principles_count * (CELL_WIDTH + CELL_MARGIN)
+    svg_width = (
+        MODEL_NAME_WIDTH
+        + principles_count * CELL_WIDTH
+        + (principles_count - 1) * CELL_MARGIN
+        + EXTRA_GAP_AFTER_HUMANE
+    )
     svg_height = models_count * (CELL_HEIGHT + CELL_MARGIN) + LABEL_HEIGHT
+    grid_height = (models_count - 1) * (CELL_HEIGHT + CELL_MARGIN) + CELL_HEIGHT
 
     lines: List[str] = []
     lines.append('<?xml version="1.0" encoding="UTF-8"?>')
@@ -180,19 +196,30 @@ def build_svg(
                 f'  <text x="{text_x}" y="{text_y}" '
                 f'class="font-weight-bold text-caption" text-anchor="middle" '
                 f'dominant-baseline="middle">{score_str}</text>'
-            )
+        )
 
     label_base_y = models_count * (CELL_HEIGHT + CELL_MARGIN) + 10
     for index, category in enumerate(principles_list):
-        text_x = MODEL_NAME_WIDTH + index * (CELL_WIDTH + CELL_MARGIN) + CELL_WIDTH / 2
+        text_x = column_x(index) + CELL_WIDTH / 2
+        label_class = "text-caption font-weight-medium"
+        if category["id"] == "HumaneScore":
+            label_class += " font-weight-bold"
         lines.append(
             f'  <text x="{text_x}" y="{label_base_y}" '
             f'text-anchor="end" dominant-baseline="middle" '
             f'transform="rotate(-45, {text_x}, {label_base_y})" '
-            f'class="text-caption font-weight-medium">'
+            f'class="{label_class}">'
             f"{escape(category['name'])}"
             "</text>"
         )
+
+    # Add a visual separator after the HumaneScore column.
+    gap_after_humane = CELL_MARGIN + EXTRA_GAP_AFTER_HUMANE
+    separator_x = MODEL_NAME_WIDTH + CELL_WIDTH + gap_after_humane / 2
+    lines.append(
+        f'  <line x1="{separator_x}" y1="0" x2="{separator_x}" y2="{grid_height}" '
+        f'stroke="#BDBDBD" stroke-width="1" opacity="0.9" />'
+    )
 
     lines.append("</svg>")
     return "\n".join(lines)
