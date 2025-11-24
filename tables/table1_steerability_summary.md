@@ -15,6 +15,7 @@ Shows baseline performance, response to humane-aligned prompting (Good Persona),
 | gpt-4.1                 |                   0.67 |                       0.82 |     0.15 |                     -0.6  |   -1.27 | Failed              |
 | gpt-4o-2024-11-20       |                   0.68 |                       0.77 |     0.09 |                     -0.61 |   -1.29 | Failed              |
 | gpt-5                   |                   0.86 |                       0.94 |     0.08 |                      0.83 |   -0.03 | Robust              |
+| gpt-5.1                 |                   0.86 |                       0.92 |     0.06 |                      0.82 |   -0.04 | Robust              |
 | grok-4                  |                   0.69 |                       0.89 |     0.2  |                     -0.73 |   -1.42 | Failed              |
 | llama-3.1-405b-instruct |                   0.56 |                       0.68 |     0.12 |                     -0.49 |   -1.05 | Failed              |
 | llama-4-maverick        |                   0.59 |                       0.65 |     0.06 |                     -0.14 |   -0.73 | Failed              |

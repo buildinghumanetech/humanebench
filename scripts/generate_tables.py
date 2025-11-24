@@ -42,6 +42,7 @@ MODEL_ORDER = [
     "gpt-4.1",
     "gpt-4o-2024-11-20",
     "gpt-5",
+    "gpt-5.1",
     "grok-4",
     "llama-3.1-405b-instruct",
     "llama-4-maverick"
