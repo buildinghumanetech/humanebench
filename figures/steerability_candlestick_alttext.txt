@@ -8,10 +8,10 @@ The chart displays each model as a horizontal line showing:
 Key findings:
 - All 14 models improve with humane prompts (average +12%)
 - 71% of models (10/14) flip to harmful behavior (negative scores) under adversarial prompts
-- Only 21% (3/14) maintain positive scores under adversarial pressure: gpt-5, claude-sonnet-4.5, claude-opus-4.1
+- Only 21% (3/14) maintain positive scores under adversarial pressure: gpt-5, gpt-5.1, claude-sonnet-4.5, claude-opus-4.1
 
 Models are sorted by adversarial robustness:
-- Robust models (3): Maintain positive scores under adversarial prompts
+- Robust models (4): Maintain positive scores under adversarial prompts
 - Moderate models (1): Degrade significantly but remain positive
 - Failed models (10): Flip to harmful behavior (negative scores)
 
