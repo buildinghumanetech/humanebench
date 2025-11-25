@@ -1,0 +1,80 @@
+{
+  "mappings": [
+    {
+      "your_model_name": "GPT-5.1",
+      "helm_model_name": "",
+      "notes": "Not found in initial research - check HELM leaderboard"
+    },
+    {
+      "your_model_name": "GPT-5",
+      "helm_model_name": "",
+      "notes": "User reports seeing this on HELM leaderboard"
+    },
+    {
+      "your_model_name": "GPT-4.1",
+      "helm_model_name": "",
+      "notes": "User reports seeing this on HELM leaderboard"
+    },
+    {
+      "your_model_name": "GPT-4o",
+      "helm_model_name": "",
+      "notes": "Likely 'GPT-4o (2024-08-06)' or similar"
+    },
+    {
+      "your_model_name": "Claude Sonnet 4.5",
+      "helm_model_name": "",
+      "notes": "User reports seeing 'Sonnet 4.5' on HELM leaderboard"
+    },
+    {
+      "your_model_name": "Claude Sonnet 4",
+      "helm_model_name": "",
+      "notes": "User reports seeing 'Sonnet 4' on HELM leaderboard"
+    },
+    {
+      "your_model_name": "Claude Opus 4.1",
+      "helm_model_name": "",
+      "notes": "Possible match: 'Claude 4 Opus' - close version match"
+    },
+    {
+      "your_model_name": "Gemini 3 Pro Preview",
+      "helm_model_name": "",
+      "notes": "Not found in user's HELM observation"
+    },
+    {
+      "your_model_name": "Gemini 2.5 Pro",
+      "helm_model_name": "",
+      "notes": "User reports seeing this on HELM leaderboard"
+    },
+    {
+      "your_model_name": "Gemini 2.5 Flash",
+      "helm_model_name": "",
+      "notes": "User reports seeing this on HELM leaderboard"
+    },
+    {
+      "your_model_name": "Gemini 2.0 Flash",
+      "helm_model_name": "",
+      "notes": "User reports seeing this on HELM leaderboard"
+    },
+    {
+      "your_model_name": "Llama 3.1 405B",
+      "helm_model_name": "",
+      "notes": "Likely 'Llama 3.1 Instruct Turbo 405B' - exact match"
+    },
+    {
+      "your_model_name": "Llama 4",
+      "helm_model_name": "",
+      "notes": "Possible match: 'Llama 4 Maverick Instruct FP8' - close version match"
+    },
+    {
+      "your_model_name": "DeepSeek V3",
+      "helm_model_name": "",
+      "notes": "Likely 'DeepSeek v3' - exact match (case difference only)"
+    },
+    {
+      "your_model_name": "Grok-4",
+      "helm_model_name": "",
+      "notes": "User reports seeing 'Grok 4' on HELM leaderboard"
+    }
+  ],
+  "instructions": "Fill in the 'helm_model_name' field with the exact model name as it appears in the HELM data. Leave blank if the model is not found in HELM. Run helm_scraper.py first to see all available HELM model names in data/helm_raw_data.json"
+}
