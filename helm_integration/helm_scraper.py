@@ -16,10 +16,11 @@ Outputs:
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import argparse
 
 
@@ -112,16 +113,12 @@ def find_stats_files() -> List[Path]:
     return stats_files
 
 
-def parse_stats_file(stats_path: Path) -> Optional[Dict[str, Any]]:
+def parse_stats_file(stats_path: Path) -> Optional[List[Dict[str, Any]]]:
     """
-    Parse a stats.json file to extract benchmark scores.
+    Parse a stats.json file to load the metrics array.
 
-    Returns dict with structure:
-    {
-        "model_name": str,
-        "scenario": str,
-        "metrics": {...}
-    }
+    Returns:
+        List of metric objects, or None if parsing fails
     """
     try:
         with open(stats_path, 'r') as f:
@@ -130,6 +127,165 @@ def parse_stats_file(stats_path: Path) -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"Warning: Could not parse {stats_path}: {e}")
         return None
+
+
+def parse_stats_path(stats_path: Path) -> Optional[Tuple[str, str]]:
+    """
+    Parse HELM stats file path to extract scenario name and model name.
+
+    The path format is:
+    .../runs/v1.0.0/{scenario}:{params},model={provider}_{model}/stats.json
+
+    Args:
+        stats_path: Path to stats.json file
+
+    Returns:
+        Tuple of (scenario_name, raw_model_name) if successful, None otherwise
+
+    Examples:
+        >>> path = Path("mmlu_pro:subset=all,model=openai_gpt-4o-2024-08-06/stats.json")
+        >>> parse_stats_path(path)
+        ('mmlu_pro', 'openai_gpt-4o-2024-08-06')
+    """
+    # Get parent directory name which contains scenario and model info
+    dir_name = stats_path.parent.name
+
+    # Pattern: {scenario}:{params}...model={model_name}
+    # We need to extract scenario (before first colon) and model (after model=)
+    pattern = r'^([^:]+):.*model=([^,]+)(?:,|$)'
+    match = re.search(pattern, dir_name)
+
+    if match:
+        scenario_name = match.group(1)
+        raw_model_name = match.group(2)
+        return (scenario_name, raw_model_name)
+
+    return None
+
+
+def identify_benchmark(scenario_name: str) -> Optional[str]:
+    """
+    Map HELM scenario name to benchmark name.
+
+    Args:
+        scenario_name: HELM scenario name (e.g., "mmlu_pro", "gpqa")
+
+    Returns:
+        Benchmark name or None if not a target benchmark
+    """
+    SCENARIO_TO_BENCHMARK = {
+        "mmlu_pro": "mmlu_pro",
+        "gpqa": "gpqa_diamond",
+        "ifeval": "ifeval",
+        "wildbench": "wildbench",
+        "omni_math": "omni_math"
+    }
+
+    return SCENARIO_TO_BENCHMARK.get(scenario_name)
+
+
+def extract_metric_value(stats_data: List[Dict], metric_name: str) -> Optional[float]:
+    """
+    Extract a specific metric value from HELM stats data array.
+
+    Args:
+        stats_data: List of metric objects from stats.json
+        metric_name: Name of metric to extract (e.g., "chain_of_thought_correctness")
+
+    Returns:
+        Metric mean value if found, None otherwise
+
+    Notes:
+        - Only extracts from "test" split (not "train")
+        - Skips perturbation variants (robustness, fairness)
+    """
+    for metric in stats_data:
+        try:
+            name_obj = metric.get("name", {})
+
+            # Check if this is the metric we're looking for
+            if name_obj.get("name") != metric_name:
+                continue
+
+            # Only use test split
+            if name_obj.get("split") != "test":
+                continue
+
+            # Skip perturbation variants
+            if name_obj.get("perturbation") is not None:
+                continue
+
+            # Extract mean value
+            mean_value = metric.get("mean")
+            if mean_value is not None:
+                return float(mean_value)
+
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    return None
+
+
+def clean_model_name(raw_model_name: str) -> str:
+    """
+    Clean and format model name for display.
+
+    Args:
+        raw_model_name: Raw model name from HELM (e.g., "openai_gpt-4o-2024-08-06")
+
+    Returns:
+        Cleaned model name (e.g., "OpenAI GPT-4o (2024-08-06)")
+
+    Examples:
+        >>> clean_model_name("openai_gpt-4o-2024-08-06")
+        'OpenAI GPT-4o (2024-08-06)'
+        >>> clean_model_name("anthropic_claude-3-5-sonnet-20240620")
+        'Anthropic Claude 3.5 Sonnet (2024-06-20)'
+    """
+    # Handle special provider names
+    provider_map = {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "google": "Google",
+        "meta": "Meta",
+        "mistralai": "Mistral AI",
+        "deepseek-ai": "DeepSeek AI",
+        "qwen": "Qwen",
+        "amazon": "Amazon"
+    }
+
+    # Split on first underscore to separate provider from model
+    parts = raw_model_name.split("_", 1)
+    if len(parts) != 2:
+        # No underscore, return as-is with capitalization
+        return raw_model_name.replace("-", " ").title()
+
+    provider, model_part = parts
+
+    # Get formatted provider name
+    provider_formatted = provider_map.get(provider, provider.replace("-", " ").title())
+
+    # Format model part
+    # Look for date patterns: YYYY-MM-DD or YYYYMMDD
+    date_pattern_dash = r'(\d{4})-(\d{2})-(\d{2})'
+    date_pattern_compact = r'(\d{4})(\d{2})(\d{2})$'
+
+    # Try YYYY-MM-DD pattern
+    date_match = re.search(date_pattern_dash, model_part)
+    if date_match:
+        model_name = model_part[:date_match.start()].rstrip("-")
+        date_str = f"({date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)})"
+        return f"{provider_formatted} {model_name.replace('-', ' ').upper()} {date_str}"
+
+    # Try YYYYMMDD pattern
+    date_match = re.search(date_pattern_compact, model_part)
+    if date_match:
+        model_name = model_part[:date_match.start()].rstrip("-")
+        date_str = f"({date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)})"
+        return f"{provider_formatted} {model_name.replace('-', ' ').upper()} {date_str}"
+
+    # No date pattern, just format as-is
+    return f"{provider_formatted} {model_part.replace('-', ' ').title()}"
 
 
 def extract_benchmark_scores(stats_files: List[Path]) -> Dict[str, Dict[str, float]]:
@@ -142,25 +298,78 @@ def extract_benchmark_scores(stats_files: List[Path]) -> Dict[str, Dict[str, flo
             "mmlu_pro": 0.75,
             "gpqa_diamond": 0.65,
             "ifeval": 0.80,
-            "wildbench": 7.5,  # Note: 1-10 scale
+            "wildbench": 0.79,  # Note: Using rescaled 0-1 scale
             "omni_math": 0.55
         }
     }
     """
+    # Mapping of benchmarks to their metric names in HELM data
+    BENCHMARK_METRICS = {
+        "mmlu_pro": "chain_of_thought_correctness",
+        "gpqa_diamond": "chain_of_thought_correctness",
+        "ifeval": "ifeval_strict_accuracy",
+        "wildbench": "wildbench_score_rescaled",  # Using rescaled 0-1 version
+        "omni_math": "omni_math_accuracy"
+    }
+
     model_scores = {}
+    skipped_non_target = 0
+    skipped_parse_error = 0
+    skipped_missing_metric = 0
 
     for stats_path in stats_files:
-        data = parse_stats_file(stats_path)
-        if not data:
+        # Parse path to get scenario and model
+        parsed = parse_stats_path(stats_path)
+        if not parsed:
+            skipped_parse_error += 1
             continue
 
-        # Extract model name and scenario from path or data
-        # The structure may vary, so we'll need to inspect the actual data
-        # For now, this is a placeholder that will need adjustment based on actual HELM data structure
+        scenario_name, raw_model_name = parsed
 
-        # TODO: Adjust based on actual HELM data structure
-        # This will need to be updated once we see the actual JSON structure
-        pass
+        # Check if this is a target benchmark
+        benchmark = identify_benchmark(scenario_name)
+        if not benchmark:
+            skipped_non_target += 1
+            continue
+
+        # Load and parse stats file
+        stats_data = parse_stats_file(stats_path)
+        if not stats_data:
+            continue
+
+        # Extract the metric value
+        metric_name = BENCHMARK_METRICS[benchmark]
+        metric_value = extract_metric_value(stats_data, metric_name)
+        if metric_value is None:
+            skipped_missing_metric += 1
+            continue
+
+        # Clean model name for output
+        model_name = clean_model_name(raw_model_name)
+
+        # Initialize model entry if not exists
+        if model_name not in model_scores:
+            model_scores[model_name] = {}
+
+        # Check for duplicates (shouldn't happen, but handle gracefully)
+        if benchmark in model_scores[model_name]:
+            print(f"Warning: Duplicate benchmark '{benchmark}' for model '{model_name}'")
+            print(f"  Previous: {model_scores[model_name][benchmark]:.4f}")
+            print(f"  New: {metric_value:.4f}")
+            print(f"  Keeping previous value")
+        else:
+            model_scores[model_name][benchmark] = metric_value
+
+    # Print extraction summary
+    print(f"Extraction summary:")
+    print(f"  Models found: {len(model_scores)}")
+    print(f"  Skipped (non-target benchmarks): {skipped_non_target}")
+    print(f"  Skipped (parse errors): {skipped_parse_error}")
+    print(f"  Skipped (missing metrics): {skipped_missing_metric}")
+
+    # Count models by completeness
+    complete_models = sum(1 for scores in model_scores.values() if len(scores) == 5)
+    print(f"  Models with all 5 benchmarks: {complete_models}/{len(model_scores)}")
 
     return model_scores
 
@@ -173,7 +382,7 @@ def rescale_wildbench(score: float) -> float:
 def calculate_mean_scores(model_scores: Dict[str, Dict[str, float]]) -> Dict[str, float]:
     """
     Calculate mean score across benchmarks for each model.
-    Rescales WildBench before averaging.
+    All scores are already on 0-1 scale (including WildBench rescaled).
 
     Returns:
     {
@@ -187,13 +396,8 @@ def calculate_mean_scores(model_scores: Dict[str, Dict[str, float]]) -> Dict[str
             print(f"Warning: {model} missing some benchmark scores ({len(scores)}/5)")
             continue
 
-        # Rescale WildBench
-        rescaled_scores = scores.copy()
-        if "wildbench" in rescaled_scores:
-            rescaled_scores["wildbench"] = rescale_wildbench(rescaled_scores["wildbench"])
-
-        # Calculate mean
-        mean_score = sum(rescaled_scores.values()) / len(rescaled_scores)
+        # All scores already on 0-1 scale, just calculate mean
+        mean_score = sum(scores.values()) / len(scores)
         mean_scores[model] = mean_score
 
     return mean_scores
@@ -207,7 +411,7 @@ def save_data(model_scores: Dict[str, Dict[str, float]], mean_scores: Dict[str, 
     raw_data = {
         "benchmarks": TARGET_BENCHMARKS,
         "models": model_scores,
-        "note": "WildBench scores are on 1-10 scale (not yet rescaled)"
+        "note": "All scores on 0-1 scale (WildBench uses wildbench_score_rescaled)"
     }
 
     with open(RAW_DATA_FILE, 'w') as f:
@@ -220,7 +424,7 @@ def save_data(model_scores: Dict[str, Dict[str, float]], mean_scores: Dict[str, 
             {
                 "model_name": model,
                 "mean_score": score,
-                "note": "Mean across 5 benchmarks with WildBench rescaled to 0-1"
+                "note": "Mean across 5 benchmarks (all on 0-1 scale)"
             }
             for model, score in sorted(mean_scores.items(), key=lambda x: x[1], reverse=True)
         ]

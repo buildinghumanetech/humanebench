@@ -1,7 +1,6 @@
 cerebras==0.0.1
 inspect_ai==0.3.145
 krippendorff==0.8.2
-langfuse==3.9.2
 matplotlib==3.10.7
 numpy==2.3.4
 openai==2.7.2
