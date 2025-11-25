@@ -1,0 +1,323 @@
+{
+  "benchmarks": [
+    "mmlu_pro",
+    "gpqa_diamond",
+    "ifeval",
+    "wildbench",
+    "omni_math"
+  ],
+  "models": {
+    "Zai Org Glm 4.5 Air Fp8": {
+      "gpqa_diamond": 0.594170403587444,
+      "ifeval": 0.8117683302526191,
+      "omni_math": 0.3906666666666666,
+      "wildbench": 0.789166666666674,
+      "mmlu_pro": 0.762
+    },
+    "Google Gemini 2.5 Flash Lite": {
+      "ifeval": 0.8102279728897106,
+      "omni_math": 0.47966666666666646,
+      "gpqa_diamond": 0.3094170403587444,
+      "mmlu_pro": 0.537,
+      "wildbench": 0.8176851851851911
+    },
+    "Google Gemini 3 Pro (Preview)": {
+      "ifeval": 0.876,
+      "omni_math": 0.556,
+      "gpqa_diamond": 0.803,
+      "mmlu_pro": 0.903,
+      "wildbench": 0.859
+    },
+    "Google Gemini 2 5 Pro": {
+      "ifeval": 0.84,
+      "omni_math": 0.416,
+      "gpqa_diamond": 0.749,
+      "mmlu_pro": 0.863,
+      "wildbench": 0.857
+    },
+    "OpenAI Gpt Oss 120B": {
+      "ifeval": 0.8361059765865684,
+      "mmlu_pro": 0.795,
+      "gpqa_diamond": 0.6838565022421524,
+      "wildbench": 0.8449444444444516,
+      "omni_math": 0.6883333333333334
+    },
+    "Ibm Granite 4.0 H Small With Guardian": {
+      "gpqa_diamond": 0.3834080717488789
+    },
+    "Mistral AI Mistral Large 2411": {
+      "omni_math": 0.2806666666666667,
+      "wildbench": 0.8009259259259323,
+      "mmlu_pro": 0.599,
+      "ifeval": 0.876463339494763,
+      "gpqa_diamond": 0.4349775784753363
+    },
+    "Mistral AI Mistral Small 2503": {
+      "omni_math": 0.24800000000000003,
+      "mmlu_pro": 0.61,
+      "ifeval": 0.7498459642637094,
+      "gpqa_diamond": 0.3923766816143498,
+      "wildbench": 0.7880740740740798
+    },
+    "Writer Palmyra Fin": {
+      "ifeval": 0.7929759704251388,
+      "wildbench": 0.7834259259259313,
+      "mmlu_pro": 0.591,
+      "omni_math": 0.2946666666666667,
+      "gpqa_diamond": 0.42152466367713004
+    },
+    "Ibm Granite 3.3 8B Instruct": {
+      "ifeval": 0.7288971041281579,
+      "wildbench": 0.7406481481481534,
+      "mmlu_pro": 0.343,
+      "omni_math": 0.17633333333333334,
+      "gpqa_diamond": 0.3251121076233184
+    },
+    "OpenAI Gpt Oss 20B": {
+      "gpqa_diamond": 0.594170403587444,
+      "omni_math": 0.5646666666666667,
+      "wildbench": 0.7373703703703758,
+      "mmlu_pro": 0.74,
+      "ifeval": 0.7319778188539743
+    },
+    "OpenAI GPT 5 NANO (2025-08-07)": {
+      "omni_math": 0.5465000000000001,
+      "gpqa_diamond": 0.679372197309417,
+      "wildbench": 0.8059074074074162,
+      "ifeval": 0.9319162045594579,
+      "mmlu_pro": 0.778
+    },
+    "OpenAI GPT 5 (2025-08-07)": {
+      "wildbench": 0.8573518518518621,
+      "ifeval": 0.874922982131855,
+      "mmlu_pro": 0.863,
+      "gpqa_diamond": 0.7914798206278026,
+      "omni_math": 0.647
+    },
+    "Qwen Qwen3 235B A22B Instruct 2507 Fp8": {
+      "mmlu_pro": 0.844,
+      "gpqa_diamond": 0.726457399103139,
+      "wildbench": 0.8662592592592688,
+      "omni_math": 0.7183333333333335,
+      "ifeval": 0.8351817621688234
+    },
+    "OpenAI GPT 5 MINI (2025-08-07)": {
+      "mmlu_pro": 0.835,
+      "wildbench": 0.855296296296306,
+      "ifeval": 0.9269870609981515,
+      "omni_math": 0.7220000000000001,
+      "gpqa_diamond": 0.7556053811659192
+    },
+    "Amazon Nova Premier V1:0": {
+      "mmlu_pro": 0.726,
+      "gpqa_diamond": 0.5179372197309418,
+      "wildbench": 0.7875555555555628,
+      "omni_math": 0.35033333333333333,
+      "ifeval": 0.8025261860751695
+    },
+    "Mistral AI Mixtral 8X7B Instruct V0.1": {
+      "mmlu_pro": 0.335,
+      "wildbench": 0.6726111111111135,
+      "gpqa_diamond": 0.29596412556053814,
+      "omni_math": 0.105,
+      "ifeval": 0.5745532963647566
+    },
+    "Meta Llama 3.1 8B Instruct Turbo": {
+      "gpqa_diamond": 0.24663677130044842,
+      "omni_math": 0.1366666666666667,
+      "mmlu_pro": 0.406,
+      "wildbench": 0.6864814814814846,
+      "ifeval": 0.7427603203943316
+    },
+    "Anthropic CLAUDE 3 5 SONNET (2024-06-20)": {
+      "omni_math": 0.2529358626919603,
+      "wildbench": 0.7833478009259318,
+      "mmlu_pro": 0.7333776595744681,
+      "gpqa_diamond": 0.5291479820627802,
+      "ifeval": 0.8598274799753545
+    },
+    "Google Gemini 1.5 Pro 002": {
+      "mmlu_pro": 0.737,
+      "omni_math": 0.364,
+      "wildbench": 0.8130740740740815,
+      "gpqa_diamond": 0.5336322869955157,
+      "ifeval": 0.8367221195317318
+    },
+    "Google Gemini 2.0 Flash 001": {
+      "gpqa_diamond": 0.5560538116591929,
+      "wildbench": 0.8002777777777836,
+      "ifeval": 0.840727048675293,
+      "omni_math": 0.45899999999999996,
+      "mmlu_pro": 0.737
+    },
+    "Mistral AI Mistral 7B Instruct V0.3": {
+      "omni_math": 0.072,
+      "gpqa_diamond": 0.30269058295964124,
+      "mmlu_pro": 0.277,
+      "ifeval": 0.5674676524953787,
+      "wildbench": 0.6601666666666692
+    },
+    "Meta Llama 3.1 405B Instruct Turbo": {
+      "mmlu_pro": 0.723,
+      "wildbench": 0.7826111111111155,
+      "omni_math": 0.24933333333333332,
+      "gpqa_diamond": 0.5224215246636771,
+      "ifeval": 0.8111521873074559
+    },
+    "Anthropic CLAUDE 3 5 HAIKU (2024-10-22)": {
+      "wildbench": 0.7596481481481532,
+      "gpqa_diamond": 0.3632286995515695,
+      "omni_math": 0.224,
+      "ifeval": 0.7917436845348124,
+      "mmlu_pro": 0.605
+    },
+    "Qwen Qwen2.5 7B Instruct Turbo": {
+      "gpqa_diamond": 0.34080717488789236,
+      "omni_math": 0.294,
+      "ifeval": 0.7409118915588417,
+      "wildbench": 0.7307407407407439,
+      "mmlu_pro": 0.539
+    },
+    "Anthropic CLAUDE 3 5 SONNET (2024-10-22)": {
+      "wildbench": 0.792129629629635,
+      "omni_math": 0.276,
+      "ifeval": 0.8555144793592117,
+      "gpqa_diamond": 0.5650224215246636,
+      "mmlu_pro": 0.777
+    },
+    "Meta Llama 3.1 70B Instruct Turbo": {
+      "gpqa_diamond": 0.4260089686098655,
+      "ifeval": 0.8210104744300681,
+      "wildbench": 0.7583148148148195,
+      "mmlu_pro": 0.653,
+      "omni_math": 0.21000000000000005
+    },
+    "Meta Llama 4 Maverick (17Bx128E) Instruct FP8": {
+      "gpqa_diamond": 0.65,
+      "ifeval": 0.908,
+      "wildbench": 0.8,
+      "mmlu_pro": 0.81,
+      "omni_math": 0.422
+    },
+    "Google Gemini 2.0 Flash Lite Preview 02 05": {
+      "wildbench": 0.7898518518518578,
+      "ifeval": 0.8243992606284661,
+      "omni_math": 0.3736666666666667,
+      "mmlu_pro": 0.72,
+      "gpqa_diamond": 0.5
+    },
+    "Anthropic CLAUDE 3 7 SONNET (2025-02-19)": {
+      "omni_math": 0.3303333333333333,
+      "gpqa_diamond": 0.6076233183856502,
+      "mmlu_pro": 0.784,
+      "ifeval": 0.8342575477510787,
+      "wildbench": 0.8143518518518592
+    },
+    "Anthropic CLAUDE 4 SONNET (2025-05-14)": {
+      "omni_math": 0.553,
+      "gpqa_diamond": 0.686,
+      "mmlu_pro": 0.869,
+      "ifeval": 0.85,
+      "wildbench": 0.854
+    },
+    "Anthropic CLAUDE 4 5 SONNET (2025-09-29)": {
+      "omni_math": 0.553,
+      "gpqa_diamond": 0.686,
+      "mmlu_pro": 0.869,
+      "ifeval": 0.85,
+      "wildbench": 0.854
+    },
+    "Qwen Qwen2.5 72B Instruct Turbo": {
+      "mmlu_pro": 0.631,
+      "ifeval": 0.8062230437461495,
+      "wildbench": 0.8019444444444495,
+      "gpqa_diamond": 0.4260089686098655,
+      "omni_math": 0.32966666666666655
+    },
+    "Amazon Nova Micro V1:0": {
+      "wildbench": 0.7431481481481523,
+      "omni_math": 0.2136666666666667,
+      "ifeval": 0.7600123228589035,
+      "gpqa_diamond": 0.3834080717488789,
+      "mmlu_pro": 0.511
+    },
+    "Mistral AI Mixtral 8X22B Instruct V0.1": {
+      "mmlu_pro": 0.46,
+      "wildbench": 0.7108888888888929,
+      "omni_math": 0.16316666666666668,
+      "ifeval": 0.7242760320394334,
+      "gpqa_diamond": 0.33408071748878926
+    },
+    "Writer Palmyra X 004": {
+      "mmlu_pro": 0.657,
+      "wildbench": 0.8020000000000057,
+      "gpqa_diamond": 0.39461883408071746,
+      "ifeval": 0.8724584103512018,
+      "omni_math": 0.31966666666666665
+    },
+    "Amazon Nova Lite V1:0": {
+      "ifeval": 0.7760320394331487,
+      "wildbench": 0.7504444444444492,
+      "mmlu_pro": 0.6,
+      "omni_math": 0.23300000000000007,
+      "gpqa_diamond": 0.3968609865470852
+    },
+    "OpenAI GPT 4O MINI (2024-07-18)": {
+      "wildbench": 0.7911481481481543,
+      "gpqa_diamond": 0.36771300448430494,
+      "ifeval": 0.781577325939618,
+      "mmlu_pro": 0.603,
+      "omni_math": 0.28
+    },
+    "Amazon Nova Pro V1:0": {
+      "wildbench": 0.7766111111111172,
+      "mmlu_pro": 0.673,
+      "omni_math": 0.24216666666666664,
+      "ifeval": 0.8154651879235985,
+      "gpqa_diamond": 0.4461883408071749
+    },
+    "DeepSeek AI Deepseek V3": {
+      "gpqa_diamond": 0.5381165919282511,
+      "mmlu_pro": 0.723,
+      "wildbench": 0.830518518518526,
+      "omni_math": 0.40266666666666673,
+      "ifeval": 0.8324091189155888
+    },
+    "OpenAI GPT 4O (2024-08-06)": {
+      "wildbench": 0.7920645254629693,
+      "gpqa_diamond": 0.5179372197309418,
+      "omni_math": 0.3331074977416441,
+      "ifeval": 0.8841651263093039,
+      "mmlu_pro": 0.7121010638297872
+    },
+    "OpenAI GPT 4O (2024-11-20)": {
+      "gpqa_diamond": 0.5201793721973094,
+      "ifeval": 0.8173136167590883,
+      "wildbench": 0.8283518518518597,
+      "mmlu_pro": 0.713,
+      "omni_math": 0.29283333333333333
+    },
+    "OpenAI GPT 4 1 (2025-04-14)": {
+      "gpqa_diamond": 0.659,
+      "ifeval": 0.838,
+      "wildbench": 0.854,
+      "mmlu_pro": 0.811,
+      "omni_math": 0.471
+    },
+    "Google Gemini 1.5 Flash 002": {
+      "ifeval": 0.8311768330252622,
+      "mmlu_pro": 0.678,
+      "omni_math": 0.3045000000000001,
+      "wildbench": 0.7920185185185229,
+      "gpqa_diamond": 0.437219730941704
+    },
+    "Grok 4 (0709)": {
+      "ifeval": 0.949,
+      "mmlu_pro": 0.851,
+      "omni_math": 0.603,
+      "wildbench": 0.797,
+      "gpqa_diamond": 0.726
+    }
+  },
+  "note": "All scores on 0-1 scale (WildBench uses wildbench_score_rescaled)"
+}
