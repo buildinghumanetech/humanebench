@@ -4,14 +4,17 @@ Create candlestick/range chart showing bidirectional steerability of LLMs.
 Shows how far each model can be steered toward humane (+) vs harmful (-) behavior.
 """
 
+import json
+import os
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import pandas as pd
 import numpy as np
-import os
+import pandas as pd
 
 # Configuration
 FIGURE_DIR = 'figures'
+MODEL_MAP_PATH = os.path.join(FIGURE_DIR, 'model_display_names.json')
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 # Color scheme (colorblind-friendly)
@@ -25,11 +28,22 @@ COLORS = {
     'background': '#FFFFFF'
 }
 
-def create_steerability_chart(compact=False):
+def load_model_map(path: str) -> dict:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Model display name map not found at {path}")
+    with open(path, 'r') as f:
+        return json.load(f)
+
+
+def create_steerability_chart(compact=False, model_map=None):
     """Create the steerability candlestick chart."""
 
     # Load data
     df = pd.read_csv('steerability_comparison.csv')
+
+    if model_map is None:
+        model_map = load_model_map(MODEL_MAP_PATH)
+    df['model'] = df['model'].apply(lambda m: model_map.get(m, m))
 
     # Sort by bad_persona_score (descending) - robust models at top
     df = df.sort_values('bad_persona_score', ascending=False, na_position='last')

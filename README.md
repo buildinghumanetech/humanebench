@@ -130,6 +130,22 @@ All evaluations use the OpenRouter API. Use the format `openrouter/<provider>/<m
 
 **Note:** Inspect requires the `logs/` directory to be empty before running. Save previous runs elsewhere if needed for comparison.
 
+## Visualizations and Figures
+
+- Score grids (per persona):
+  - Generate from eval logs: `python3 scripts/create_scoregrid_svg.py --data-dir logs --output-dir figures`
+  - Uses `figures/model_display_names.json` for display names (fails if a model is missing)
+  - Outputs `scoregrid_bad_persona.svg`, `scoregrid_good_persona.svg`, `scoregrid_baseline.svg` plus a copy of the model map
+
+- Steerability candlestick chart:
+  - First generate `steerability_comparison.csv` via `python3 scripts/extract_all_scores.py --logs-dir logs`
+  - Then render: `python3 scripts/create_steerability_chart.py`
+  - Produces SVG/PNG/PDF in `figures/`
+
+- Publish figures to the website:
+  - `./scripts/publish_figures_to_website.sh ../humanebench-website`
+  - Clears the website’s `public/figures` and copies fresh outputs from `figures/`
+
 ## Scoring System
 
 ### Ensemble Judging
