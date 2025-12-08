@@ -10,6 +10,7 @@ import matplotlib.patches as mpatches
 import pandas as pd
 import numpy as np
 import os
+from scipy import stats
 
 # Configuration
 FIGURE_DIR = 'figures'
@@ -147,11 +148,34 @@ def create_capability_chart(df, y_column, y_label, title, subtitle, invert_y=Fal
             zorder=4
         )
 
+    # Calculate and plot linear regression
+    x_data = df['helm_aggregate_score'].values
+    y_data = df[y_column].values
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x_data, y_data)
+    r_squared = r_value ** 2
+
+    # Generate line points
+    x_line = np.linspace(x_data.min(), x_data.max(), 100)
+    y_line = slope * x_line + intercept
+
+    # Plot regression line
+    ax.plot(x_line, y_line, color='#6B7280', linestyle='--',
+            linewidth=2, alpha=0.7, label='Linear fit', zorder=2)
+
+    # Add statistics text annotation
+    significance = '**' if p_value < 0.01 else '*' if p_value < 0.05 else 'ns'
+    stats_text = f'R² = {r_squared:.3f}, p = {p_value:.3f} ({significance}), n = {len(df)}'
+
+    ax.text(0.05, 0.95, stats_text, transform=ax.transAxes,
+            fontsize=10, verticalalignment='top',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='white',
+                     edgecolor='#6B7280', alpha=0.9))
+
     # Configure axes
     ax.set_xlabel('HELM Aggregate Score', fontsize=12, fontweight='bold')
     ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
 
-    # Invert y-axis if requested (for bad_delta where lower is better)
+    # Invert y-axis if requested (for bad_delta where closer to 0 is better)
     if invert_y:
         ax.invert_yaxis()
         # Set explicit limits with 0 at top (after inversion)
@@ -174,10 +198,11 @@ def create_capability_chart(df, y_column, y_label, title, subtitle, invert_y=Fal
     # Legend
     ax.legend(loc='best', fontsize=10, frameon=True, fancybox=False, shadow=False)
 
-    # Add annotation about missing models
+    # Add annotation about missing models and statistical significance
     missing_models = "GPT-5.1, Claude Opus 4.1, Gemini 2.5 Flash, Llama 3.1 405B, DeepSeek V3"
-    fig.text(0.5, 0.02, f'Models without HELM capability scores (not plotted): {missing_models}',
-             ha='center', fontsize=8, color='#6B7280', style='italic')
+    caption = (f'Models without HELM capability scores (not plotted): {missing_models}. '
+               f'Statistical significance: ** p<0.01, * p<0.05, ns = not significant (p≥0.05)')
+    fig.text(0.5, 0.02, caption, ha='center', fontsize=8, color='#6B7280', style='italic')
 
     # Adjust layout
     plt.tight_layout()
@@ -232,7 +257,7 @@ def main():
     fig2, ax2 = create_capability_chart(
         df,
         y_column='bad_delta',
-        y_label='Adversarial Robustness (bad_delta, lower is better)',
+        y_label='Adversarial Robustness (bad_delta, closer to 0 is better)',
         title='Model Capability vs Adversarial Robustness',
         subtitle='Higher capability models show better resistance to adversarial prompts (less negative degradation)',
         invert_y=True
