@@ -1,6 +1,6 @@
 {
   "name": "humanebench-evaluator",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Standalone HumaneBench v3.0 evaluator for AI assistant responses",
   "main": "humanebench_evaluator.ts",
   "scripts": {
@@ -18,14 +18,13 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "openai": "^4.0.0",
-    "@anthropic-ai/sdk": "^0.20.0",
-    "axios": "^1.6.0"
+    "@anthropic-ai/sdk": "^0.20.9",
+    "axios": "^1.13.2",
+    "openai": "^4.104.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0",
-    "tsx": "^4.0.0"
+    "@types/node": "^20.19.27",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }
-

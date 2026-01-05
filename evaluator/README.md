@@ -1,4 +1,4 @@
-# HumaneBench v3.0 Evaluator
+# HumaneBench Evaluator v0.1.0
 
 A standalone, production-ready script for evaluating AI assistant responses using the [HumaneBench v3.0 rubric](https://github.com/buildinghumanetech/humanebench/blob/main/rubrics/rubric_v3.md). This tool assesses AI message quality across 8 principles that respect human agency, dignity, and wellbeing.
 
