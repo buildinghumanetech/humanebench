@@ -70,6 +70,9 @@ def load_and_merge_data():
     # Load steerability data
     steerability_df = pd.read_csv('steerability_comparison.csv')
 
+    # Load bad persona scores
+    bad_persona_df = pd.read_csv('bad_persona_scores.csv')
+
     # Add normalized model names to HELM data
     helm_df['model_normalized'] = helm_df['model_name'].map(MODEL_NAME_MAP)
 
@@ -90,6 +93,15 @@ def load_and_merge_data():
         on='model',
         how='inner'
     )
+
+    # Merge with bad persona scores
+    merged_df = merged_df.merge(
+        bad_persona_df[['model', 'overall']],
+        on='model',
+        how='inner',
+        suffixes=('', '_bad_persona')
+    )
+    merged_df.rename(columns={'overall_bad_persona': 'bad_persona_score'}, inplace=True)
 
     # Add family information
     merged_df['family'], merged_df['color'] = zip(*merged_df['model_name'].map(get_model_family))
@@ -265,6 +277,19 @@ def main():
     save_chart(fig2, 'capability_vs_adversarial_robustness')
     plt.close(fig2)
 
+    # Chart 3: Capability vs Bad Persona HumaneScore
+    print("\nCreating Chart 3: Capability vs Bad Persona Humaneness...")
+    fig3, ax3 = create_capability_chart(
+        df,
+        y_column='bad_persona_score',
+        y_label='Bad Persona HumaneScore',
+        title='Model Capability vs Bad Persona Humaneness',
+        subtitle='Higher capability models tend to maintain humaneness even under adversarial prompts',
+        invert_y=False
+    )
+    save_chart(fig3, 'capability_vs_bad_persona_humaneness')
+    plt.close(fig3)
+
     print("\n" + "="*60)
     print("✅ All visualizations created successfully!")
     print("="*60)
@@ -275,6 +300,9 @@ def main():
     print("  - capability_vs_adversarial_robustness.png (300 DPI)")
     print("  - capability_vs_adversarial_robustness.svg (vector)")
     print("  - capability_vs_adversarial_robustness.pdf (publication)")
+    print("  - capability_vs_bad_persona_humaneness.png (300 DPI)")
+    print("  - capability_vs_bad_persona_humaneness.svg (vector)")
+    print("  - capability_vs_bad_persona_humaneness.pdf (publication)")
     print()
 
 if __name__ == "__main__":
