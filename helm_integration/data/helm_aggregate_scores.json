@@ -1,0 +1,224 @@
+{
+  "models": [
+    {
+      "model_name": "Google Gemini 3 Pro (Preview)",
+      "mean_score": 0.799,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Google Gemini 2 5 Pro",
+      "mean_score": 0.745,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Meta Llama 4 Maverick (17Bx128E) Instruct FP8",
+      "mean_score": 0.718,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Anthropic CLAUDE 4 5 SONNET (2025-09-29)",
+      "mean_score": 0.7524,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Anthropic CLAUDE 4 SONNET (2025-05-14)",
+      "mean_score": 0.762,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "OpenAI GPT 4 1 (2025-04-14)",
+      "mean_score": 0.727,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Grok 4 (0709)",
+      "mean_score": 0.785,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "OpenAI GPT 5 MINI (2025-08-07)",
+      "mean_score": 0.8189777476920753,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "OpenAI GPT 5 (2025-08-07)",
+      "mean_score": 0.806750930922304,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Qwen Qwen3 235B A22B Instruct 2507 Fp8",
+      "mean_score": 0.798046350772913,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "OpenAI Gpt Oss 120B",
+      "mean_score": 0.7696480513213012,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "OpenAI GPT 5 NANO (2025-08-07)",
+      "mean_score": 0.7483391618552583,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Google Gemini 2.0 Flash 001",
+      "mean_score": 0.6786117276224539,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Anthropic CLAUDE 3 7 SONNET (2025-02-19)",
+      "mean_score": 0.6741132102643843,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "OpenAI Gpt Oss 20B",
+      "mean_score": 0.6736370518956921,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Zai Org Glm 4.5 Air Fp8",
+      "mean_score": 0.6695544134346807,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "DeepSeek AI Deepseek V3",
+      "mean_score": 0.6653421792058065,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Google Gemini 1.5 Pro 002",
+      "mean_score": 0.6568856961202658,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Anthropic CLAUDE 3 5 SONNET (2024-10-22)",
+      "mean_score": 0.653133306102702,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "OpenAI GPT 4O (2024-08-06)",
+      "mean_score": 0.6478750866149292,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Google Gemini 2.0 Flash Lite Preview 02 05",
+      "mean_score": 0.6415835558293981,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Amazon Nova Premier V1:0",
+      "mean_score": 0.6368704589390014,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "OpenAI GPT 4O (2024-11-20)",
+      "mean_score": 0.6343356348283181,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Anthropic CLAUDE 3 5 SONNET (2024-06-20)",
+      "mean_score": 0.631727357046099,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Meta Llama 3.1 405B Instruct Turbo",
+      "mean_score": 0.6177036312831163,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Writer Palmyra X 004",
+      "mean_score": 0.6091487822197184,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Google Gemini 1.5 Flash 002",
+      "mean_score": 0.6085830164970979,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Qwen Qwen2.5 72B Instruct Turbo",
+      "mean_score": 0.5989686246934263,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Mistral AI Mistral Large 2411",
+      "mean_score": 0.5984067021125397,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Google Gemini 2.5 Flash Lite",
+      "mean_score": 0.5907993730200625,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Amazon Nova Pro V1:0",
+      "mean_score": 0.5906862613017114,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Writer Palmyra Fin",
+      "mean_score": 0.5767186453389733,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Meta Llama 3.1 70B Instruct Turbo",
+      "mean_score": 0.5736668515709507,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "OpenAI GPT 4O MINI (2024-07-18)",
+      "mean_score": 0.5646876957144155,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Mistral AI Mistral Small 2503",
+      "mean_score": 0.5576593439904278,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Amazon Nova Lite V1:0",
+      "mean_score": 0.5512674940849366,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Anthropic CLAUDE 3 5 HAIKU (2024-10-22)",
+      "mean_score": 0.5487241064469071,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Qwen Qwen2.5 7B Instruct Turbo",
+      "mean_score": 0.5290919614374956,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Amazon Nova Micro V1:0",
+      "mean_score": 0.5222470418845203,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Mistral AI Mixtral 8X22B Instruct V0.1",
+      "mean_score": 0.4784824610167565,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Ibm Granite 3.3 8B Instruct",
+      "mean_score": 0.4627981386465926,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Meta Llama 3.1 8B Instruct Turbo",
+      "mean_score": 0.4437090479685863,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Mistral AI Mixtral 8X7B Instruct V0.1",
+      "mean_score": 0.3966257066072817,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Mistral AI Mistral 7B Instruct V0.3",
+      "mean_score": 0.3758649804243378,
+      "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    }
+  ]
+}
