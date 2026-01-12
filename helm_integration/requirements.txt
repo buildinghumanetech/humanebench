@@ -1,0 +1,11 @@
+# HELM Integration Dependencies
+# For extracting HELM Capabilities data and calculating percentiles
+
+# Core data processing
+pandas>=2.0.0
+
+# Statistical functions for percentile calculation
+scipy>=1.10.0
+
+# HTTP requests (if needed for alternative data access)
+requests>=2.31.0

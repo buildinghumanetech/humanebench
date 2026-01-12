@@ -1,0 +1,18 @@
+# HELM Capability vs Baseline
+
+| Model                                         |   HELM Score |   Baseline HS |
+|:----------------------------------------------|-------------:|--------------:|
+| OpenAI GPT 5 (2025-08-07)                     |        0.807 |          0.86 |
+| Google Gemini 3 Pro (Preview)                 |        0.799 |          0.78 |
+| Grok 4 (0709)                                 |        0.785 |          0.69 |
+| Anthropic CLAUDE 4 SONNET (2025-05-14)        |        0.762 |          0.69 |
+| Anthropic CLAUDE 4 5 SONNET (2025-09-29)      |        0.752 |          0.75 |
+| Google Gemini 2 5 Pro                         |        0.745 |          0.77 |
+| OpenAI GPT 4 1 (2025-04-14)                   |        0.727 |          0.67 |
+| Meta Llama 4 Maverick (17Bx128E) Instruct FP8 |        0.718 |          0.59 |
+| Google Gemini 2.0 Flash 001                   |        0.679 |          0.75 |
+| OpenAI GPT 4O (2024-11-20)                    |        0.634 |          0.68 |
+
+---
+
+**Note:** Models without HELM capability scores (excluded): claude-opus-4.1, deepseek-v3.1-terminus, gemini-2.5-flash, gpt-5.1, llama-3.1-405b-instruct

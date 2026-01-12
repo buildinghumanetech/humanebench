@@ -1,3 +1,12 @@
+# HELM Integration - Downloaded data and caches
+helm_integration/data/gcs_cache/
+helm_integration/data/helm_raw_data.json
+helm_integration/data/helm_aggregate_scores.json
+
+# HELM Integration - Output files (optional - see note below)
+helm_integration/output/model_coverage_report.txt
+helm_integration/output/capability_percentiles.csv
+
 ./claude
 .claude
 CLAUDE.md
