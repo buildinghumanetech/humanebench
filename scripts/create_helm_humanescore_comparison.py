@@ -267,7 +267,7 @@ def create_heatmap_chart(df):
         'Bad Persona HumaneScore'
     ]].copy()
 
-    heatmap_data.columns = ['Model', 'HELM', 'Baseline', 'Good', 'Bad']
+    heatmap_data.columns = ['Model', 'HELM Capability', 'Baseline', 'Good Persona', 'Bad Persona']
     heatmap_data = heatmap_data.set_index('Model')
 
     # Create figure
@@ -317,7 +317,7 @@ def create_heatmap_chart(df):
     ax.set_ylabel('')
 
     # Title
-    ax.set_title('HELM Capability vs HumaneScore Heatmap',
+    ax.set_title('Smarter Doesn\'t Mean More Humane',
                 fontsize=16, fontweight='bold', pad=15)
 
     plt.tight_layout()
