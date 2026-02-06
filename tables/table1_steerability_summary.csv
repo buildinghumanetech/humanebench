@@ -1,16 +1,16 @@
-Model,Baseline HumaneScore,Good Persona HumaneScore,Good Δ,Bad Persona HumaneScore,Bad Δ,Robustness Status
-claude-opus-4.1,0.680,0.840,+0.160,0.660,-0.020,Robust
-claude-sonnet-4,0.690,0.840,+0.150,0.510,-0.180,Moderate
-claude-sonnet-4.5,0.750,0.890,+0.140,0.770,+0.020,Robust
-deepseek-v3.1-terminus,0.750,0.840,+0.090,-0.350,-1.100,Failed
-gemini-2.0-flash-001,0.750,0.820,+0.070,-0.710,-1.460,Failed
-gemini-2.5-flash,0.720,0.770,+0.050,-0.680,-1.400,Failed
-gemini-2.5-pro,0.770,0.900,+0.130,-0.720,-1.490,Failed
-gemini-3-pro-preview,0.780,0.930,+0.150,-0.450,-1.230,Failed
-gpt-4.1,0.670,0.820,+0.150,-0.600,-1.270,Failed
-gpt-4o-2024-11-20,0.680,0.770,+0.090,-0.610,-1.290,Failed
-gpt-5,0.860,0.940,+0.080,0.830,-0.030,Robust
-gpt-5.1,0.860,0.920,+0.060,0.820,-0.040,Robust
-grok-4,0.690,0.890,+0.200,-0.730,-1.420,Failed
-llama-3.1-405b-instruct,0.560,0.680,+0.120,-0.490,-1.050,Failed
-llama-4-maverick,0.590,0.650,+0.060,-0.140,-0.730,Failed
+Model,Baseline HumaneScore,Good Persona HumaneScore,Good Δ,Bad Persona HumaneScore,Bad Δ,Composite HumaneScore,Robustness Status
+claude-opus-4.1,0.680,0.840,+0.160,0.660,-0.020,0.727,Robust
+claude-sonnet-4,0.690,0.840,+0.150,0.510,-0.180,0.680,Moderate
+claude-sonnet-4.5,0.750,0.890,+0.140,0.770,+0.020,0.803,Robust
+deepseek-v3.1-terminus,0.750,0.840,+0.090,-0.350,-1.100,0.413,Failed
+gemini-2.0-flash-001,0.750,0.820,+0.070,-0.710,-1.460,0.287,Failed
+gemini-2.5-flash,0.720,0.770,+0.050,-0.680,-1.400,0.270,Failed
+gemini-2.5-pro,0.770,0.900,+0.130,-0.720,-1.490,0.317,Failed
+gemini-3-pro-preview,0.780,0.930,+0.150,-0.450,-1.230,0.420,Failed
+gpt-4.1,0.670,0.820,+0.150,-0.600,-1.270,0.297,Failed
+gpt-4o-2024-11-20,0.680,0.770,+0.090,-0.610,-1.290,0.280,Failed
+gpt-5,0.860,0.940,+0.080,0.830,-0.030,0.877,Robust
+gpt-5.1,0.860,0.920,+0.060,0.820,-0.040,0.867,Robust
+grok-4,0.690,0.890,+0.200,-0.730,-1.420,0.283,Failed
+llama-3.1-405b-instruct,0.560,0.680,+0.120,-0.490,-1.050,0.250,Failed
+llama-4-maverick,0.590,0.650,+0.060,-0.140,-0.730,0.367,Failed
