@@ -202,7 +202,7 @@ def create_principle_model_drift_chart(principle_slug, compact=False):
     avg_bad_delta = df['bad_delta'].mean()
 
     # Title and subtitle
-    title_text = f'Model Drift: {principle_name}'
+    title_text = f'Anti-Humane Drift: {principle_name}'
     subtitle_text = (
         f'{len(df[df["good_delta"] > 0])} models improve with humane prompts (avg +{avg_good_delta:.2f}), '
         f'but {flip_to_negative_count}/{n_models} flip to harmful behavior under adversarial prompts'

@@ -1,6 +1,6 @@
 # HumaneBench
 
-A comprehensive evaluation framework for assessing humane defaults and bidirectional steerability of frontier AI models using the AISI Inspect framework. HumaneBench evaluates LLMs across 8 core humane technology principles in three conditions: **baseline** (no system prompt), **good persona** (humane-aligned), and **bad persona** (engagement-maximizing adversarial).
+A comprehensive evaluation framework for assessing humane defaults and resilience of frontier AI models using the AISI Inspect framework. HumaneBench evaluates LLMs across 8 core humane technology principles in three conditions: **baseline** (no system prompt), **good persona** (humane-aligned), and **bad persona** (engagement-maximizing adversarial).
 
 **Dataset:** 800 prompts (100 per principle) | **Models Evaluated:** 14 frontier LLMs | **Human Validation:** 4 raters, 173 ratings
 
@@ -137,9 +137,9 @@ All evaluations use the OpenRouter API. Use the format `openrouter/<provider>/<m
   - Uses `figures/model_display_names.json` for display names (fails if a model is missing)
   - Outputs `scoregrid_bad_persona.svg`, `scoregrid_good_persona.svg`, `scoregrid_baseline.svg` plus a copy of the model map
 
-- Steerability candlestick chart:
+- Anti-humane drift candlestick chart:
   - First generate `steerability_comparison.csv` via `python3 scripts/extract_all_scores.py --logs-dir logs`
-  - Then render: `python3 scripts/create_steerability_chart.py`
+  - Then render: `python3 scripts/create_model_drift_chart.py`
   - Produces SVG/PNG/PDF in `figures/`
 
 - Publish figures to the website:
@@ -278,53 +278,53 @@ python scripts/generate_tables.py
 Generates 5 markdown/CSV tables:
 - Model rankings by baseline HumaneScore
 - Principle-by-principle scores
-- Steerability metrics (baseline → good, baseline → bad)
+- Behavioral drift metrics (baseline → good, baseline → bad)
 - Lab-level aggregations
 - Longitudinal trends
 
 Output: `tables/` directory
 
-### Create Steerability Visualization
+### Create Anti-Humane Drift Visualization
 
 ```bash
-python scripts/create_steerability_chart.py
+python scripts/create_model_drift_chart.py
 ```
 
-Creates candlestick/range charts showing steerability asymmetry:
+Creates candlestick/range charts showing the humaneness asymmetry:
 - Black dot: Baseline score
 - Green bar: Improvement with humane prompt
 - Red bar: Degradation with adversarial prompt
 
 Output: `figures/` directory (PNG, SVG, PDF, alt-text)
 
-### Extract Principle-Specific Steerability Data
+### Extract Principle-Specific Behavioral Drift Data
 
 ```bash
-python scripts/extract_principle_steerability.py --principle respect-user-attention
+python scripts/extract_principle_model_drift.py --principle respect-user-attention
 ```
 
-Extracts steerability data for a single humane technology principle. Shows how each model performs on that principle across all three conditions (baseline, good persona, bad persona).
+Extracts behavioral drift data for a single humane technology principle. Shows how each model performs on that principle across all three conditions (baseline, good persona, bad persona).
 
 **Prerequisites:** Requires `baseline_scores.csv`, `good_persona_scores.csv`, and `bad_persona_scores.csv` from `extract_all_scores.py`.
 
 **Arguments:**
 - `--principle`, `-p` - Required. Principle slug (e.g., `respect-user-attention`, `enable-meaningful-choices`)
-- `--output`, `-o` - Optional. Custom output filename (default: `{principle}_steerability.csv`)
+- `--output`, `-o` - Optional. Custom output filename (default: `{principle}_model_drift.csv`)
 
-Output: `{principle-slug}_steerability.csv` with per-model scores and robustness classifications
+Output: `{principle-slug}_model_drift.csv` with per-model scores and robustness classifications
 
-### Create Principle-Specific Steerability Chart
+### Create Principle-Specific Behavioral Drift Chart
 
 ```bash
-python scripts/create_principle_steerability_chart.py --principle respect-user-attention
+python scripts/create_principle_model_drift_chart.py --principle respect-user-attention
 ```
 
-Creates candlestick/range charts showing steerability for a specific principle:
+Creates candlestick/range charts showing behavioral drift for a specific principle:
 - Black dot: Baseline score for that principle
 - Green bar: Improvement with humane prompt
 - Red bar: Degradation with adversarial prompt
 
-**Prerequisites:** Requires `{principle-slug}_steerability.csv` from `extract_principle_steerability.py`.
+**Prerequisites:** Requires `{principle-slug}_model_drift.csv` from `extract_principle_model_drift.py`.
 
 **Arguments:**
 - `--principle`, `-p` - Required. Principle slug to visualize
