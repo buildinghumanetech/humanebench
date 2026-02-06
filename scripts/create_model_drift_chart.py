@@ -188,7 +188,7 @@ def create_model_drift_chart(compact=False, model_map=None):
     avg_good_delta = df['good_delta'].mean()
 
     # Title and subtitle
-    title_text = 'The Model Drift Problem'
+    title_text = 'The Anti-Humane Drift Problem'
     subtitle_text = (
         f'{improved_count} models improve with humane prompts (avg +{avg_good_delta:.2f}), '
         f'but {flip_to_negative_count}/{n_models} flip to harmful behavior under adversarial prompts'
@@ -244,7 +244,7 @@ def create_alt_text():
     moderate = df[df['robustness_status'] == 'Moderate']
     failed = df[df['robustness_status'] == 'Failed']
 
-    alt_text = f"""Model drift range chart showing {len(df)} AI models and their response to humane-aligned and adversarial prompts.
+    alt_text = f"""Anti-humane drift chart showing {len(df)} AI models and their response to humane-aligned and adversarial prompts.
 
 The chart displays each model as a horizontal line showing:
 - Baseline HumaneScore (black dot): Default behavior without prompting

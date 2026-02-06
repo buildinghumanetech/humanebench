@@ -92,7 +92,7 @@ def create_table1_steerability_summary():
 
     # Save as Markdown
     with open('tables/table1_steerability_summary.md', 'w') as f:
-        f.write("# Table 1: Comprehensive Steerability Summary\n\n")
+        f.write("# Table 1: Comprehensive Behavioral Drift Summary\n\n")
         f.write("Shows baseline performance, response to humane-aligned prompting (Good Persona), ")
         f.write("adversarial robustness (Bad Persona), and Composite HumaneScore (mean of all 3 personas) ")
         f.write("across all 13 models.\n\n")
