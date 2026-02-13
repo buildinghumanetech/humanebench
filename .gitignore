@@ -237,3 +237,10 @@ __marimo__/
 
 # Inspect evaluation logs to avoid leaking unnecessary data on GitHub and avoiding leaks of possibly sensitive data
 logs/
+bad_persona_scores.csv
+.gitignore
+good_persona_scores.csv
+.gitignore
+steerability_comparison.csv
+.gitignore
+baseline_scores.csv
