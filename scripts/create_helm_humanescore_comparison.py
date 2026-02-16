@@ -117,7 +117,8 @@ def generate_combined_table(df, missing_models):
         'mean_score',
         'Baseline HumaneScore',
         'Good Persona HumaneScore',
-        'Bad Persona HumaneScore'
+        'Bad Persona HumaneScore',
+        'Composite HumaneScore'
     ]].copy()
 
     table_df.columns = [
@@ -125,11 +126,12 @@ def generate_combined_table(df, missing_models):
         'HELM Score',
         'Baseline HS',
         'Good HS',
-        'Bad HS'
+        'Bad HS',
+        'Composite HS'
     ]
 
     # Round scores to 3 decimal places
-    for col in ['HELM Score', 'Baseline HS', 'Good HS', 'Bad HS']:
+    for col in ['HELM Score', 'Baseline HS', 'Good HS', 'Bad HS', 'Composite HS']:
         table_df[col] = table_df[col].round(3)
 
     # Save CSV
@@ -262,16 +264,14 @@ def create_heatmap_chart(df):
     heatmap_data = df[[
         'model_name',
         'mean_score',
-        'Baseline HumaneScore',
-        'Good Persona HumaneScore',
-        'Bad Persona HumaneScore'
+        'Composite HumaneScore'
     ]].copy()
 
-    heatmap_data.columns = ['Model', 'HELM Capability', 'Baseline', 'Good Persona', 'Bad Persona']
+    heatmap_data.columns = ['Model', 'HELM Capability', 'HumaneScore']
     heatmap_data = heatmap_data.set_index('Model')
 
     # Create figure
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(6, 8))
     fig.patch.set_facecolor(COLORS['background'])
 
     # Create color matrix manually (RGBA)
@@ -328,6 +328,11 @@ def create_heatmap_chart(df):
         dpi = 300 if ext == 'png' else None
         fig.savefig(path, dpi=dpi, bbox_inches='tight', facecolor='white')
         print(f"  ✓ Saved {path}")
+
+    # Also save as helm_humanebench_comparison.png (referenced by website)
+    fig.savefig(f'{FIGURES_DIR}/helm_humanebench_comparison.png',
+                dpi=300, bbox_inches='tight', facecolor='white')
+    print(f"  ✓ Saved {FIGURES_DIR}/helm_humanebench_comparison.png")
 
     plt.close(fig)
 

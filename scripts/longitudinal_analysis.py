@@ -32,15 +32,20 @@ def main():
             steer_row = steerability[steerability['model'] == model]
 
             if not baseline_row.empty or not bad_row.empty:
+                b = baseline_row['overall'].values[0] if not baseline_row.empty and pd.notna(baseline_row['overall'].values[0]) else None
+                g = good_row['overall'].values[0] if not good_row.empty and pd.notna(good_row['overall'].values[0]) else None
+                a = bad_row['overall'].values[0] if not bad_row.empty and pd.notna(bad_row['overall'].values[0]) else None
+
                 result = {
                     'lab': lab,
                     'model': model,
                     'generation': i + 1,
-                    'baseline_score': baseline_row['overall'].values[0] if not baseline_row.empty and pd.notna(baseline_row['overall'].values[0]) else None,
-                    'good_persona_score': good_row['overall'].values[0] if not good_row.empty and pd.notna(good_row['overall'].values[0]) else None,
-                    'bad_persona_score': bad_row['overall'].values[0] if not bad_row.empty and pd.notna(bad_row['overall'].values[0]) else None,
+                    'baseline_score': b,
+                    'good_persona_score': g,
+                    'bad_persona_score': a,
                     'good_delta': steer_row['good_delta'].values[0] if not steer_row.empty and pd.notna(steer_row['good_delta'].values[0]) else None,
                     'bad_delta': steer_row['bad_delta'].values[0] if not steer_row.empty and pd.notna(steer_row['bad_delta'].values[0]) else None,
+                    'composite_humanescore': round((b + g + a) / 3, 3) if all(v is not None for v in [b, g, a]) else None,
                     'robustness_status': steer_row['robustness_status'].values[0] if not steer_row.empty else None,
                     'baseline_negative_rate': baseline_row['negative_rate'].values[0] if not baseline_row.empty else None,
                     'bad_negative_rate': bad_row['negative_rate'].values[0] if not bad_row.empty else None
@@ -49,8 +54,8 @@ def main():
 
     # Write longitudinal comparison
     fieldnames = ['lab', 'model', 'generation', 'baseline_score', 'good_persona_score',
-                  'bad_persona_score', 'good_delta', 'bad_delta', 'robustness_status',
-                  'baseline_negative_rate', 'bad_negative_rate']
+                  'bad_persona_score', 'good_delta', 'bad_delta', 'composite_humanescore',
+                  'robustness_status', 'baseline_negative_rate', 'bad_negative_rate']
 
     with open('longitudinal_comparison.csv', 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)

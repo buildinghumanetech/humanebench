@@ -199,11 +199,18 @@ def main():
             row['bad_delta'] = None
             row['robustness_status'] = None
 
+        # Calculate composite HumaneScore (mean of all 3 personas)
+        if all(v is not None for v in [baseline_score, good_score, bad_score]):
+            row['composite_humanescore'] = round((baseline_score + good_score + bad_score) / 3, 3)
+        else:
+            row['composite_humanescore'] = None
+
         comparison_rows.append(row)
 
     # Write comparison CSV
     fieldnames = ['model', 'baseline_score', 'good_persona_score', 'good_delta',
                   'bad_persona_score', 'bad_delta', 'robustness_status',
+                  'composite_humanescore',
                   'baseline_negative_rate', 'good_persona_negative_rate', 'bad_persona_negative_rate']
 
     with open('steerability_comparison.csv', 'w', newline='') as f:
