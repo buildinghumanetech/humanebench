@@ -45,7 +45,6 @@ def main():
                     'bad_persona_score': a,
                     'good_delta': steer_row['good_delta'].values[0] if not steer_row.empty and pd.notna(steer_row['good_delta'].values[0]) else None,
                     'bad_delta': steer_row['bad_delta'].values[0] if not steer_row.empty and pd.notna(steer_row['bad_delta'].values[0]) else None,
-                    'composite_humanescore': round((b + g + a) / 3, 3) if all(v is not None for v in [b, g, a]) else None,
                     'robustness_status': steer_row['robustness_status'].values[0] if not steer_row.empty else None,
                     'baseline_negative_rate': baseline_row['negative_rate'].values[0] if not baseline_row.empty else None,
                     'bad_negative_rate': bad_row['negative_rate'].values[0] if not bad_row.empty else None
@@ -54,7 +53,7 @@ def main():
 
     # Write longitudinal comparison
     fieldnames = ['lab', 'model', 'generation', 'baseline_score', 'good_persona_score',
-                  'bad_persona_score', 'good_delta', 'bad_delta', 'composite_humanescore',
+                  'bad_persona_score', 'good_delta', 'bad_delta',
                   'robustness_status', 'baseline_negative_rate', 'bad_negative_rate']
 
     with open('longitudinal_comparison.csv', 'w', newline='') as f:

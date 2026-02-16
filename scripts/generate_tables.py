@@ -81,7 +81,6 @@ def create_table1_steerability_summary():
             'Good Δ': format_delta(row['good_delta']),
             'Bad Persona HumaneScore': format_score(row['bad_persona_score']),
             'Bad Δ': format_delta(row['bad_delta']),
-            'Composite HumaneScore': format_score(row['composite_humanescore']),
             'Robustness Status': row['robustness_status'] if pd.notna(row['robustness_status']) else 'N/A'
         })
 
@@ -94,7 +93,7 @@ def create_table1_steerability_summary():
     with open('tables/table1_steerability_summary.md', 'w') as f:
         f.write("# Table 1: Comprehensive Behavioral Drift Summary\n\n")
         f.write("Shows baseline performance, response to humane-aligned prompting (Good Persona), ")
-        f.write("adversarial robustness (Bad Persona), and Composite HumaneScore (mean of all 3 personas) ")
+        f.write("and adversarial robustness (Bad Persona) ")
         f.write("across all 13 models.\n\n")
         f.write(df.to_markdown(index=False))
 
@@ -215,15 +214,6 @@ def create_table5_longitudinal_comparison():
     # Create formatted table
     table_data = []
     for _, row in long.iterrows():
-        # Calculate composite from the three persona scores
-        b = row['baseline_score']
-        g = row['good_persona_score']
-        a = row['bad_persona_score']
-        if all(pd.notna(v) for v in [b, g, a]):
-            composite = round((b + g + a) / 3, 3)
-        else:
-            composite = None
-
         table_data.append({
             'Lab': row['lab'],
             'Model': row['model'],
@@ -233,7 +223,6 @@ def create_table5_longitudinal_comparison():
             'Bad Persona HumaneScore': format_score(row['bad_persona_score']),
             'Good Δ': format_delta(row['good_delta']),
             'Bad Δ': format_delta(row['bad_delta']),
-            'Composite HumaneScore': format_score(composite),
             'Robustness Status': row['robustness_status'] if pd.notna(row['robustness_status']) else 'N/A'
         })
 
