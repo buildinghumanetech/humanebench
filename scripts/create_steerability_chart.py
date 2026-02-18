@@ -1,32 +1,26 @@
 #!/usr/bin/env python3
 """
-Create candlestick/range chart showing bidirectional model drift of LLMs
-for a specific humane technology principle.
-Shows how far each model drifts toward humane (+) vs harmful (-) behavior
-on a single principle dimension.
+Create candlestick/range chart showing bidirectional steerability of LLMs.
+Shows how far each model can be steered toward humane (+) vs harmful (-) behavior.
 """
 
-import argparse
+import json
+import os
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import pandas as pd
 import numpy as np
-import os
-import sys
-from pathlib import Path
-
-# Add parent directory to path to import humane_patterns
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from humanebench.humane_patterns import HUMANE_PATTERNS
+import pandas as pd
 
 # Configuration
 FIGURE_DIR = 'figures'
+MODEL_MAP_PATH = os.path.join(FIGURE_DIR, 'model_display_names.json')
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 # Color scheme (colorblind-friendly)
 COLORS = {
-    'red': '#DC2626',      # Red for negative drift
-    'green': '#16A34A',    # Green for positive drift
+    'red': '#DC2626',      # Red for negative steerability
+    'green': '#16A34A',    # Green for positive steerability
     'baseline': '#000000', # Black for baseline dot
     'point_five_line': '#9CA3AF', # Gray for acceptable humaneness threshold
     'zero_line': '#000000', # Black for anti-humane threshold
@@ -34,29 +28,22 @@ COLORS = {
     'background': '#FFFFFF'
 }
 
+def load_model_map(path: str) -> dict:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Model display name map not found at {path}")
+    with open(path, 'r') as f:
+        return json.load(f)
 
-def create_principle_model_drift_chart(principle_slug, compact=False):
-    """Create the model drift candlestick chart for a specific principle."""
 
-    # Validate principle slug
-    if principle_slug not in HUMANE_PATTERNS:
-        available = ', '.join(HUMANE_PATTERNS.keys())
-        raise ValueError(
-            f"Unknown principle: {principle_slug}\n"
-            f"Available principles: {available}"
-        )
-
-    principle = HUMANE_PATTERNS[principle_slug]
-    principle_name = principle.display_name
+def create_steerability_chart(compact=False, model_map=None):
+    """Create the steerability candlestick chart."""
 
     # Load data
-    csv_file = f'{principle_slug}_model_drift.csv'
-    try:
-        df = pd.read_csv(csv_file)
-    except FileNotFoundError:
-        print(f"\nError: Could not find {csv_file}")
-        print(f"Please run: python scripts/extract_principle_model_drift.py --principle {principle_slug}")
-        sys.exit(1)
+    df = pd.read_csv('steerability_comparison.csv')
+
+    if model_map is None:
+        model_map = load_model_map(MODEL_MAP_PATH)
+    df['model'] = df['model'].apply(lambda m: model_map.get(m, m))
 
     # Sort by bad_persona_score (descending) - robust models at top
     df = df.sort_values('bad_persona_score', ascending=False, na_position='last')
@@ -126,7 +113,7 @@ def create_principle_model_drift_chart(principle_slug, compact=False):
 
     # Add vertical line at +0.5 (acceptable humaneness threshold)
     ax.axvline(x=0.5, color=COLORS['point_five_line'], linewidth=2,
-              linestyle='--', alpha=0.7, zorder=1, label='Acceptable Threshold')
+              linestyle='--', alpha=0.7, zorder=1, label='Harmful Threshold')
 
     # Add category separators
     if robust_end >= 0 and robust_end < n_models - 1:
@@ -141,7 +128,7 @@ def create_principle_model_drift_chart(principle_slug, compact=False):
     ax.set_ylim(-0.5, n_models - 0.5)
 
     # X-axis
-    ax.set_xlabel(f'{principle_name} Score', fontsize=12, fontweight='bold')
+    ax.set_xlabel('HumaneScore', fontsize=12, fontweight='bold')
     ax.set_xticks([-1.0, -0.5, 0.0, 0.5, 1.0])
     ax.set_xticklabels(['-1.0\n(Harmful)', '-0.5', '0.0', '+0.5', '+1.0\n(Humane)'])
     ax.tick_params(axis='x', labelsize=10)
@@ -195,16 +182,15 @@ def create_principle_model_drift_chart(principle_slug, compact=False):
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
-    # Generate principle-specific insights
-    negative_baseline_count = len(df[df['baseline_score'] < 0])
+    # Generate steerability-specific insights
+    improved_count = len(df[df['good_delta'] > 0])
     flip_to_negative_count = len(df[df['bad_persona_score'] < 0])
     avg_good_delta = df['good_delta'].mean()
-    avg_bad_delta = df['bad_delta'].mean()
 
     # Title and subtitle
-    title_text = f'Anti-Humane Drift: {principle_name}'
+    title_text = 'The Steerability Asymmetry Problem'
     subtitle_text = (
-        f'{len(df[df["good_delta"] > 0])} models improve with humane prompts (avg +{avg_good_delta:.2f}), '
+        f'{improved_count} models improve with humane prompts (avg +{avg_good_delta:.2f}), '
         f'but {flip_to_negative_count}/{n_models} flip to harmful behavior under adversarial prompts'
     )
 
@@ -217,9 +203,9 @@ def create_principle_model_drift_chart(principle_slug, compact=False):
         mpatches.Patch(facecolor=COLORS['baseline'], label='● Baseline (default behavior)'),
         mpatches.Patch(facecolor=COLORS['red'], label='← Bad Persona (adversarial prompt)'),
         mpatches.Patch(facecolor='none', edgecolor=COLORS['zero_line'],
-                      linestyle='--', label=f'| Harmful Threshold ({principle_name} Score = 0)'),
+                      linestyle='--', label='| Harmful Threshold (HumaneScore = 0)'),
         mpatches.Patch(facecolor='none', edgecolor=COLORS['point_five_line'],
-                      linestyle='--', label=f'| Acceptable Threshold ({principle_name} Score = 0.5)')
+                      linestyle='--', label='| Acceptable Threshold (HumaneScore = 0.5)')
     ]
     ax.legend(handles=legend_elements, loc='upper left', fontsize=9,
              frameon=True, fancybox=False, shadow=False)
@@ -227,10 +213,9 @@ def create_principle_model_drift_chart(principle_slug, compact=False):
     # Adjust layout
     plt.tight_layout()
 
-    return fig, ax, df
+    return fig, ax
 
-
-def save_chart(fig, principle_slug, filename_base):
+def save_chart(fig, filename_base):
     """Save chart in multiple formats."""
     print(f"Saving {filename_base}...")
 
@@ -250,140 +235,73 @@ def save_chart(fig, principle_slug, filename_base):
     print(f"  ✓ Saved SVG (vector)")
     print(f"  ✓ Saved PDF (publication)")
 
-
-def create_alt_text(principle_slug, df):
+def create_alt_text():
     """Generate accessibility alt-text description."""
-    principle = HUMANE_PATTERNS[principle_slug]
-    principle_name = principle.display_name
+    df = pd.read_csv('steerability_comparison.csv')
+    df = df.sort_values('bad_persona_score', ascending=False, na_position='last')
 
     robust = df[df['robustness_status'] == 'Robust']
     moderate = df[df['robustness_status'] == 'Moderate']
     failed = df[df['robustness_status'] == 'Failed']
 
-    negative_baseline = df[df['baseline_score'] < 0]
-    flip_to_negative = df[df['bad_persona_score'] < 0]
-    avg_good_delta = df['good_delta'].mean()
-
-    alt_text = f"""Model drift range chart for {principle_name} showing {len(df)} AI models and their response to humane-aligned and adversarial prompts.
+    alt_text = f"""Steerability range chart showing 14 AI models and their response to humane-aligned and adversarial prompts.
 
 The chart displays each model as a horizontal line showing:
-- Baseline {principle_name} Score (black dot): Default behavior without prompting
+- Baseline HumaneScore (black dot): Default behavior without prompting
 - Good Persona (green bar extending right): Improvement with humane-aligned prompts
 - Bad Persona (red bar extending left): Degradation with adversarial prompts
 
-Key findings for {principle_name}:
-- {len(negative_baseline)} models have negative baseline scores (naturally fail this principle)
-- {len(df[df['good_delta'] > 0])} models improve with humane prompts (average +{avg_good_delta:.2f})
-- {len(flip_to_negative)}/{len(df)} models flip to harmful behavior (negative scores) under adversarial prompts
-- {len(robust)} robust models maintain positive scores under adversarial pressure: {', '.join(robust['model'].tolist()) if len(robust) > 0 else 'None'}
+Key findings:
+- All 14 models improve with humane prompts (average +12%)
+- 71% of models (10/14) flip to harmful behavior (negative scores) under adversarial prompts
+- Only 21% (3/14) maintain positive scores under adversarial pressure: {', '.join(robust['model'].tolist())}
 
 Models are sorted by adversarial robustness:
 - Robust models ({len(robust)}): Maintain positive scores under adversarial prompts
 - Moderate models ({len(moderate)}): Degrade significantly but remain positive
 - Failed models ({len(failed)}): Flip to harmful behavior (negative scores)
 
-The vertical dashed line at Score=0 marks the threshold between humane and harmful behavior for this principle.
-The vertical dashed line at Score=0.5 marks the acceptable humaneness threshold.
-
-Principle Description:
-{principle.description}
+The vertical dashed line at HumaneScore=0 marks the threshold between humane and harmful behavior.
 """
 
-    output_file = f'{FIGURE_DIR}/{principle_slug}_candlestick_alttext.txt'
-    with open(output_file, 'w') as f:
+    with open(f'{FIGURE_DIR}/steerability_candlestick_alttext.txt', 'w') as f:
         f.write(alt_text)
 
     print(f"  ✓ Saved alt-text description")
 
-
 def main():
-    parser = argparse.ArgumentParser(
-        description='Create principle-specific model drift candlestick chart',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Create chart for Respect User Attention principle
-  python scripts/create_principle_model_drift_chart.py --principle respect-user-attention
+    print("\n" + "="*60)
+    print("Creating Steerability Candlestick Charts")
+    print("="*60 + "\n")
 
-  # Create compact version (top 10 models only)
-  python scripts/create_principle_model_drift_chart.py --principle enable-meaningful-choices --compact
+    # Create full version
+    print("Creating full version (14 models)...")
+    fig_full, ax_full = create_steerability_chart(compact=False)
+    save_chart(fig_full, 'steerability_candlestick')
+    plt.close(fig_full)
 
-Available principles:
-  - respect-user-attention
-  - enable-meaningful-choices
-  - enhance-human-capabilities
-  - protect-dignity-and-safety
-  - foster-healthy-relationships
-  - prioritize-long-term-wellbeing
-  - be-transparent-and-honest
-  - design-for-equity-and-inclusion
-"""
-    )
+    # Create compact version
+    print("\nCreating compact version (10 models)...")
+    fig_compact, ax_compact = create_steerability_chart(compact=True)
+    save_chart(fig_compact, 'steerability_candlestick_compact')
+    plt.close(fig_compact)
 
-    parser.add_argument(
-        '--principle',
-        '-p',
-        required=True,
-        help='Principle slug to visualize (e.g., respect-user-attention)'
-    )
+    # Create alt-text
+    print("\nCreating accessibility alt-text...")
+    create_alt_text()
 
-    parser.add_argument(
-        '--compact',
-        '-c',
-        action='store_true',
-        help='Create compact version with top 10 models only'
-    )
-
-    args = parser.parse_args()
-
-    try:
-        principle_slug = args.principle
-        principle_name = HUMANE_PATTERNS[principle_slug].display_name
-
-        print("\n" + "="*60)
-        print(f"Creating {principle_name} Candlestick Chart")
-        print("="*60 + "\n")
-
-        # Create full version
-        print(f"Creating chart for {principle_name}...")
-        fig_full, ax_full, df = create_principle_model_drift_chart(principle_slug, compact=False)
-        save_chart(fig_full, principle_slug, f'{principle_slug}_candlestick')
-        plt.close(fig_full)
-
-        # Create compact version if requested
-        if args.compact:
-            print(f"\nCreating compact version (10 models)...")
-            fig_compact, ax_compact, df_compact = create_principle_model_drift_chart(principle_slug, compact=True)
-            save_chart(fig_compact, principle_slug, f'{principle_slug}_candlestick_compact')
-            plt.close(fig_compact)
-
-        # Create alt-text
-        print("\nCreating accessibility alt-text...")
-        create_alt_text(principle_slug, df)
-
-        print("\n" + "="*60)
-        print("✅ Visualization created successfully!")
-        print("="*60)
-        print(f"\nOutputs in {FIGURE_DIR}/:")
-        print(f"  - {principle_slug}_candlestick.png (300 DPI)")
-        print(f"  - {principle_slug}_candlestick.svg (vector)")
-        print(f"  - {principle_slug}_candlestick.pdf (publication)")
-        if args.compact:
-            print(f"  - {principle_slug}_candlestick_compact.png (10 models)")
-            print(f"  - {principle_slug}_candlestick_compact.svg")
-            print(f"  - {principle_slug}_candlestick_compact.pdf")
-        print(f"  - {principle_slug}_candlestick_alttext.txt")
-        print()
-
-    except ValueError as e:
-        print(f"\nError: {e}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\nUnexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
+    print("\n" + "="*60)
+    print("✅ All visualizations created successfully!")
+    print("="*60)
+    print(f"\nOutputs in {FIGURE_DIR}/:")
+    print("  - steerability_candlestick.png (300 DPI)")
+    print("  - steerability_candlestick.svg (vector)")
+    print("  - steerability_candlestick.pdf (publication)")
+    print("  - steerability_candlestick_compact.png (10 models)")
+    print("  - steerability_candlestick_compact.svg")
+    print("  - steerability_candlestick_compact.pdf")
+    print("  - steerability_candlestick_alttext.txt")
+    print()
 
 if __name__ == "__main__":
     main()

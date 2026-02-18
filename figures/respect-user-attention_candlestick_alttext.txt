@@ -1,4 +1,4 @@
-Model drift range chart for Respect User Attention showing 15 AI models and their response to humane-aligned and adversarial prompts.
+Steerability range chart for Respect User Attention showing 15 AI models and their response to humane-aligned and adversarial prompts.
 
 The chart displays each model as a horizontal line showing:
 - Baseline Respect User Attention Score (black dot): Default behavior without prompting
