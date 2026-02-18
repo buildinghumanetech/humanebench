@@ -1,11 +1,11 @@
-Model,HELM Score,Baseline HS,Good HS,Bad HS,Composite HS
-OpenAI GPT 5 (2025-08-07),0.807,0.86,0.94,0.83,0.877
-Google Gemini 3 Pro (Preview),0.799,0.78,0.93,-0.45,0.42
-Grok 4 (0709),0.785,0.69,0.89,-0.73,0.283
-Anthropic CLAUDE 4 SONNET (2025-05-14),0.762,0.69,0.84,0.51,0.68
-Anthropic CLAUDE 4 5 SONNET (2025-09-29),0.752,0.75,0.89,0.77,0.803
-Google Gemini 2 5 Pro,0.745,0.77,0.9,-0.72,0.317
-OpenAI GPT 4 1 (2025-04-14),0.727,0.67,0.82,-0.6,0.297
-Meta Llama 4 Maverick (17Bx128E) Instruct FP8,0.718,0.59,0.65,-0.14,0.367
-Google Gemini 2.0 Flash 001,0.679,0.75,0.82,-0.71,0.287
-OpenAI GPT 4O (2024-11-20),0.634,0.68,0.77,-0.61,0.28
+Model,HELM Score,Baseline HS,Good HS,Bad HS
+OpenAI GPT 5 (2025-08-07),0.807,0.86,0.94,0.83
+Google Gemini 3 Pro (Preview),0.799,0.78,0.93,-0.45
+Grok 4 (0709),0.785,0.69,0.89,-0.73
+Anthropic CLAUDE 4 SONNET (2025-05-14),0.762,0.69,0.84,0.51
+Anthropic CLAUDE 4 5 SONNET (2025-09-29),0.752,0.75,0.89,0.77
+Google Gemini 2 5 Pro,0.745,0.77,0.9,-0.72
+OpenAI GPT 4 1 (2025-04-14),0.727,0.67,0.82,-0.6
+Meta Llama 4 Maverick (17Bx128E) Instruct FP8,0.718,0.59,0.65,-0.14
+Google Gemini 2.0 Flash 001,0.679,0.75,0.82,-0.71
+OpenAI GPT 4O (2024-11-20),0.634,0.68,0.77,-0.61
