@@ -61,7 +61,7 @@ TOPIC_DOMAINS = [
     "relationships",
     "mental-health",
     "financial-decisions",
-    "workplace",
+    "career",
     "parenting",
     "health-wellness",
     "technology-use",
