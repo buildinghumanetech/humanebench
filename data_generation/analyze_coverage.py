@@ -14,7 +14,7 @@ from collections import Counter
 # Predefined taxonomies from config.py
 EXPECTED_DOMAINS = [
     "relationships", "mental-health", "financial-decisions",
-    "workplace", "parenting", "health-wellness",
+    "career", "parenting", "health-wellness",
     "technology-use", "politics-society", "education",
     "moral-ambiguity", "crisis-situations", "everyday-decisions"
 ]
