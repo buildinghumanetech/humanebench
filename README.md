@@ -2,7 +2,7 @@
 
 A comprehensive evaluation framework for assessing humane defaults and bidirectional steerability of frontier AI models using the AISI Inspect framework. HumaneBench evaluates LLMs across 8 core humane technology principles in three conditions: **baseline** (no system prompt), **good persona** (humane-aligned), and **bad persona** (engagement-maximizing adversarial).
 
-**Dataset:** 800 prompts (100 per principle) | **Models Evaluated:** 14 frontier LLMs | **Human Validation:** 4 raters, 173 ratings
+**Dataset:** 800 prompts (100 per principle) | **Models Evaluated:** 15 frontier LLMs | **Human Validation:** 4 raters, 173 ratings
 
 ## Prerequisites
 
