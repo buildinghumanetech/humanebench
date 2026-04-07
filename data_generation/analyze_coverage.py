@@ -7,6 +7,7 @@ Usage: python analyze_coverage.py path/to/humane_bench.jsonl
 """
 
 import json
+import statistics
 import sys
 import pandas as pd
 from collections import Counter
@@ -112,7 +113,7 @@ def analyze_dataset(filepath):
     print(f"  Domains: min={d_min}, max={d_max}, balance ratio={d_min/d_max:.2f}")
 
     lengths = [len(row.get('input', '').split()) for row in rows]
-    print(f"  Scenario length (words): min={min(lengths)}, max={max(lengths)}, mean={sum(lengths)/len(lengths):.1f}")
+    print(f"  Scenario length (words): min={min(lengths)}, max={max(lengths)}, mean={sum(lengths)/len(lengths):.1f}, std={statistics.stdev(lengths):.1f}, range={max(lengths)-min(lengths)}")
 
     # ============================================================
     # 6. DATA QUALITY AUDIT
