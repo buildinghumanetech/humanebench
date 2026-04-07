@@ -1,0 +1,2 @@
+n_observations,n_ratings,n_raters,alpha_ord,alpha_ord_ci_lower,alpha_ord_ci_upper,alpha_bin,alpha_bin_ci_lower,alpha_bin_ci_upper,n_bootstrap,bootstrap_seed
+48,173,4,0.7116839127007997,0.5871318354570166,0.8017009440863344,0.5742574257425743,0.40318479448414346,0.7181731959923449,1000,20260407
