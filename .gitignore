@@ -244,3 +244,6 @@ good_persona_scores.csv
 steerability_comparison.csv
 .gitignore
 baseline_scores.csv
+
+# Paper notes (not for version control)
+paper_notes/
