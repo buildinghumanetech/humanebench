@@ -50,11 +50,15 @@ import pandas as pd
 # Reuse the AI-side helpers so the bootstrap RNG state is provably comparable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compute_inter_judge_agreement import (  # noqa: E402
+    SPEC_LABELS,
+    SPEC_ORDER,
+    _bootstrap_alpha_multi_level,
     _format_alpha,
-    _krippendorff_with_ci,
+    _format_ci,
+    _format_de,
 )
 
-# bootstrap seed must match scripts/compute_inter_judge_agreement.py:158
+# bootstrap seed must match compute_inter_judge_agreement.BOOTSTRAP_SEED
 BOOTSTRAP_SEED = 20260407
 N_BOOTSTRAP_DEFAULT = 1000
 
@@ -62,18 +66,17 @@ N_BOOTSTRAP_DEFAULT = 1000
 ORDINAL_LEVELS = [-1.0, -0.5, 0.5, 1.0]
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+def _load_golden_observation_ids(golden_jsonl_path: Path) -> set[str]:
+    """Return the 24 observation_ids from data/golden_questions.jsonl.
 
-
-def alpha_with_ci(matrix: np.ndarray, level: str, n_bootstrap: int) -> dict:
-    """Wrapper around the AI-side helper that returns the same dict shape.
-
-    Uses the same `_krippendorff_with_ci` from compute_inter_judge_agreement
-    so the seed and bootstrap loop are exactly identical.
+    Each line's top-level `id` field is the observation_id hash that also
+    appears as `observation_id` in consolidated_human_ratings.csv.
     """
-    return _krippendorff_with_ci(matrix, level, n_bootstrap)
+    ids: set[str] = set()
+    with open(golden_jsonl_path) as fh:
+        for line in fh:
+            ids.add(json.loads(line)["id"])
+    return ids
 
 
 # ---------------------------------------------------------------------------
@@ -123,10 +126,20 @@ def rater_pool_check(human_df: pd.DataFrame) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def build_human_reliability_matrix(human_df: pd.DataFrame) -> tuple[np.ndarray, list[str], list[str]]:
+def build_human_reliability_matrix(
+    human_df: pd.DataFrame,
+) -> tuple[np.ndarray, list[str], list[str], np.ndarray, np.ndarray]:
     """Pivot to a (raters × observations) matrix with NaN for missing ratings.
 
-    Returns (matrix, rater_order, observation_order).
+    Returns (matrix, rater_order, observation_order, cluster_input,
+    cluster_input_model). The two cluster arrays are aligned to the pivoted
+    columns and are passed through to `_bootstrap_alpha_multi_level` so the
+    human-side and AI-side cluster bootstraps use identical RNG conventions.
+
+    - `cluster_input`       — groups by `input_id` only (scenario).
+                              On the 48-obs set this yields 8 clusters of 6.
+    - `cluster_input_model` — groups by `(input_id, ai_model)` (scenario × model).
+                              On the 48-obs set this yields 16 clusters of 3.
     """
     pivot = human_df.pivot_table(
         index="rater_name",
@@ -136,11 +149,42 @@ def build_human_reliability_matrix(human_df: pd.DataFrame) -> tuple[np.ndarray, 
     )
     rater_order = sorted(pivot.index)
     pivot = pivot.loc[rater_order]
-    return pivot.values, rater_order, list(pivot.columns)
+
+    # observation_id -> cluster-id mappings derived from the long df.
+    obs_to_input = (
+        human_df[["observation_id", "input_id"]]
+        .drop_duplicates()
+        .set_index("observation_id")["input_id"]
+    )
+    obs_to_input_model = (
+        human_df.assign(
+            input_id_model=lambda d: d["input_id"].astype(str)
+            + "|"
+            + d["ai_model"].astype(str)
+        )[["observation_id", "input_id_model"]]
+        .drop_duplicates()
+        .set_index("observation_id")["input_id_model"]
+    )
+    cluster_input = obs_to_input.reindex(pivot.columns).to_numpy()
+    cluster_input_model = obs_to_input_model.reindex(pivot.columns).to_numpy()
+
+    return (
+        pivot.values,
+        rater_order,
+        list(pivot.columns),
+        cluster_input,
+        cluster_input_model,
+    )
 
 
 def pooled_human_alpha(human_df: pd.DataFrame, n_bootstrap: int) -> dict:
-    matrix, raters, obs = build_human_reliability_matrix(human_df)
+    (
+        matrix,
+        raters,
+        obs,
+        cluster_input,
+        cluster_input_model,
+    ) = build_human_reliability_matrix(human_df)
 
     non_nan = (~np.isnan(matrix)).sum()
     print("=" * 72)
@@ -156,17 +200,46 @@ def pooled_human_alpha(human_df: pd.DataFrame, n_bootstrap: int) -> dict:
             f"(rater, observation) pairs."
         )
 
-    # Ordinal α via the same krippendorff package the AI side uses.
-    alpha_ord = alpha_with_ci(matrix, "ordinal", n_bootstrap)
+    cluster_specs: "list[tuple[str, np.ndarray | None]]" = [
+        ("naive", None),
+        ("cluster_input_id", cluster_input),
+        ("cluster_input_id_model", cluster_input_model),
+    ]
+
+    # Ordinal α via the same multi-level helper the AI side uses.
+    alpha_ord = _bootstrap_alpha_multi_level(
+        matrix, "ordinal", n_bootstrap, cluster_specs
+    )
 
     # Binarized α: collapse to {0, 1} on the sign of the rating; 0 ratings
     # are treated as not-prosocial (consistent with the prosocial-flip
     # definition `score > 0` used elsewhere in the codebase).
     bin_matrix = np.where(np.isnan(matrix), np.nan, (matrix > 0).astype(float))
-    alpha_bin = alpha_with_ci(bin_matrix, "nominal", n_bootstrap)
+    alpha_bin = _bootstrap_alpha_multi_level(
+        bin_matrix, "nominal", n_bootstrap, cluster_specs
+    )
 
-    print(f"  α (ordinal):  {_format_alpha(alpha_ord)}")
-    print(f"  α (binary):   {_format_alpha(alpha_bin)}")
+    ord_point = alpha_ord["naive"]["alpha"]
+    bin_point = alpha_bin["naive"]["alpha"]
+
+    print(f"  α (ordinal) point estimate: {ord_point:.4f}")
+    for spec in SPEC_ORDER:
+        entry = alpha_ord[spec]
+        print(
+            f"    {SPEC_LABELS[spec]:<32} "
+            f"n_clusters={entry['n_clusters']:>4}  "
+            f"avg_size={entry['avg_cluster_size']:>5.2f}  "
+            f"CI={_format_ci(entry):<22}  DE={_format_de(entry)}"
+        )
+    print(f"  α (binary)  point estimate: {bin_point:.4f}")
+    for spec in SPEC_ORDER:
+        entry = alpha_bin[spec]
+        print(
+            f"    {SPEC_LABELS[spec]:<32} "
+            f"n_clusters={entry['n_clusters']:>4}  "
+            f"avg_size={entry['avg_cluster_size']:>5.2f}  "
+            f"CI={_format_ci(entry):<22}  DE={_format_de(entry)}"
+        )
 
     # Cross-check vs the existing hand-rolled α (0.726 reported in
     # scripts/human_judging_analysis/output/irr_metrics.csv).
@@ -175,10 +248,10 @@ def pooled_human_alpha(human_df: pd.DataFrame, n_bootstrap: int) -> dict:
           "analyze_human_ratings.py (which uses index-based ordinal "
           "distances on the 4 categories, treating them as evenly spaced):")
     print(f"  Existing hand-rolled α (from irr_metrics.csv): 0.726")
-    diff = alpha_ord["alpha"] - 0.726
+    diff = ord_point - 0.726
     flag = " (>0.03 — flag in writeup)" if abs(diff) > 0.03 else ""
     print(f"  New krippendorff-package α:                    "
-          f"{alpha_ord['alpha']:.3f} (Δ={diff:+.3f}){flag}")
+          f"{ord_point:.3f} (Δ={diff:+.3f}){flag}")
     print()
 
     return {
@@ -332,7 +405,7 @@ def stratified_human_alpha(human_df: pd.DataFrame, min_n: int = 5) -> pd.DataFra
     print("=" * 72)
     rows = []
     for persona, sub in human_df.groupby("ai_persona"):
-        matrix, raters, obs = build_human_reliability_matrix(sub)
+        matrix, raters, obs, _cl_in, _cl_in_model = build_human_reliability_matrix(sub)
         n_obs_multi = int(((~np.isnan(matrix)).sum(axis=0) >= 2).sum())
         if n_obs_multi < min_n:
             print(f"  {persona}: insufficient data "
@@ -379,26 +452,51 @@ def stratified_human_alpha(human_df: pd.DataFrame, min_n: int = 5) -> pd.DataFra
 # ---------------------------------------------------------------------------
 
 
-def write_d1_outputs(d1: dict, tables_dir: Path, n_bootstrap: int) -> None:
-    row = {
+def write_d1_outputs(
+    d1: dict, tables_dir: Path, n_bootstrap: int, suffix: str = ""
+) -> None:
+    alpha_ord = d1["alpha_ord"]
+    alpha_bin = d1["alpha_bin"]
+    ord_point = alpha_ord["naive"]["alpha"]
+    bin_point = alpha_bin["naive"]["alpha"]
+
+    def fn(stem: str, ext: str) -> Path:
+        return tables_dir / f"{stem}{suffix}.{ext}"
+
+    row: dict = {
         "n_observations": d1["n_observations"],
         "n_ratings": d1["n_ratings"],
         "n_raters": len(d1["raters"]),
-        "alpha_ord": d1["alpha_ord"]["alpha"],
-        "alpha_ord_ci_lower": d1["alpha_ord"]["ci_lower"],
-        "alpha_ord_ci_upper": d1["alpha_ord"]["ci_upper"],
-        "alpha_bin": d1["alpha_bin"]["alpha"],
-        "alpha_bin_ci_lower": d1["alpha_bin"]["ci_lower"],
-        "alpha_bin_ci_upper": d1["alpha_bin"]["ci_upper"],
+        "alpha_ord": ord_point,
+        "alpha_bin": bin_point,
         "n_bootstrap": n_bootstrap,
         "bootstrap_seed": BOOTSTRAP_SEED,
     }
-    pd.DataFrame([row]).to_csv(
-        tables_dir / "human_inter_rater_agreement.csv", index=False)
+    for spec in SPEC_ORDER:
+        for metric_name, block in (("alpha_ord", alpha_ord),
+                                    ("alpha_bin", alpha_bin)):
+            entry = block[spec]
+            prefix = f"{metric_name}_{spec}"
+            row[f"{prefix}_ci_lower"] = entry["ci_lower"]
+            row[f"{prefix}_ci_upper"] = entry["ci_upper"]
+            row[f"{prefix}_n_bootstrap"] = entry["n_bootstrap"]
+            row[f"{prefix}_n_clusters"] = entry["n_clusters"]
+            row[f"{prefix}_avg_cluster_size"] = entry["avg_cluster_size"]
+            row[f"{prefix}_boot_variance"] = entry["boot_variance"]
+            row[f"{prefix}_design_effect"] = entry["design_effect"]
+    pd.DataFrame([row]).to_csv(fn("human_inter_rater_agreement", "csv"),
+                                index=False)
 
     md = [
         "# Human inter-rater agreement",
         "",
+    ]
+    if suffix:
+        md.append(
+            f"_Subset mode: `{suffix.lstrip('_')}` — filtered before pooling._"
+        )
+        md.append("")
+    md += [
         f"Computed across **{d1['n_ratings']} ratings** from "
         f"**{len(d1['raters'])} human raters** on "
         f"**{d1['n_observations']} observations**.",
@@ -408,21 +506,49 @@ def write_d1_outputs(d1: dict, tables_dir: Path, n_bootstrap: int) -> None:
         "resample-count as `compute_inter_judge_agreement.py` so the human "
         "and AI numbers are directly comparable.",
         "",
-        "## Pooled (paste these next to the AI judge numbers)",
+        "## Pooled α (multi-level bootstrap)",
+        "",
+        "Three bootstrap CIs are reported per metric, differing only in the ",
+        "resampling unit. `cluster: input_id` is the primary honest CI: a ",
+        "single scenario drives every (ai_model, ai_persona) cell it appears ",
+        "in, so those cells are not independent draws. `cluster: input_id × ",
+        "eval_model` is a sensitivity check (finer; clusters only across ",
+        "personas). The **design effect** column is spec variance ÷ naive ",
+        "variance — values > 1 mean the naive CI understates uncertainty.",
+        "",
+        f"**Caveat: small n.** On this human-rated set there are "
+        f"**{alpha_ord['cluster_input_id']['n_clusters']} clusters** at the "
+        f"`input_id` level (and "
+        f"{alpha_ord['cluster_input_id_model']['n_clusters']} at "
+        f"`input_id × eval_model`), which is below the Cameron–Gelbach–Miller "
+        f"(2008) well-calibrated regime for cluster bootstrap. Interpret the "
+        f"cluster CIs as a lower bound on honest uncertainty, not a precise "
+        f"interval.",
+        "",
+        "| metric | spec | n clusters | avg cluster size | α | 95% CI | design effect |",
+        "| --- | --- | ---: | ---: | ---: | --- | ---: |",
+    ]
+    for metric_label, block, point in (
+        ("α ordinal (4-point)", alpha_ord, ord_point),
+        ("α binary (sign)", alpha_bin, bin_point),
+    ):
+        for spec in SPEC_ORDER:
+            entry = block[spec]
+            md.append(
+                f"| {metric_label} | {SPEC_LABELS[spec]} | "
+                f"{entry['n_clusters']:,} | "
+                f"{entry['avg_cluster_size']:.2f} | "
+                f"{point:.3f} | {_format_ci(entry)} | {_format_de(entry)} |"
+            )
+
+    md += [
+        "",
+        "### Paste-ready single-line numbers (cluster: input_id)",
         "",
         f"- **Krippendorff's α (ordinal, 4-point):** "
-        f"{_format_alpha(d1['alpha_ord'])}",
+        f"{_format_alpha(alpha_ord['cluster_input_id'])}",
         f"- **Krippendorff's α (binary, sign):** "
-        f"{_format_alpha(d1['alpha_bin'])}",
-        "",
-        "## Comparison to AI judge ensemble",
-        "",
-        "| metric | humans | AI judge ensemble |",
-        "| --- | --- | --- |",
-        f"| α (ordinal) | {_format_alpha(d1['alpha_ord'])} | "
-        f"0.705 [95% CI: 0.700, 0.711] |",
-        f"| α (binary)  | {_format_alpha(d1['alpha_bin'])} | "
-        f"0.755 [95% CI: 0.748, 0.760] |",
+        f"{_format_alpha(alpha_bin['cluster_input_id'])}",
         "",
         "## Notes",
         "",
@@ -432,9 +558,13 @@ def write_d1_outputs(d1: dict, tables_dir: Path, n_bootstrap: int) -> None:
         "(treats the 4 categories as evenly spaced) and a different bootstrap "
         "seed. The number above is the canonical value because (a) it uses "
         "the standard `krippendorff` package, and (b) it shares its bootstrap "
-        "RNG state with the AI inter-judge analysis.",
+        "RNG state and cluster-level conventions with the AI inter-judge "
+        "analysis.",
+        "- The naive row is retained only as a regression check — item-level "
+        "resampling ignores the fact that each scenario's response text drives "
+        "multiple correlated (ai_model × ai_persona) cells.",
     ]
-    (tables_dir / "human_inter_rater_agreement.md").write_text("\n".join(md))
+    fn("human_inter_rater_agreement", "md").write_text("\n".join(md))
 
 
 def write_d2_outputs(d2: dict, tables_dir: Path) -> None:
@@ -582,9 +712,33 @@ def main() -> None:
     # D0 — rater pool stability
     rater_pool_check(human_df)
 
-    # D1 — pooled human α with bootstrap CIs
+    # D1 — pooled human α with bootstrap CIs on the full 48-obs set
     d1 = pooled_human_alpha(human_df, args.n_bootstrap)
     write_d1_outputs(d1, tables_dir, args.n_bootstrap)
+
+    # D1-golden: same metric, filtered to the 24 curated golden observation_ids.
+    # The 24 are a curated subset of the 48 (see D2 for the curation rule), and
+    # the other Claude wants a native reliability metric on this specific subset
+    # so α can sit alongside the existing 23/24 / κ / Spearman / Pearson numbers.
+    print()
+    print("=" * 72)
+    print("D1-golden  POOLED HUMAN α ON THE CURATED 24-ITEM GOLDEN SUBSET")
+    print("=" * 72)
+    golden_ids = _load_golden_observation_ids(args.golden_jsonl)
+    golden_df = human_df[human_df["observation_id"].isin(golden_ids)].copy()
+    expected_ratings = 85  # per plan file; 11 obs × 3 raters + 13 obs × 4 raters
+    if len(golden_df) != expected_ratings:
+        print(
+            f"[warn] expected {expected_ratings} human ratings on the golden 24, "
+            f"got {len(golden_df)}"
+        )
+    if len(golden_df) > 0:
+        d1_golden = pooled_human_alpha(golden_df, args.n_bootstrap)
+        write_d1_outputs(
+            d1_golden, tables_dir, args.n_bootstrap, suffix="_golden_24"
+        )
+    else:
+        print("[warn] golden-24 filter produced 0 rows; skipping.")
 
     # D2 — golden-set provenance (reads data/golden_questions.jsonl directly)
     d2 = golden_set_provenance(human_df, args.golden_jsonl)
@@ -601,6 +755,8 @@ def main() -> None:
     for name in [
         "human_inter_rater_agreement.md",
         "human_inter_rater_agreement.csv",
+        "human_inter_rater_agreement_golden_24.md",
+        "human_inter_rater_agreement_golden_24.csv",
         "human_inter_rater_agreement_by_persona.csv",
         "golden_set_provenance.md",
     ]:
