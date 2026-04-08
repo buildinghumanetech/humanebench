@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import binomtest, pearsonr, spearmanr
 from sklearn.metrics import cohen_kappa_score
 
 # bootstrap seed must match scripts/compute_inter_judge_agreement.py:158
@@ -174,14 +174,30 @@ def main() -> None:
     print(f"  Pearson r:      {pearson_point:.3f} "
           f"[95% CI: {p_lo:.3f}, {p_hi:.3f}]  ({p_n}/{args.n_bootstrap})")
     print(f"  Direction rate: {direction_rate:.3%} "
-          f"[95% CI: {d_lo:.3%}, {d_hi:.3%}]  ({d_n}/{args.n_bootstrap})")
+          f"[95% CI: {d_lo:.3%}, {d_hi:.3%}]  "
+          f"(bootstrap percentile, {d_n}/{args.n_bootstrap})")
+
+    # Wilson CI on the binomial proportion — better coverage than the
+    # percentile bootstrap for a 0/1 outcome at n=24, and it's the standard
+    # analytical interval a statistics reviewer will expect for 23/24.
+    # The bootstrap CI is retained for internal consistency with the other
+    # three metrics, but the Wilson CI is the one the paper should cite.
+    wilson = binomtest(direction_matches, len(df)).proportion_ci(
+        method="wilson", confidence_level=0.95
+    )
+    wilson_lo = float(wilson.low)
+    wilson_hi = float(wilson.high)
+    print(f"                   {direction_rate:.3%} "
+          f"[95% CI: {wilson_lo:.3%}, {wilson_hi:.3%}]  "
+          f"(Wilson, binomial, scipy.stats.binomtest)")
 
     # Sanity check 3: point estimates inside CIs
     for name, pt, lo, hi in [
         ("κ", kappa_point, k_lo, k_hi),
         ("Spearman ρ", spearman_point, s_lo, s_hi),
         ("Pearson r", pearson_point, p_lo, p_hi),
-        ("direction", direction_rate, d_lo, d_hi),
+        ("direction (bootstrap)", direction_rate, d_lo, d_hi),
+        ("direction (Wilson)", direction_rate, wilson_lo, wilson_hi),
     ]:
         assert lo <= pt <= hi, (
             f"{name} point estimate {pt:.3f} outside CI [{lo:.3f}, {hi:.3f}]")
@@ -200,9 +216,16 @@ def main() -> None:
         "pearson_r_ci_lower": p_lo,
         "pearson_r_ci_upper": p_hi,
         "direction_match_rate": direction_rate,
-        "direction_match_rate_ci_lower": d_lo,
-        "direction_match_rate_ci_upper": d_hi,
         "direction_matches": direction_matches,
+        # Bootstrap percentile CI — retained for methodological consistency
+        # with the other three metrics (all bootstrap percentile).
+        "direction_match_rate_bootstrap_ci_lower": d_lo,
+        "direction_match_rate_bootstrap_ci_upper": d_hi,
+        # Wilson CI on the binomial proportion — the CI the paper should cite
+        # for 23/24 because it has better small-n coverage than the percentile
+        # bootstrap for a 0/1 outcome.
+        "direction_match_rate_wilson_ci_lower": wilson_lo,
+        "direction_match_rate_wilson_ci_upper": wilson_hi,
         "n_bootstrap": args.n_bootstrap,
         "bootstrap_seed": BOOTSTRAP_SEED,
     }

@@ -1,6 +1,8 @@
 # Human inter-rater agreement
 
-Computed across **173 ratings** from **4 human raters** on **48 observations**.
+_Subset mode: `golden_24` — filtered before pooling._
+
+Computed across **85 ratings** from **4 human raters** on **24 observations**.
 
 Reliability matrix is `(raters × observations)` with NaN for missing rater-observation pairs. Bootstrap CIs use the same seed and resample-count as `compute_inter_judge_agreement.py` so the human and AI numbers are directly comparable.
 
@@ -14,21 +16,21 @@ eval_model` is a sensitivity check (finer; clusters only across
 personas). The **design effect** column is spec variance ÷ naive 
 variance — values > 1 mean the naive CI understates uncertainty.
 
-**Caveat: small n.** On this human-rated set there are **8 clusters** at the `input_id` level (and 16 at `input_id × eval_model`), which is below the Cameron–Gelbach–Miller (2008) well-calibrated regime for cluster bootstrap. Interpret the cluster CIs as a lower bound on honest uncertainty, not a precise interval.
+**Caveat: small n.** On this human-rated set there are **8 clusters** at the `input_id` level (and 15 at `input_id × eval_model`), which is below the Cameron–Gelbach–Miller (2008) well-calibrated regime for cluster bootstrap. Interpret the cluster CIs as a lower bound on honest uncertainty, not a precise interval.
 
 | metric | spec | n clusters | avg cluster size | α | 95% CI | design effect |
 | --- | --- | ---: | ---: | ---: | --- | ---: |
-| α ordinal (4-point) | item-level (naive) | 48 | 1.00 | 0.712 | [0.587, 0.802] | 1.00 |
-| α ordinal (4-point) | cluster: input_id | 8 | 6.00 | 0.712 | [0.583, 0.817] | 1.11 |
-| α ordinal (4-point) | cluster: input_id × eval_model | 16 | 3.00 | 0.712 | [0.618, 0.800] | 0.66 |
-| α binary (sign) | item-level (naive) | 48 | 1.00 | 0.574 | [0.403, 0.718] | 1.00 |
-| α binary (sign) | cluster: input_id | 8 | 6.00 | 0.574 | [0.427, 0.741] | 0.98 |
-| α binary (sign) | cluster: input_id × eval_model | 16 | 3.00 | 0.574 | [0.441, 0.714] | 0.72 |
+| α ordinal (4-point) | item-level (naive) | 24 | 1.00 | 0.891 | [0.679, 0.960] | 1.00 |
+| α ordinal (4-point) | cluster: input_id | 8 | 3.00 | 0.891 | [0.714, 0.957] | 0.89 |
+| α ordinal (4-point) | cluster: input_id × eval_model | 15 | 1.60 | 0.891 | [0.751, 0.954] | 0.74 |
+| α binary (sign) | item-level (naive) | 24 | 1.00 | 1.000 | [1.000, 1.000] | 1.00 |
+| α binary (sign) | cluster: input_id | 8 | 3.00 | 1.000 | [1.000, 1.000] | 1.00 |
+| α binary (sign) | cluster: input_id × eval_model | 15 | 1.60 | 1.000 | [1.000, 1.000] | 1.00 |
 
 ### Paste-ready single-line numbers (cluster: input_id)
 
-- **Krippendorff's α (ordinal, 4-point):** 0.712 [95% CI: 0.583, 0.817]
-- **Krippendorff's α (binary, sign):** 0.574 [95% CI: 0.427, 0.741]
+- **Krippendorff's α (ordinal, 4-point):** 0.891 [95% CI: 0.714, 0.957]
+- **Krippendorff's α (binary, sign):** 1.000 [95% CI: 1.000, 1.000]
 
 ## Notes
 

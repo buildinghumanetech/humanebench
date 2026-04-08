@@ -1,8 +1,8 @@
 # Inter-judge agreement
 
-Computed across **35,956 scored items** (samples scanned: 36,000; excluded (no individual_scores): 44; excluded (off-scale): 0).
+_Subset mode: `human_slice` — filtered before pooling._
 
-Eval files scanned: 45.
+Computed across **48 scored items** (samples scanned: 48; excluded (no individual_scores): 0; excluded (off-scale): 0).
 
 ## Pooled α (multi-level bootstrap)
 
@@ -28,32 +28,32 @@ CI as a lower bound on honest uncertainty rather than a precise number.
 
 | metric | spec | n clusters | avg cluster size | α | 95% CI | design effect |
 | --- | --- | ---: | ---: | ---: | --- | ---: |
-| α ordinal (4-point) | item-level (naive) | 35,956 | 1.00 | 0.705 | [0.700, 0.711] | 1.00 |
-| α ordinal (4-point) | cluster: input_id | 800 | 44.95 | 0.705 | [0.696, 0.715] | 2.75 |
-| α ordinal (4-point) | cluster: input_id × eval_model | 12,000 | 3.00 | 0.705 | [0.700, 0.711] | 0.87 |
-| α binary (sev ≥ 0) | item-level (naive) | 35,956 | 1.00 | 0.755 | [0.748, 0.760] | 1.00 |
-| α binary (sev ≥ 0) | cluster: input_id | 800 | 44.95 | 0.755 | [0.742, 0.767] | 4.16 |
-| α binary (sev ≥ 0) | cluster: input_id × eval_model | 12,000 | 3.00 | 0.755 | [0.749, 0.761] | 1.08 |
+| α ordinal (4-point) | item-level (naive) | 48 | 1.00 | 0.818 | [0.684, 0.890] | 1.00 |
+| α ordinal (4-point) | cluster: input_id | 8 | 6.00 | 0.818 | [0.753, 0.884] | 0.42 |
+| α ordinal (4-point) | cluster: input_id × eval_model | 16 | 3.00 | 0.818 | [0.767, 0.870] | 0.30 |
+| α binary (sev ≥ 0) | item-level (naive) | 48 | 1.00 | 0.774 | [0.612, 0.914] | 1.00 |
+| α binary (sev ≥ 0) | cluster: input_id | 8 | 6.00 | 0.774 | [0.586, 0.939] | 1.22 |
+| α binary (sev ≥ 0) | cluster: input_id × eval_model | 16 | 3.00 | 0.774 | [0.613, 0.912] | 0.99 |
 
-**Sign-disagreement rate (≥1 judge disagrees in sign):** 14.476%
+**Sign-disagreement rate (≥1 judge disagrees in sign):** 16.667%
 
 ### Paste-ready single-line numbers
 
-- **α (ordinal, 4-point), cluster: input_id:** 0.705 [95% CI: 0.696, 0.715]
-- **α (binary, sev ≥ 0), cluster: input_id:** 0.755 [95% CI: 0.742, 0.767]
+- **α (ordinal, 4-point), cluster: input_id:** 0.818 [95% CI: 0.753, 0.884]
+- **α (binary, sev ≥ 0), cluster: input_id:** 0.774 [95% CI: 0.586, 0.939]
 
 ## Pairwise Cohen's κ (Appendix app:judges)
 
 | pair | n | κ (unweighted) | κ (quadratic-weighted) | exact agreement |
 | --- | ---: | ---: | ---: | ---: |
-| claude-4.5-sonnet × gemini-2.5-pro | 35,956 | 0.508 | 0.811 | 72.363% |
-| claude-4.5-sonnet × gpt-5.1 | 35,956 | 0.484 | 0.773 | 66.937% |
-| gemini-2.5-pro × gpt-5.1 | 35,956 | 0.365 | 0.738 | 62.212% |
+| claude-4.5-sonnet × gemini-2.5-pro | 48 | 0.507 | 0.844 | 66.667% |
+| claude-4.5-sonnet × gpt-5.1 | 48 | 0.626 | 0.898 | 72.917% |
+| gemini-2.5-pro × gpt-5.1 | 48 | 0.434 | 0.779 | 60.417% |
 
 ## Per-judge marginal distributions (sanity check)
 
 | judge | -1.0 | -0.5 | +0.5 | +1.0 |
 | --- | ---: | ---: | ---: | ---: |
-| claude-4.5-sonnet | 0.108 | 0.189 | 0.155 | 0.548 |
-| gemini-2.5-pro | 0.159 | 0.083 | 0.026 | 0.733 |
-| gpt-5.1 | 0.056 | 0.213 | 0.223 | 0.508 |
+| claude-4.5-sonnet | 0.208 | 0.229 | 0.167 | 0.396 |
+| gemini-2.5-pro | 0.312 | 0.083 | 0.000 | 0.604 |
+| gpt-5.1 | 0.167 | 0.271 | 0.188 | 0.375 |

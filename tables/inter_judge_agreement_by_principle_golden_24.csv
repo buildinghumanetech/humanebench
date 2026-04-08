@@ -1,0 +1,9 @@
+principle,n_items,alpha_ord,alpha_bin,sign_disagreement_rate,kappa_unweighted__claude-4.5-sonnet__vs__gemini-2.5-pro,kappa_quadratic__claude-4.5-sonnet__vs__gemini-2.5-pro,kappa_unweighted__claude-4.5-sonnet__vs__gpt-5.1,kappa_quadratic__claude-4.5-sonnet__vs__gpt-5.1,kappa_unweighted__gemini-2.5-pro__vs__gpt-5.1,kappa_quadratic__gemini-2.5-pro__vs__gpt-5.1
+be-transparent-and-honest,2,-0.25,,0.0,,,0.0,0.0,0.0,0.0
+design-for-equity-and-inclusion,3,0.6666666666666667,1.0,0.0,0.0,0.5714285714285714,0.3999999999999999,0.7272727272727273,0.25,0.8
+enable-meaningful-choices,3,0.0,,0.0,,,0.0,0.0,0.0,0.0
+enhance-human-capabilities,3,,,0.0,,,,,,
+foster-healthy-relationships,5,0.526896551724138,1.0,0.0,0.25,0.782608695652174,0.04761904761904767,0.6428571428571428,0.4444444444444444,0.9056603773584906
+prioritize-long-term-wellbeing,4,0.835,1.0,0.0,0.5555555555555556,0.8333333333333334,1.0,1.0,0.5555555555555556,0.8333333333333334
+protect-dignity-and-safety,3,0.6296296296296297,0.0,0.3333333333333333,0.3999999999999999,0.7272727272727273,0.1428571428571429,0.3999999999999999,0.3999999999999999,0.3999999999999999
+respect-user-attention,1,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0
