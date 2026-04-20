@@ -75,17 +75,35 @@ def _iter_eval_samples(eval_path: Path) -> Iterable[dict]:
                 yield json.load(fh)
 
 
-def collect_long_table(logs_dir: Path) -> tuple[pd.DataFrame, dict]:
+def _load_exclude_ids(path: Path | None) -> set[str]:
+    """Load item IDs from a cut-list file (lines starting with # are comments)."""
+    if path is None:
+        return set()
+    ids = set()
+    with open(path) as fh:
+        for line in fh:
+            line = line.split("#")[0].strip()
+            if line:
+                ids.add(line)
+    return ids
+
+
+def collect_long_table(
+    logs_dir: Path,
+    exclude_ids: set[str] | None = None,
+) -> tuple[pd.DataFrame, dict]:
     """Walk logs/ and build a long-format DataFrame of per-judge scores.
 
     Returns the DataFrame and a stats dict tracking inclusion/exclusion counts.
     """
+    exclude = exclude_ids or set()
     rows = []
     stats = {
         "total_samples": 0,
         "samples_included": 0,
         "samples_excluded_no_individual_scores": 0,
         "samples_excluded_invalid_severity": 0,
+        "samples_excluded_cut_list": 0,
         "files_scanned": 0,
     }
 
@@ -103,6 +121,9 @@ def collect_long_table(logs_dir: Path) -> tuple[pd.DataFrame, dict]:
                 for sample in _iter_eval_samples(eval_path):
                     stats["total_samples"] += 1
                     sample_id = sample.get("id")
+                    if sample_id in exclude:
+                        stats["samples_excluded_cut_list"] += 1
+                        continue
                     target = sample.get("target")
                     overseer = (sample.get("scores") or {}).get("overseer")
                     if not overseer:
@@ -892,6 +913,22 @@ def main() -> None:
              "a third time on those samples and write parallel outputs with "
              "a '_golden_24' suffix.",
     )
+    parser.add_argument(
+        "--exclude-ids",
+        type=Path,
+        default=None,
+        help="Override: path to a cut-list file (one ID per line, # comments ok). "
+             "If given, replaces the default dataset-derived exclusion set. "
+             "Samples whose id matches are excluded from the full-corpus and "
+             "human-slice passes. Golden-24 pass is unaffected.",
+    )
+    parser.add_argument(
+        "--include-excluded",
+        action="store_true",
+        help="Disable default exclusion: include items tagged "
+             "metadata.excluded_from_analysis=True in data/humane_bench.jsonl. "
+             "Ignored if --exclude-ids is also given.",
+    )
     args = parser.parse_args()
 
     logs_dir = args.logs_dir.expanduser().resolve()
@@ -899,11 +936,24 @@ def main() -> None:
     if not logs_dir.is_dir():
         raise SystemExit(f"logs dir not found: {logs_dir}")
 
+    if args.exclude_ids is not None:
+        exclude_ids = _load_exclude_ids(args.exclude_ids)
+        print(f"Excluding {len(exclude_ids)} item IDs from {args.exclude_ids}.")
+    elif args.include_excluded:
+        exclude_ids = set()
+        print("Including all items (--include-excluded set).")
+    else:
+        from humanebench.excluded import load_excluded_ids
+        exclude_ids = load_excluded_ids()
+        print(f"Excluding {len(exclude_ids)} items tagged "
+              f"excluded_from_analysis=True in data/humane_bench.jsonl.")
+
     print(f"Scanning {logs_dir} ...")
-    long_df, stats = collect_long_table(logs_dir)
+    long_df, stats = collect_long_table(logs_dir, exclude_ids=exclude_ids)
     print(f"  files scanned:        {stats['files_scanned']}")
     print(f"  samples scanned:      {stats['total_samples']:,}")
     print(f"  samples included:     {stats['samples_included']:,}")
+    print(f"  excluded (cut list):  {stats['samples_excluded_cut_list']:,}")
     print(f"  excluded (no scores): {stats['samples_excluded_no_individual_scores']:,}")
     print(f"  excluded (off-scale): {stats['samples_excluded_invalid_severity']:,}")
 
