@@ -927,9 +927,12 @@ def main() -> None:
         action="store_true",
         help="Disable default exclusion: include items tagged "
              "metadata.excluded_from_analysis=True in data/humane_bench.jsonl. "
-             "Ignored if --exclude-ids is also given.",
+             "Mutually exclusive with --exclude-ids.",
     )
     args = parser.parse_args()
+
+    if args.exclude_ids is not None and args.include_excluded:
+        parser.error("--include-excluded and --exclude-ids are mutually exclusive")
 
     logs_dir = args.logs_dir.expanduser().resolve()
     tables_dir = args.tables_dir.expanduser().resolve()

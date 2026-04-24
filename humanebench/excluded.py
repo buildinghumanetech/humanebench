@@ -1,8 +1,10 @@
 """Excluded-item metadata loader.
 
 The dataset `data/humane_bench.jsonl` marks items excluded from analysis with
-`metadata.excluded_from_analysis = true`. This module is the canonical source
-for reading that set.
+`metadata.excluded_from_analysis = true`. This module is the canonical *read
+path* for that flag. Consumers that aggregate from `logs/` rely on the input
+having been filtered before the eval was run — they do not re-apply the filter
+post-hoc.
 """
 import json
 from pathlib import Path
