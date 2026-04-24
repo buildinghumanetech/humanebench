@@ -247,3 +247,7 @@ baseline_scores.csv
 
 # Paper notes (not for version control)
 paper_notes/
+
+# Large per-judge raw severity table (13 MB, regeneratable via
+# scripts/compute_inter_judge_agreement.py)
+tables/inter_judge_raw.csv
