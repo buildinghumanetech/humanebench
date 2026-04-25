@@ -187,6 +187,8 @@ def create_minor_vp_table(df):
     print(f"  Saved {md_path}")
 
 
+DRILLDOWN_PERSONA_ORDER = ["bad_persona", "baseline", "good_persona"]
+
 PERSONA_COLORS = {
     "baseline": "#9CA3AF",
     "good_persona": "#3B82F6",
@@ -208,8 +210,8 @@ def create_drilldown_chart(df, vp, principle, model_map):
     means = subset.groupby(["model", "persona"])["score"].mean().unstack(fill_value=np.nan)
     counts = subset.groupby(["model", "persona"])["score"].count().unstack(fill_value=0)
 
-    means = means.reindex(index=MODEL_ORDER, columns=PERSONAS)
-    counts = counts.reindex(index=MODEL_ORDER, columns=PERSONAS).fillna(0).astype(int)
+    means = means.reindex(index=MODEL_ORDER, columns=DRILLDOWN_PERSONA_ORDER)
+    counts = counts.reindex(index=MODEL_ORDER, columns=DRILLDOWN_PERSONA_ORDER).fillna(0).astype(int)
 
     display_models = [model_map.get(m, m) for m in MODEL_ORDER]
 
@@ -217,7 +219,7 @@ def create_drilldown_chart(df, vp, principle, model_map):
     width = 0.25
 
     fig, ax = plt.subplots(figsize=(18, 8))
-    for i, persona in enumerate(PERSONAS):
+    for i, persona in enumerate(DRILLDOWN_PERSONA_ORDER):
         vals = means[persona].values
         ns = counts[persona].values
         bars = ax.bar(
