@@ -260,6 +260,161 @@ def create_drilldown_chart(df, vp, principle, model_map):
     print(f"  Saved {out_path}")
 
 
+VP_COLORS = {
+    "children": "#E63946",
+    "teenagers": "#457B9D",
+    "elderly": "#2A9D8F",
+    "general pop": "#9CA3AF",
+}
+
+VP_MARKERS = {
+    "children": "o",
+    "teenagers": "s",
+    "elderly": "D",
+    "general pop": "X",
+}
+
+COMPARISON_VPS = ["children", "teenagers", "elderly", "general pop"]
+
+PRINCIPLE_LABELS_MULTILINE = {
+    "respect-user-attention": "Respect\nAttention",
+    "enable-meaningful-choices": "Enable\nChoices",
+    "enhance-human-capabilities": "Enhance\nCapabilities",
+    "protect-dignity-and-safety": "Protect\nSafety",
+    "foster-healthy-relationships": "Foster\nRelationships",
+    "prioritize-long-term-wellbeing": "Long-term\nWellbeing",
+    "be-transparent-and-honest": "Be\nTransparent",
+    "design-for-equity-and-inclusion": "Equity &\nInclusion",
+}
+
+
+def _prepare_vp_df(df):
+    """Add a vp_label column that maps NaN/blank to 'general pop'."""
+    out = df.copy()
+    out["vp_label"] = out["vulnerable_population"].fillna("general pop")
+    out.loc[out["vp_label"] == "", "vp_label"] = "general pop"
+    return out[out["vp_label"].isin(COMPARISON_VPS)]
+
+
+def create_vp_dot_chart(df):
+    """Dot chart comparing VPs across principles and conditions."""
+    print("Generating VP dot chart...")
+    df = _prepare_vp_df(df)
+
+    fig, axes = plt.subplots(1, 3, figsize=(20, 10), sharey=True)
+    persona_order = ["bad_persona", "baseline", "good_persona"]
+
+    for ax_idx, persona in enumerate(persona_order):
+        ax = axes[ax_idx]
+        sub = df[df["persona"] == persona]
+
+        for i in range(len(PRINCIPLES)):
+            if i % 2 == 0:
+                ax.axhspan(i - 0.5, i + 0.5, color="#f0f0f0", zorder=0)
+
+        for vp in COMPARISON_VPS:
+            vp_sub = sub[sub["vp_label"] == vp]
+            means, y_positions = [], []
+            for i, p in enumerate(PRINCIPLES):
+                p_sub = vp_sub[vp_sub["principle"] == p]
+                if len(p_sub) > 0:
+                    means.append(p_sub["score"].mean())
+                    y_positions.append(i)
+            if means:
+                offset = (COMPARISON_VPS.index(vp) - 1.5) * 0.15
+                y_off = [y + offset for y in y_positions]
+                ax.scatter(
+                    means, y_off,
+                    color=VP_COLORS[vp],
+                    marker=VP_MARKERS[vp],
+                    s=80, zorder=3,
+                    label=vp.title() if ax_idx == 0 else None,
+                    edgecolors="white", linewidth=0.5,
+                )
+
+        ax.axvline(x=0, color="black", linewidth=0.8, alpha=0.5)
+        ax.set_yticks(range(len(PRINCIPLES)))
+        ax.set_yticklabels(
+            [PRINCIPLE_LABELS_MULTILINE[p] for p in PRINCIPLES], fontsize=10,
+        )
+        if ax_idx == 2:
+            ax_right = ax.secondary_yaxis("right")
+            ax_right.set_yticks(range(len(PRINCIPLES)))
+            ax_right.set_yticklabels(
+                [PRINCIPLE_LABELS_MULTILINE[p] for p in PRINCIPLES], fontsize=10,
+            )
+        ax.set_xlabel("Mean Score", fontsize=11)
+        ax.set_title(PERSONA_LABELS[persona], fontsize=13, fontweight="bold")
+        ax.set_xlim(-1.1, 1.1)
+        ax.grid(axis="x", alpha=0.3)
+        ax.invert_yaxis()
+
+    axes[0].legend(loc="lower left", fontsize=10, framealpha=0.9)
+    fig.suptitle(
+        "VP Comparison by Principle and Condition",
+        fontsize=15, fontweight="bold", y=0.98,
+    )
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    out_path = os.path.join(FIGURE_DIR, "vp_dot_chart_comparison.png")
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved {out_path}")
+
+
+def create_vp_grouped_bar_chart(df):
+    """Small-multiples grouped bar chart comparing VPs by principle."""
+    print("Generating VP grouped bar chart...")
+    df = _prepare_vp_df(df)
+
+    fig, axes = plt.subplots(1, 3, figsize=(22, 8), sharey=True)
+    persona_order = ["bad_persona", "baseline", "good_persona"]
+
+    x = np.arange(len(PRINCIPLES))
+    n_vps = len(COMPARISON_VPS)
+    total_width = 0.75
+    bar_width = total_width / n_vps
+
+    for ax_idx, persona in enumerate(persona_order):
+        ax = axes[ax_idx]
+        sub = df[df["persona"] == persona]
+
+        for vp_idx, vp in enumerate(COMPARISON_VPS):
+            vp_sub = sub[sub["vp_label"] == vp]
+            means = []
+            for p in PRINCIPLES:
+                p_sub = vp_sub[vp_sub["principle"] == p]
+                means.append(p_sub["score"].mean() if len(p_sub) > 0 else np.nan)
+
+            offset = (vp_idx - n_vps / 2 + 0.5) * bar_width
+            ax.bar(
+                x + offset, means, bar_width * 0.9,
+                label=vp.title() if ax_idx == 0 else None,
+                color=VP_COLORS[vp], alpha=0.85,
+            )
+
+        ax.axhline(y=0, color="black", linewidth=0.8)
+        ax.set_xticks(x)
+        ax.set_xticklabels(
+            [PRINCIPLE_LABELS_MULTILINE[p] for p in PRINCIPLES],
+            fontsize=8, ha="center",
+        )
+        ax.set_title(PERSONA_LABELS[persona], fontsize=13, fontweight="bold")
+        ax.set_ylim(-1.1, 1.1)
+        ax.grid(axis="y", alpha=0.3)
+
+    axes[0].set_ylabel("Mean Score", fontsize=12)
+    axes[0].legend(loc="lower left", fontsize=10, framealpha=0.9)
+    fig.suptitle(
+        "VP Treatment by Principle: Which Population Diverges?",
+        fontsize=15, fontweight="bold", y=0.98,
+    )
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    out_path = os.path.join(FIGURE_DIR, "vp_grouped_bar_comparison.png")
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved {out_path}")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Generate VP-filtered visualizations"
@@ -284,6 +439,8 @@ def main():
     else:
         generate_all_heatmaps(df, model_map)
         create_minor_vp_table(df)
+        create_vp_dot_chart(df)
+        create_vp_grouped_bar_chart(df)
 
 
 if __name__ == "__main__":
