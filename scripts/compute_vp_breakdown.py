@@ -5,40 +5,67 @@ Walks logs/{baseline,good_persona,bad_persona}/<model>/*.eval and writes
 tables/vp_sample_scores.csv with one row per sample per model per persona.
 """
 
-import json
-import zipfile
+import argparse
+import math
+import sys
 from pathlib import Path
 
 import pandas as pd
+from inspect_ai.log import read_eval_log
 
-from humanebench.excluded import load_excluded_ids
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from humanebench.excluded import load_excluded_ids  # noqa: E402
 
 PERSONAS = ["baseline", "good_persona", "bad_persona"]
-LOGS_DIR = Path("logs")
-OUTPUT_CSV = Path("tables/vp_sample_scores.csv")
 
 
-def _iter_eval_samples(eval_path: Path):
-    with zipfile.ZipFile(eval_path, "r") as zf:
-        sample_files = [
-            f for f in zf.namelist()
-            if f.startswith("samples/") and f.endswith(".json")
-        ]
-        for sf in sample_files:
-            with zf.open(sf) as fh:
-                yield json.load(fh)
+def _pick_latest_eval(model_dir: Path) -> tuple[Path | None, int]:
+    """Return (latest .eval by mtime, count of older files skipped)."""
+    eval_files = list(model_dir.glob("*.eval"))
+    if not eval_files:
+        return None, 0
+    latest = max(eval_files, key=lambda p: p.stat().st_mtime)
+    return latest, len(eval_files) - 1
+
+
+def _is_nan(value) -> bool:
+    return isinstance(value, float) and math.isnan(value)
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Extract per-sample VP-tagged scores from .eval files into a flat CSV."
+    )
+    parser.add_argument(
+        "--logs-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "logs",
+        help="Directory containing persona subdirectories (baseline/good_persona/bad_persona)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "tables" / "vp_sample_scores.csv",
+        help="Output CSV path",
+    )
+    args = parser.parse_args()
+
+    logs_dir = args.logs_dir.expanduser().resolve()
+    output_path = args.output.expanduser().resolve()
+
+    if not logs_dir.exists():
+        raise FileNotFoundError(f"Logs directory not found: {logs_dir}")
+
     excluded = load_excluded_ids()
     print(f"Loaded {len(excluded)} excluded IDs")
 
     rows = []
     files_scanned = 0
-    samples_excluded = 0
+    rows_excluded = 0
+    nan_dropped = 0
 
     for persona in PERSONAS:
-        persona_dir = LOGS_DIR / persona
+        persona_dir = logs_dir / persona
         if not persona_dir.is_dir():
             print(f"[warn] missing persona dir: {persona_dir}")
             continue
@@ -46,29 +73,42 @@ def main():
             if not model_dir.is_dir():
                 continue
             model_name = model_dir.name
-            for eval_path in sorted(model_dir.glob("*.eval")):
-                files_scanned += 1
-                for sample in _iter_eval_samples(eval_path):
-                    sample_id = sample.get("id")
-                    if sample_id in excluded:
-                        samples_excluded += 1
-                        continue
-                    meta = (sample.get("metadata") or {}).get("metadata") or {}
-                    overseer = (sample.get("scores") or {}).get("overseer") or {}
-                    rows.append({
-                        "sample_id": sample_id,
-                        "model": model_name,
-                        "persona": persona,
-                        "principle": meta.get("principle", ""),
-                        "vulnerable_population": meta.get("vulnerable-population", ""),
-                        "score": overseer.get("value"),
-                    })
+            eval_path, skipped = _pick_latest_eval(model_dir)
+            if eval_path is None:
+                print(f"[warn] no .eval files in {persona}/{model_name}")
+                continue
+            files_scanned += 1
+            print(f"  {persona}/{model_name}: picked {eval_path.name}"
+                  + (f" (skipped {skipped} stale)" if skipped else ""))
+
+            log = read_eval_log(str(eval_path))
+            for sample in log.samples or []:
+                sample_id = sample.id
+                if sample_id in excluded:
+                    rows_excluded += 1
+                    continue
+                meta = ((sample.metadata or {}).get("metadata") or {})
+                overseer = (sample.scores or {}).get("overseer")
+                score = overseer.value if overseer is not None else None
+                if score is None or _is_nan(score):
+                    nan_dropped += 1
+                    continue
+                rows.append({
+                    "sample_id": sample_id,
+                    "model": model_name,
+                    "persona": persona,
+                    "principle": meta.get("principle", ""),
+                    "vulnerable_population": meta.get("vulnerable-population", ""),
+                    "score": score,
+                })
 
     df = pd.DataFrame(rows)
-    df.to_csv(OUTPUT_CSV, index=False)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
 
     print(f"\nFiles scanned: {files_scanned}")
-    print(f"Samples excluded (cut list): {samples_excluded}")
+    print(f"Sample rows excluded: {rows_excluded}")
+    print(f"Dropped {nan_dropped} NaN/None scores (ensemble judge failures)")
     print(f"Total rows written: {len(df)}")
     print(f"\nVP distribution (unique scenario IDs per VP):")
     vp_counts = (
@@ -81,7 +121,7 @@ def main():
         print(f"  {vp}: {n} scenarios")
     print(f"  (blank/general population): "
           f"{df[df['vulnerable_population'] == '']['sample_id'].nunique()} scenarios")
-    print(f"\nSaved to {OUTPUT_CSV}")
+    print(f"\nSaved to {output_path}")
 
 
 if __name__ == "__main__":
