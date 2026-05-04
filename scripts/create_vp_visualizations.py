@@ -18,6 +18,24 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FIGURE_DIR = REPO_ROOT / "figures"
 DEFAULT_TABLE_DIR = REPO_ROOT / "tables"
 DEFAULT_INPUT_CSV = DEFAULT_TABLE_DIR / "vp_sample_scores.csv"
+DEFAULT_DATASET = REPO_ROOT / "data" / "humane_bench.jsonl"
+
+
+def _load_live_vp_map(dataset_path: Path) -> dict[str, str]:
+    """Return {sample_id: vulnerable_population} from the live JSONL.
+
+    Used to override the CSV's vulnerable_population column, which carries
+    .eval-time metadata that may be stale after JSONL taxonomy edits.
+    """
+    out: dict[str, str] = {}
+    with dataset_path.open() as fh:
+        for line in fh:
+            row = json.loads(line)
+            sid = row.get("id")
+            if not sid:
+                continue
+            out[sid] = (row.get("metadata") or {}).get("vulnerable-population", "") or ""
+    return out
 
 PERSONAS = ["baseline", "good_persona", "bad_persona"]
 PERSONA_LABELS = {
@@ -91,19 +109,32 @@ def _safe_vmax(values: np.ndarray) -> float:
     return vmax if vmax > 0 else 1.0
 
 
-def create_heatmap(df, vp, persona, model_map, figure_dir: Path):
-    """Create a single VP heatmap for a given VP and persona."""
-    subset = df[(df["vulnerable_population"] == vp) & (df["persona"] == persona)]
+HEATMAP_CMAP = "RdYlGn"  # red=negative, yellow=mid, green=positive
 
+
+def _heatmap_data(df, vp, persona):
+    """Return (means_df, counts_df, n_scenarios) for a (vp, persona) slice."""
+    subset = df[(df["vulnerable_population"] == vp) & (df["persona"] == persona)]
     means = subset.groupby(["model", "principle"])["score"].mean().unstack(fill_value=np.nan)
     counts = subset.groupby(["model", "principle"])["score"].count().unstack(fill_value=0)
-
     means = means.reindex(index=MODEL_ORDER, columns=PRINCIPLES)
     counts = counts.reindex(index=MODEL_ORDER, columns=PRINCIPLES).fillna(0).astype(int)
+    n_scenarios = subset["sample_id"].nunique()
+    return means, counts, n_scenarios
 
-    display_models = [model_map.get(m, m) for m in MODEL_ORDER]
-    display_principles = [PRINCIPLE_LABELS[p] for p in PRINCIPLES]
 
+def _render_heatmap_into(
+    ax,
+    means: pd.DataFrame,
+    counts: pd.DataFrame,
+    *,
+    model_map: dict,
+    yticklabels: bool = True,
+    cbar: bool = True,
+    cbar_ax=None,
+    vmax: float | None = None,
+):
+    """Draw the heatmap on a given axis. Used by both single and combined panels."""
     annot = np.empty_like(means.values, dtype=object)
     for i in range(means.shape[0]):
         for j in range(means.shape[1]):
@@ -112,35 +143,48 @@ def create_heatmap(df, vp, persona, model_map, figure_dir: Path):
             if pd.isna(val) or n == 0:
                 annot[i, j] = "n/a"
             else:
-                annot[i, j] = f"{val:.3f}\n(n={n})"
+                annot[i, j] = f"{val:+.3f}"
 
-    vmax = _safe_vmax(means.values)
+    if vmax is None:
+        vmax = _safe_vmax(means.values)
 
-    fig, ax = plt.subplots(figsize=(16, 10))
     sns.heatmap(
         means.values,
         annot=annot,
         fmt="",
-        cmap="RdBu",
+        cmap=HEATMAP_CMAP,
         center=0,
         vmin=-vmax,
         vmax=vmax,
-        xticklabels=display_principles,
-        yticklabels=display_models,
+        xticklabels=[PRINCIPLE_LABELS[p] for p in PRINCIPLES],
+        yticklabels=([model_map.get(m, m) for m in MODEL_ORDER]
+                     if yticklabels else False),
         linewidths=0.5,
         linecolor="white",
         ax=ax,
-        cbar_kws={"label": "Mean Score"},
+        cbar=cbar,
+        cbar_ax=cbar_ax,
+        cbar_kws={"label": "Mean HumaneScore"} if cbar else None,
     )
+    ax.tick_params(axis="x", rotation=35)
+    for label in ax.get_xticklabels():
+        label.set_horizontalalignment("right")
+    ax.tick_params(axis="y", rotation=0)
+
+
+def create_heatmap(df, vp, persona, model_map, figure_dir: Path):
+    """Create a single VP × persona heatmap."""
+    means, counts, n_scen = _heatmap_data(df, vp, persona)
+
+    fig, ax = plt.subplots(figsize=(16, 10))
+    _render_heatmap_into(ax, means, counts, model_map=model_map)
     ax.set_title(
-        f"VP: {vp.title()} | Condition: {PERSONA_LABELS[persona]}",
-        fontsize=14,
-        fontweight="bold",
+        f"{vp.title()} | {PERSONA_LABELS[persona]} "
+        f"(n={n_scen} scenarios × {means.shape[0]} models)",
+        fontsize=14, fontweight="bold",
     )
     ax.set_xlabel("Principle", fontsize=12)
     ax.set_ylabel("Model", fontsize=12)
-    plt.xticks(rotation=35, ha="right")
-    plt.yticks(rotation=0)
     plt.tight_layout()
 
     figure_dir.mkdir(parents=True, exist_ok=True)
@@ -150,12 +194,60 @@ def create_heatmap(df, vp, persona, model_map, figure_dir: Path):
     print(f"  Saved {out_path}")
 
 
+def create_combined_heatmap(df, vps, persona, model_map, figure_dir: Path):
+    """Side-by-side heatmaps for multiple VPs at one persona, shared colorbar."""
+    n_panels = len(vps)
+    assert n_panels >= 1
+    panel_data = [(vp, *_heatmap_data(df, vp, persona)) for vp in vps]
+    # Symmetric vmax across panels so colors are comparable.
+    vmax = max(_safe_vmax(m.values) for _, m, _, _ in panel_data)
+
+    # gridspec gives independent y-axes per panel + a thin colorbar column.
+    # Avoid sharey=True at the subplots level — that would tie the colorbar
+    # axis into the same y-scale as the heatmaps and squash them to one row.
+    fig_width = 11 * n_panels + 1.5
+    fig = plt.figure(figsize=(fig_width, 10))
+    gs = fig.add_gridspec(
+        1, n_panels + 1, width_ratios=[10] * n_panels + [0.4], wspace=0.05,
+    )
+    panel_axes = [fig.add_subplot(gs[0, i]) for i in range(n_panels)]
+    cbar_ax = fig.add_subplot(gs[0, n_panels])
+
+    for i, (vp, means, counts, n_scen) in enumerate(panel_data):
+        is_first = (i == 0)
+        is_last = (i == n_panels - 1)
+        _render_heatmap_into(
+            panel_axes[i], means, counts,
+            model_map=model_map,
+            yticklabels=is_first,
+            cbar=is_last,           # only draw the colorbar on the last panel
+            cbar_ax=cbar_ax if is_last else None,
+            vmax=vmax,
+        )
+        panel_axes[i].set_title(
+            f"{vp.title()} | {PERSONA_LABELS[persona]} (n={n_scen} scenarios)",
+            fontsize=14, fontweight="bold",
+        )
+        panel_axes[i].set_xlabel("Principle", fontsize=11)
+        panel_axes[i].set_ylabel("Model" if is_first else "", fontsize=11)
+
+    plt.tight_layout()
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    slug = "_".join(vps)
+    out_path = figure_dir / f"vp_heatmap_combined_{slug}_{persona}.png"
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {out_path}")
+
+
 def generate_all_heatmaps(df, model_map, figure_dir: Path):
-    """Generate 9 heatmaps: 3 VPs x 3 personas."""
-    print("Generating VP heatmaps...")
+    """Generate 9 single-VP heatmaps + 1 combined two-up panel for §4.6."""
+    print("Generating single-VP heatmaps...")
     for vp in TARGET_VPS:
         for persona in PERSONAS:
             create_heatmap(df, vp, persona, model_map, figure_dir)
+    print("Generating combined two-up heatmap (children + teenagers, bad persona)...")
+    create_combined_heatmap(df, ["children", "teenagers"], "bad_persona", model_map, figure_dir)
 
 
 def format_score(val):
@@ -469,6 +561,11 @@ def parse_args():
 def main():
     args = parse_args()
     df = pd.read_csv(args.input)
+    # Override CSV's vulnerable_population with the live JSONL value (the
+    # CSV column reflects .eval-time metadata, which can be stale after
+    # JSONL taxonomy edits — e.g. "children,teenagers" → "children").
+    live_vp = _load_live_vp_map(DEFAULT_DATASET)
+    df["vulnerable_population"] = df["sample_id"].map(live_vp).fillna("")
     warn_unknown_models(df)
     model_map = load_model_map(args.figures_dir)
 
