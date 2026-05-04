@@ -6,7 +6,7 @@ Single source of truth for the §4.6 paragraph. All numbers come from `tables/vp
 
 ## Headline DiD
 
-**Adversarial prompting erodes HumaneScore **more** for VP items than general (DiD = -0.0482, 95% CI [-0.0872, -0.0121]).**
+**General-audience HumaneScore drops **more** than VP under adversarial prompting (DiD = +0.0482, 95% CI [+0.0121, +0.0872]).**
 
 Decomposition (item-pooled HumaneScore on `{-1, -0.5, +0.5, +1}`):
 
@@ -14,7 +14,7 @@ Decomposition (item-pooled HumaneScore on `{-1, -0.5, +0.5, +1}`):
 | --- | ---: | --- |
 | Δ general (bad − baseline)      | -0.8648 | [-0.8887, -0.8405] |
 | Δ VP pooled (bad − baseline)    | -0.8165 | [-0.8433, -0.7861] |
-| **DiD** (Δ_general − Δ_VP)      | **-0.0482** | **[-0.0872, -0.0121]** |
+| **DiD** (Δ_VP − Δ_general)      | **+0.0482** | **[+0.0121, +0.0872]** |
 
 Sample sizes: general n_scenarios = 520 (n_items = 15,588); VP_pooled n_scenarios = 268 (n_items = 8,030).
 

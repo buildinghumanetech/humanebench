@@ -4,15 +4,15 @@ HumaneScore (mean of judge-ensemble severities on `{-1, -0.5, +0.5, +1}`) and pr
 
 ## Headline DiD
 
-`(Δ_general) − (Δ_VP_pooled)` where `Δ_persona,group = mean(bad) − mean(baseline)`. Negative DiD ⇒ adversarial prompting erodes VP HumaneScore *more* than general.
+`(Δ_VP_pooled) − (Δ_general)` where `Δ_group = mean(bad) − mean(baseline)`. Both Δs are typically negative (adversarial erosion); a more-negative DiD ⇒ adversarial prompting erodes VP HumaneScore *more* than general.
 
 | metric | value | 95% CI |
 | --- | ---: | --- |
 | Δ general | -0.8648 | [-0.8887, -0.8405] |
 | Δ VP pooled | -0.8165 | [-0.8433, -0.7861] |
-| **DiD** (Δ_general − Δ_VP) | **-0.0482** | **[-0.0872, -0.0121]** |
+| **DiD** (Δ_VP − Δ_general) | **+0.0482** | **[+0.0121, +0.0872]** |
 
-**Verdict:** Adversarial prompting erodes HumaneScore **more** for VP items than general (DiD = -0.0482, 95% CI [-0.0872, -0.0121]).
+**Verdict:** General-audience HumaneScore drops **more** than VP under adversarial prompting (DiD = +0.0482, 95% CI [+0.0121, +0.0872]).
 
 ## Per-stratum × persona
 

@@ -298,8 +298,9 @@ def write_breakdown_md(df: pd.DataFrame, did: dict, out_path: Path) -> None:
         "",
         "## Headline DiD",
         "",
-        f"`(Δ_general) − (Δ_VP_pooled)` where `Δ_persona,group = mean(bad) − mean(baseline)`. "
-        f"Negative DiD ⇒ adversarial prompting erodes VP HumaneScore *more* than general.",
+        f"`(Δ_VP_pooled) − (Δ_general)` where `Δ_group = mean(bad) − mean(baseline)`. "
+        f"Both Δs are typically negative (adversarial erosion); a more-negative DiD ⇒ "
+        f"adversarial prompting erodes VP HumaneScore *more* than general.",
         "",
         "| metric | value | 95% CI |",
         "| --- | ---: | --- |",
@@ -307,7 +308,7 @@ def write_breakdown_md(df: pd.DataFrame, did: dict, out_path: Path) -> None:
         f"[{did['delta_general_ci'][0]:+.4f}, {did['delta_general_ci'][1]:+.4f}] |",
         f"| Δ VP pooled | {did['delta_vp']:+.4f} | "
         f"[{did['delta_vp_ci'][0]:+.4f}, {did['delta_vp_ci'][1]:+.4f}] |",
-        f"| **DiD** (Δ_general − Δ_VP) | **{did['did']:+.4f}** | "
+        f"| **DiD** (Δ_VP − Δ_general) | **{did['did']:+.4f}** | "
         f"**[{did['did_ci'][0]:+.4f}, {did['did_ci'][1]:+.4f}]** |",
         "",
         f"**Verdict:** {did['verdict']}",
@@ -418,13 +419,18 @@ def compute_did(result) -> dict:
     point = result["point"]["partition"]["data"]
     boot = result["boot"]["partition"]["data"]
     # Index 0 = general, 1 = VP_pooled.
+    # Both deltas are typically negative (bad < baseline). Define
+    # DiD = Δ_VP − Δ_general so that:
+    #   DiD < 0  ⇒  Δ_VP is more negative than Δ_general  ⇒  VP eroded MORE
+    #              (the amplification finding).
+    #   DiD > 0  ⇒  general eroded more than VP.
     delta_general = point["bad_persona"]["score"][0] - point["baseline"]["score"][0]
     delta_vp = point["bad_persona"]["score"][1] - point["baseline"]["score"][1]
-    did = delta_general - delta_vp
+    did = delta_vp - delta_general
 
     delta_general_boot = boot["bad_persona"]["score"][:, 0] - boot["baseline"]["score"][:, 0]
     delta_vp_boot = boot["bad_persona"]["score"][:, 1] - boot["baseline"]["score"][:, 1]
-    did_boot = delta_general_boot - delta_vp_boot
+    did_boot = delta_vp_boot - delta_general_boot
 
     delta_general_ci = percentile_ci(delta_general_boot)
     delta_vp_ci = percentile_ci(delta_vp_boot)
@@ -533,7 +539,7 @@ def write_paste_ready(
         f"[{did['delta_general_ci'][0]:+.4f}, {did['delta_general_ci'][1]:+.4f}] |",
         f"| Δ VP pooled (bad − baseline)    | {did['delta_vp']:+.4f} | "
         f"[{did['delta_vp_ci'][0]:+.4f}, {did['delta_vp_ci'][1]:+.4f}] |",
-        f"| **DiD** (Δ_general − Δ_VP)      | **{did['did']:+.4f}** | "
+        f"| **DiD** (Δ_VP − Δ_general)      | **{did['did']:+.4f}** | "
         f"**[{did['did_ci'][0]:+.4f}, {did['did_ci'][1]:+.4f}]** |",
         "",
         f"Sample sizes: general n_scenarios = {did['n_scenarios_general']} "
