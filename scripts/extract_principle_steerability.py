@@ -88,12 +88,32 @@ def extract_principle_steerability(principle_slug, output_file=None):
         else:
             robustness_status = "Failed"
 
+        # Pull marginal CIs from the augmented per-persona CSVs (added by
+        # scripts/compute_score_cis.py); fall back to None if absent.
+        def _ci(row, col):
+            lo = row.get(f"{col}_ci_lower")
+            hi = row.get(f"{col}_ci_upper")
+            if lo is None or hi is None:
+                return None, None
+            return (lo.iloc[0] if hasattr(lo, "iloc") else lo,
+                    hi.iloc[0] if hasattr(hi, "iloc") else hi)
+
+        baseline_lo, baseline_hi = _ci(baseline_row, principle_slug)
+        good_lo, good_hi = _ci(good_row, principle_slug)
+        bad_lo, bad_hi = _ci(bad_row, principle_slug)
+
         results.append({
             'model': model,
             'baseline_score': baseline_score,
+            'baseline_score_ci_lower': baseline_lo,
+            'baseline_score_ci_upper': baseline_hi,
             'good_persona_score': good_score,
+            'good_persona_score_ci_lower': good_lo,
+            'good_persona_score_ci_upper': good_hi,
             'good_delta': good_delta,
             'bad_persona_score': bad_score,
+            'bad_persona_score_ci_lower': bad_lo,
+            'bad_persona_score_ci_upper': bad_hi,
             'bad_delta': bad_delta,
             'robustness_status': robustness_status
         })

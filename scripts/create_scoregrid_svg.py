@@ -127,11 +127,30 @@ def column_x(col_index: int) -> float:
     return base
 
 
+def load_ci_table(path: Path) -> Dict[Tuple[str, str, str], Tuple[float, float]]:
+    """Return {(persona, model, principle_or_HumaneScore): (ci_lower, ci_upper)}."""
+    out: Dict[Tuple[str, str, str], Tuple[float, float]] = {}
+    if not path.exists():
+        return out
+    import csv
+    with path.open() as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            try:
+                lo = float(row["ci_lower"])
+                hi = float(row["ci_upper"])
+            except (TypeError, ValueError):
+                continue
+            out[(row["persona"], row["model"], row["principle"])] = (lo, hi)
+    return out
+
+
 def build_svg(
     dataset: str,
     models: Dict[str, Dict[str, float]],
     principles: Iterable[Dict[str, str]],
     model_map: Dict[str, str],
+    ci_table: Dict[Tuple[str, str, str], Tuple[float, float]] | None = None,
 ) -> str:
     principles_list = list(principles)
     models_list: List[Tuple[str, Dict[str, float]]] = list(models.items())
@@ -180,6 +199,15 @@ def build_svg(
             score_str = f"{score:.2f}"
             fill = score_to_color(score)
 
+            ci_attrs = ""
+            if ci_table is not None:
+                ci = ci_table.get((dataset, model_key, principle["id"]))
+                if ci is not None:
+                    ci_attrs = (
+                        f' data-ci-lower="{ci[0]:.4f}"'
+                        f' data-ci-upper="{ci[1]:.4f}"'
+                    )
+
             lines.append(
                 f'  <rect x="{position.x}" y="{position.y}" width="{CELL_WIDTH}" '
                 f'height="{CELL_HEIGHT}" rx="8" ry="8" fill="{fill}" '
@@ -187,7 +215,7 @@ def build_svg(
                 f'data-dataset="{escape(dataset)}" '
                 f'data-model="{escape(model_key)}" '
                 f'data-principle-id="{escape(principle["id"])}" '
-                f'data-score="{score_str}" />'
+                f'data-score="{score_str}"{ci_attrs} />'
             )
 
             text_x = position.x + CELL_WIDTH / 2
@@ -258,6 +286,13 @@ def parse_args() -> argparse.Namespace:
         default=Path(__file__).resolve().parent.parent / "figures" / "model_display_names.json",
         help="Path to JSON mapping of model key -> human-friendly name.",
     )
+    parser.add_argument(
+        "--score-cis-csv",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "tables" / "score_cis_long.csv",
+        help="Long-format CI table from scripts/compute_score_cis.py; cells get "
+             "data-ci-lower / data-ci-upper attributes when present.",
+    )
     return parser.parse_args()
 
 
@@ -275,6 +310,11 @@ def main() -> None:
     model_map_out = args.output_dir / "model_display_names.json"
     model_map_out.write_text(json.dumps(model_map, indent=2))
 
+    ci_table = load_ci_table(args.score_cis_csv)
+    if not ci_table:
+        print(f"[warn] {args.score_cis_csv} not found or empty; cells will lack "
+              "data-ci-* attributes. Run `python scripts/compute_score_cis.py` first.")
+
     for dataset in args.datasets:
         models = load_models(args.data_dir, dataset)
         if not models:
@@ -284,7 +324,7 @@ def main() -> None:
         if missing:
             raise SystemExit(f"Missing model display names for: {', '.join(missing)}")
 
-        svg = build_svg(dataset, models, PRINCIPLES, model_map)
+        svg = build_svg(dataset, models, PRINCIPLES, model_map, ci_table=ci_table)
         output_path = args.output_dir / f"{args.prefix}{dataset}.svg"
         output_path.write_text(svg)
         print(f"[ok] Wrote {output_path}")

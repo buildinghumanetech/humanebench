@@ -69,8 +69,27 @@ def load_and_merge_data():
     """Load and merge HELM and HumaneScore data."""
     print("Loading data...")
 
-    # Load HumaneScore data
-    humanescore_df = pd.read_csv(f'{TABLES_DIR}/table1_steerability_summary.csv')
+    # Load HumaneScore data from the canonical steerability_comparison.csv
+    # (which carries CI columns as floats — table1's CSV used to be the source
+    # but its values are now CI-decorated strings after generate_tables.py).
+    steer_df = pd.read_csv('steerability_comparison.csv')
+    rename = {
+        'baseline_score': 'Baseline HumaneScore',
+        'good_persona_score': 'Good Persona HumaneScore',
+        'bad_persona_score': 'Bad Persona HumaneScore',
+    }
+    humanescore_df = steer_df.rename(columns=rename)
+    # Carry the per-persona HumaneScore CI columns through under display-name aliases.
+    for src_prefix, dst_prefix in (
+        ('baseline_score', 'Baseline HumaneScore'),
+        ('good_persona_score', 'Good Persona HumaneScore'),
+        ('bad_persona_score', 'Bad Persona HumaneScore'),
+    ):
+        for suf in ('_ci_lower', '_ci_upper'):
+            src = f"{src_prefix}{suf}"
+            if src in humanescore_df.columns:
+                humanescore_df = humanescore_df.rename(columns={src: f"{dst_prefix}{suf}"})
+    humanescore_df = humanescore_df.rename(columns={'model': 'Model'})
 
     # Load HELM data
     with open('helm_integration/data/helm_aggregate_scores.json', 'r') as f:
@@ -201,6 +220,10 @@ def create_scatter_chart(df):
     for col_name, title, ax in personas:
         ax.set_facecolor(COLORS['background'])
 
+        ci_lo_col = f"{col_name}_ci_lower"
+        ci_hi_col = f"{col_name}_ci_upper"
+        has_ci = ci_lo_col in df.columns and ci_hi_col in df.columns
+
         # Plot points by family
         for idx, row in df.iterrows():
             family = row['family']
@@ -210,6 +233,17 @@ def create_scatter_chart(df):
             label = family if (family not in families_plotted and ax == axes[0]) else None
             if label:
                 families_plotted.add(family)
+
+            # Horizontal CI whisker on HumaneScore axis behind the point.
+            if has_ci and pd.notna(row.get(ci_lo_col)) and pd.notna(row.get(ci_hi_col)):
+                err_left = row[col_name] - row[ci_lo_col]
+                err_right = row[ci_hi_col] - row[col_name]
+                ax.errorbar(
+                    row[col_name], row['mean_score'],
+                    xerr=[[err_left], [err_right]],
+                    fmt='none', ecolor=color, alpha=0.55,
+                    elinewidth=1.0, capsize=2.5, capthick=0.9, zorder=2.5,
+                )
 
             ax.scatter(
                 row[col_name],

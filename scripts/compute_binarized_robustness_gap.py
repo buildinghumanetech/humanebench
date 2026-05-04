@@ -22,11 +22,23 @@ Outputs (written to tables/):
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+from humanebench.bootstrap import (  # noqa: E402
+    BOOTSTRAP_SEED,
+    N_BOOTSTRAP_DEFAULT,
+    binarize_long,
+    bootstrap_persona_deltas,
+    load_long_scores,
+)
 
 # Same warning thresholds as the plan.
 SPEARMAN_WARN = 0.85    # below this → "rank ordering not preserved"
@@ -79,17 +91,60 @@ def compute_per_model_gaps(per_item: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_gap_cis(
+    df: pd.DataFrame,
+    judge_raw_csv: Path,
+    n_bootstrap: int = N_BOOTSTRAP_DEFAULT,
+    seed: int = BOOTSTRAP_SEED,
+) -> pd.DataFrame:
+    """Attach 95% paired bootstrap CIs to ordinal_gap and binarized_gap.
+
+    Both gaps are paired-scenario deltas (`good_persona - bad_persona`); CIs
+    use the same per-(model) paired resampling as
+    `humanebench.bootstrap.bootstrap_persona_deltas` (HumaneScore-level), so
+    they're directly comparable to the headline persona-delta CIs.
+    """
+    long = load_long_scores(judge_raw_csv)
+
+    ord_deltas = bootstrap_persona_deltas(
+        long,
+        baseline_persona="bad_persona",
+        contrast_personas=["good_persona"],
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    ord_h = ord_deltas[ord_deltas["principle"] == "HumaneScore"].set_index("model")
+
+    bin_deltas = bootstrap_persona_deltas(
+        binarize_long(long),
+        baseline_persona="bad_persona",
+        contrast_personas=["good_persona"],
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    bin_h = bin_deltas[bin_deltas["principle"] == "HumaneScore"].set_index("model")
+
+    df = df.copy()
+    df["ordinal_gap_ci_lower"] = df["model"].map(ord_h["ci_lower"])
+    df["ordinal_gap_ci_upper"] = df["model"].map(ord_h["ci_upper"])
+    df["binarized_gap_ci_lower"] = df["model"].map(bin_h["ci_lower"])
+    df["binarized_gap_ci_upper"] = df["model"].map(bin_h["ci_upper"])
+    return df
+
+
 def write_outputs(df: pd.DataFrame, tables_dir: Path) -> None:
     out_cols = [
         "model",
         "n_items_baseline", "n_items_good_persona", "n_items_bad_persona",
         "prosocial_rate_baseline", "prosocial_rate_good_persona", "prosocial_rate_bad_persona",
-        "binarized_gap",
+        "binarized_gap", "binarized_gap_ci_lower", "binarized_gap_ci_upper",
         "mean_severity_baseline", "mean_severity_good_persona", "mean_severity_bad_persona",
-        "ordinal_gap",
+        "ordinal_gap", "ordinal_gap_ci_lower", "ordinal_gap_ci_upper",
         "gap_ratio",
         "rank_ordinal", "rank_binarized",
     ]
+    # Tolerate the script being run before CI columns are attached (legacy path).
+    out_cols = [c for c in out_cols if c in df.columns]
     df[out_cols].to_csv(tables_dir / "robustness_gap_binarized.csv", index=False)
 
     spearman_rho, spearman_p = spearmanr(df["ordinal_gap"], df["binarized_gap"])
@@ -178,14 +233,25 @@ def write_outputs(df: pd.DataFrame, tables_dir: Path) -> None:
         "Sorted by ordinal gap (descending). Higher gap = more behavioral drift "
         "between benevolent and adversarial system prompts.",
         "",
-        "| model | n_good | n_bad | ord_gap | bin_gap | ratio | rank_ord | rank_bin |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| model | n_good | n_bad | ord_gap | ord_gap 95% CI | bin_gap | bin_gap 95% CI | ratio | rank_ord | rank_bin |",
+        "| --- | ---: | ---: | ---: | :---: | ---: | :---: | ---: | ---: | ---: |",
     ]
+
+    def _ci(row, lo_col, hi_col):
+        lo = row.get(lo_col)
+        hi = row.get(hi_col)
+        if pd.isna(lo) or pd.isna(hi):
+            return "—"
+        return f"[{lo:+.3f}, {hi:+.3f}]"
+
     for _, row in df.iterrows():
         md.append(
             f"| {row['model']} | {row['n_items_good_persona']} | "
             f"{row['n_items_bad_persona']} | {row['ordinal_gap']:+.3f} | "
-            f"{row['binarized_gap']:+.3f} | {row['gap_ratio']:+.3f} | "
+            f"{_ci(row, 'ordinal_gap_ci_lower', 'ordinal_gap_ci_upper')} | "
+            f"{row['binarized_gap']:+.3f} | "
+            f"{_ci(row, 'binarized_gap_ci_lower', 'binarized_gap_ci_upper')} | "
+            f"{row['gap_ratio']:+.3f} | "
             f"{row['rank_ordinal']} | {row['rank_binarized']} |"
         )
     md += [
@@ -231,6 +297,10 @@ def main() -> None:
 
     gaps = compute_per_model_gaps(per_item)
     print(f"  computed gaps for {len(gaps)} models")
+
+    print(f"  bootstrapping ordinal/binarized gap CIs (n={N_BOOTSTRAP_DEFAULT}, "
+          f"seed={BOOTSTRAP_SEED}) ...")
+    gaps = add_gap_cis(gaps, args.judge_raw_csv)
     print()
 
     args.tables_dir.mkdir(parents=True, exist_ok=True)

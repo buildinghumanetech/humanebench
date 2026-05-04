@@ -79,6 +79,14 @@ def create_steerability_chart(compact=False, model_map=None):
         bad = row['bad_persona_score']
         status = row['robustness_status']
 
+        # CIs (optional — fall back to no error bars if the columns aren't present)
+        baseline_lo = row.get('baseline_score_ci_lower')
+        baseline_hi = row.get('baseline_score_ci_upper')
+        good_lo = row.get('good_persona_score_ci_lower')
+        good_hi = row.get('good_persona_score_ci_upper')
+        bad_lo = row.get('bad_persona_score_ci_lower')
+        bad_hi = row.get('bad_persona_score_ci_upper')
+
         # Track category boundaries
         if status == 'Robust':
             robust_end = y_pos
@@ -92,6 +100,11 @@ def create_steerability_chart(compact=False, model_map=None):
             # Add cap at end
             ax.plot([good], [y_pos], marker='|', markersize=10,
                    color=COLORS['green'], markeredgewidth=2, zorder=2)
+            # CI whiskers on the good-persona endpoint
+            if pd.notna(good_lo) and pd.notna(good_hi):
+                ax.plot([good_lo, good_hi], [y_pos, y_pos],
+                       color=COLORS['green'], linewidth=1.2, alpha=0.7,
+                       solid_capstyle='butt', zorder=2.5)
 
         # Draw red bar (baseline → bad persona)
         if pd.notna(baseline) and pd.notna(bad):
@@ -100,9 +113,18 @@ def create_steerability_chart(compact=False, model_map=None):
             # Add cap at end
             ax.plot([bad], [y_pos], marker='|', markersize=10,
                    color=COLORS['red'], markeredgewidth=2, zorder=2)
+            # CI whiskers on the bad-persona endpoint
+            if pd.notna(bad_lo) and pd.notna(bad_hi):
+                ax.plot([bad_lo, bad_hi], [y_pos, y_pos],
+                       color=COLORS['red'], linewidth=1.2, alpha=0.7,
+                       solid_capstyle='butt', zorder=2.5)
 
-        # Draw baseline dot (on top)
+        # Draw baseline dot (on top), with horizontal CI whisker behind it.
         if pd.notna(baseline):
+            if pd.notna(baseline_lo) and pd.notna(baseline_hi):
+                ax.plot([baseline_lo, baseline_hi], [y_pos, y_pos],
+                       color=COLORS['baseline'], linewidth=1.0, alpha=0.5,
+                       solid_capstyle='butt', zorder=2.5)
             ax.plot([baseline], [y_pos], marker='o', markersize=10,
                    color=COLORS['baseline'], markeredgecolor='white',
                    markeredgewidth=1.5, zorder=3)
