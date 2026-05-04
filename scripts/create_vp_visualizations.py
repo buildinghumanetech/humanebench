@@ -7,17 +7,17 @@ and generates heatmaps, drill-down bar charts, and a minor VP summary table.
 
 import argparse
 import json
-import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
-FIGURE_DIR = "figures"
-TABLE_DIR = "tables"
-INPUT_CSV = os.path.join(TABLE_DIR, "vp_sample_scores.csv")
-MODEL_MAP_PATH = os.path.join(FIGURE_DIR, "model_display_names.json")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_FIGURE_DIR = REPO_ROOT / "figures"
+DEFAULT_TABLE_DIR = REPO_ROOT / "tables"
+DEFAULT_INPUT_CSV = DEFAULT_TABLE_DIR / "vp_sample_scores.csv"
 
 PERSONAS = ["baseline", "good_persona", "bad_persona"]
 PERSONA_LABELS = {
@@ -69,12 +69,29 @@ MODEL_ORDER = [
 ]
 
 
-def load_model_map():
-    with open(MODEL_MAP_PATH, "r") as f:
+def load_model_map(figure_dir: Path) -> dict:
+    with open(figure_dir / "model_display_names.json", "r") as f:
         return json.load(f)
 
 
-def create_heatmap(df, vp, persona, model_map):
+def warn_unknown_models(df: pd.DataFrame) -> None:
+    extras = sorted(set(df["model"].unique()) - set(MODEL_ORDER))
+    if extras:
+        print(
+            f"[warn] model(s) {extras} present in data but not in MODEL_ORDER — "
+            "will be dropped by reindex"
+        )
+
+
+def _safe_vmax(values: np.ndarray) -> float:
+    abs_vals = np.abs(values)
+    if np.all(np.isnan(abs_vals)):
+        return 1.0
+    vmax = float(np.nanmax(abs_vals))
+    return vmax if vmax > 0 else 1.0
+
+
+def create_heatmap(df, vp, persona, model_map, figure_dir: Path):
     """Create a single VP heatmap for a given VP and persona."""
     subset = df[(df["vulnerable_population"] == vp) & (df["persona"] == persona)]
 
@@ -97,9 +114,7 @@ def create_heatmap(df, vp, persona, model_map):
             else:
                 annot[i, j] = f"{val:.3f}\n(n={n})"
 
-    vmax = max(abs(means.min().min()), abs(means.max().max()))
-    if pd.isna(vmax) or vmax == 0:
-        vmax = 1.0
+    vmax = _safe_vmax(means.values)
 
     fig, ax = plt.subplots(figsize=(16, 10))
     sns.heatmap(
@@ -128,18 +143,19 @@ def create_heatmap(df, vp, persona, model_map):
     plt.yticks(rotation=0)
     plt.tight_layout()
 
-    out_path = os.path.join(FIGURE_DIR, f"vp_heatmap_{vp}_{persona}.png")
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    out_path = figure_dir / f"vp_heatmap_{vp}_{persona}.png"
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
     print(f"  Saved {out_path}")
 
 
-def generate_all_heatmaps(df, model_map):
+def generate_all_heatmaps(df, model_map, figure_dir: Path):
     """Generate 9 heatmaps: 3 VPs x 3 personas."""
     print("Generating VP heatmaps...")
     for vp in TARGET_VPS:
         for persona in PERSONAS:
-            create_heatmap(df, vp, persona, model_map)
+            create_heatmap(df, vp, persona, model_map, figure_dir)
 
 
 def format_score(val):
@@ -148,7 +164,7 @@ def format_score(val):
     return f"{val:.3f}"
 
 
-def create_minor_vp_table(df):
+def create_minor_vp_table(df, table_dir: Path):
     """Create summary table for VPs outside the big three."""
     print("Generating minor VP summary table...")
     equity_principle = "design-for-equity-and-inclusion"
@@ -169,10 +185,11 @@ def create_minor_vp_table(df):
 
     result = pd.DataFrame(rows).sort_values("n_scenarios", ascending=False)
 
-    csv_path = os.path.join(TABLE_DIR, "vp_minor_summary.csv")
+    table_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = table_dir / "vp_minor_summary.csv"
     result.to_csv(csv_path, index=False)
 
-    md_path = os.path.join(TABLE_DIR, "vp_minor_summary.md")
+    md_path = table_dir / "vp_minor_summary.md"
     display = result.copy()
     for col in ["Baseline Mean", "Good Persona Mean", "Bad Persona Mean"]:
         display[col] = display[col].apply(format_score)
@@ -196,7 +213,7 @@ PERSONA_COLORS = {
 }
 
 
-def create_drilldown_chart(df, vp, principle, model_map):
+def create_drilldown_chart(df, vp, principle, model_map, figure_dir: Path):
     """Create a grouped bar chart for a specific VP x principle combination."""
     print(f"Generating drill-down chart: {vp} x {principle}...")
     subset = df[
@@ -254,7 +271,8 @@ def create_drilldown_chart(df, vp, principle, model_map):
     ax.legend()
     plt.tight_layout()
 
-    out_path = os.path.join(FIGURE_DIR, f"vp_drilldown_{vp}_{principle}.png")
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    out_path = figure_dir / f"vp_drilldown_{vp}_{principle}.png"
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
     print(f"  Saved {out_path}")
@@ -296,7 +314,7 @@ def _prepare_vp_df(df):
     return out[out["vp_label"].isin(COMPARISON_VPS)]
 
 
-def create_vp_dot_chart(df):
+def create_vp_dot_chart(df, figure_dir: Path):
     """Dot chart comparing VPs across principles and conditions."""
     print("Generating VP dot chart...")
     df = _prepare_vp_df(df)
@@ -355,13 +373,14 @@ def create_vp_dot_chart(df):
         fontsize=15, fontweight="bold", y=0.98,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    out_path = os.path.join(FIGURE_DIR, "vp_dot_chart_comparison.png")
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    out_path = figure_dir / "vp_dot_chart_comparison.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved {out_path}")
 
 
-def create_vp_grouped_bar_chart(df):
+def create_vp_grouped_bar_chart(df, figure_dir: Path):
     """Small-multiples grouped bar chart comparing VPs by principle."""
     print("Generating VP grouped bar chart...")
     df = _prepare_vp_df(df)
@@ -409,7 +428,8 @@ def create_vp_grouped_bar_chart(df):
         fontsize=15, fontweight="bold", y=0.98,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    out_path = os.path.join(FIGURE_DIR, "vp_grouped_bar_comparison.png")
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    out_path = figure_dir / "vp_grouped_bar_comparison.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved {out_path}")
@@ -418,6 +438,24 @@ def create_vp_grouped_bar_chart(df):
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Generate VP-filtered visualizations"
+    )
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=DEFAULT_INPUT_CSV,
+        help="Path to vp_sample_scores.csv",
+    )
+    parser.add_argument(
+        "--figures-dir",
+        type=Path,
+        default=DEFAULT_FIGURE_DIR,
+        help="Directory to write figures into",
+    )
+    parser.add_argument(
+        "--tables-dir",
+        type=Path,
+        default=DEFAULT_TABLE_DIR,
+        help="Directory to write summary tables into",
     )
     parser.add_argument(
         "--drilldown",
@@ -430,17 +468,18 @@ def parse_args():
 
 def main():
     args = parse_args()
-    df = pd.read_csv(INPUT_CSV)
-    model_map = load_model_map()
+    df = pd.read_csv(args.input)
+    warn_unknown_models(df)
+    model_map = load_model_map(args.figures_dir)
 
     if args.drilldown:
         vp, principle = args.drilldown
-        create_drilldown_chart(df, vp, principle, model_map)
+        create_drilldown_chart(df, vp, principle, model_map, args.figures_dir)
     else:
-        generate_all_heatmaps(df, model_map)
-        create_minor_vp_table(df)
-        create_vp_dot_chart(df)
-        create_vp_grouped_bar_chart(df)
+        generate_all_heatmaps(df, model_map, args.figures_dir)
+        create_minor_vp_table(df, args.tables_dir)
+        create_vp_dot_chart(df, args.figures_dir)
+        create_vp_grouped_bar_chart(df, args.figures_dir)
 
 
 if __name__ == "__main__":
