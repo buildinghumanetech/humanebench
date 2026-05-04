@@ -48,6 +48,12 @@ def main():
         default=Path(__file__).resolve().parent.parent / "tables" / "vp_sample_scores.csv",
         help="Output CSV path",
     )
+    parser.add_argument(
+        "--include-excluded",
+        action="store_true",
+        help="Include the 12 confabulation-flagged items (default: dropped via "
+             "humanebench.excluded.load_excluded_ids).",
+    )
     args = parser.parse_args()
 
     logs_dir = args.logs_dir.expanduser().resolve()
@@ -56,8 +62,12 @@ def main():
     if not logs_dir.exists():
         raise FileNotFoundError(f"Logs directory not found: {logs_dir}")
 
-    excluded = load_excluded_ids()
-    print(f"Loaded {len(excluded)} excluded IDs")
+    if args.include_excluded:
+        excluded: set[str] = set()
+        print("Loaded 0 excluded IDs (--include-excluded set)")
+    else:
+        excluded = load_excluded_ids()
+        print(f"Loaded {len(excluded)} excluded IDs")
 
     rows = []
     files_scanned = 0
