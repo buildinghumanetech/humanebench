@@ -35,7 +35,7 @@ def load_model_map(path: str) -> dict:
         return json.load(f)
 
 
-def create_steerability_chart(compact=False, model_map=None):
+def create_steerability_chart(compact=False, paper=False, model_map=None):
     """Create the steerability candlestick chart."""
 
     # Load data
@@ -58,9 +58,39 @@ def create_steerability_chart(compact=False, model_map=None):
 
     n_models = len(df)
 
-    # Create figure with appropriate size
-    fig_height = max(8, n_models * 0.6) if not compact else 8
-    fig, ax = plt.subplots(figsize=(14, fig_height))
+    # Style picks: paper mode is sized for AAAI two-column figure* at \textwidth,
+    # so it strips the in-figure title/subtitle (the LaTeX caption owns that
+    # text) and uses smaller fonts/markers to stay legible after typesetting.
+    if paper:
+        fig_size = (7.0, max(6.0, n_models * 0.35))
+        bar_lw = 3
+        cap_size = 7
+        dot_size = 7
+        whisker_lw = 0.9
+        baseline_whisker_lw = 0.8
+        ci_cap_size = 5
+        ci_cap_lw = 1.0
+        font_xlabel = 9
+        font_xtick = 8
+        font_ytick = 8
+        font_legend = 7
+        font_category = 8
+    else:
+        fig_size = (14, max(8, n_models * 0.6) if not compact else 8)
+        bar_lw = 4
+        cap_size = 10
+        dot_size = 10
+        whisker_lw = 1.2
+        baseline_whisker_lw = 1.0
+        ci_cap_size = 7
+        ci_cap_lw = 1.2
+        font_xlabel = 12
+        font_xtick = 10
+        font_ytick = 10
+        font_legend = 9
+        font_category = 9
+
+    fig, ax = plt.subplots(figsize=fig_size)
 
     # Set background color
     ax.set_facecolor(COLORS['background'])
@@ -96,36 +126,41 @@ def create_steerability_chart(compact=False, model_map=None):
         # Draw green bar (baseline → good persona)
         if pd.notna(baseline) and pd.notna(good):
             ax.plot([baseline, good], [y_pos, y_pos],
-                   color=COLORS['green'], linewidth=4, solid_capstyle='butt', zorder=2)
+                   color=COLORS['green'], linewidth=bar_lw, solid_capstyle='butt', zorder=2)
             # Add cap at end
-            ax.plot([good], [y_pos], marker='|', markersize=10,
+            ax.plot([good], [y_pos], marker='|', markersize=cap_size,
                    color=COLORS['green'], markeredgewidth=2, zorder=2)
             # CI whiskers on the good-persona endpoint
             if pd.notna(good_lo) and pd.notna(good_hi):
                 ax.plot([good_lo, good_hi], [y_pos, y_pos],
-                       color=COLORS['green'], linewidth=1.2, alpha=0.7,
+                       color=COLORS['green'], linewidth=whisker_lw, alpha=0.7,
                        solid_capstyle='butt', zorder=2.5)
+                ax.plot([good_lo, good_hi], [y_pos, y_pos], linestyle='None',
+                       marker='|', markersize=ci_cap_size, color='black',
+                       markeredgewidth=ci_cap_lw, zorder=2.7)
 
         # Draw red bar (baseline → bad persona)
         if pd.notna(baseline) and pd.notna(bad):
             ax.plot([bad, baseline], [y_pos, y_pos],
-                   color=COLORS['red'], linewidth=4, solid_capstyle='butt', zorder=2)
+                   color=COLORS['red'], linewidth=bar_lw, solid_capstyle='butt', zorder=2)
             # Add cap at end
-            ax.plot([bad], [y_pos], marker='|', markersize=10,
+            ax.plot([bad], [y_pos], marker='|', markersize=cap_size,
                    color=COLORS['red'], markeredgewidth=2, zorder=2)
             # CI whiskers on the bad-persona endpoint
             if pd.notna(bad_lo) and pd.notna(bad_hi):
                 ax.plot([bad_lo, bad_hi], [y_pos, y_pos],
-                       color=COLORS['red'], linewidth=1.2, alpha=0.7,
+                       color=COLORS['red'], linewidth=whisker_lw, alpha=0.7,
                        solid_capstyle='butt', zorder=2.5)
+                ax.plot([bad_lo, bad_hi], [y_pos, y_pos], linestyle='None',
+                       marker='|', markersize=ci_cap_size, color='black',
+                       markeredgewidth=ci_cap_lw, zorder=2.7)
 
-        # Draw baseline dot (on top), with horizontal CI whisker behind it.
+        # Draw baseline dot. Baseline CIs are uniformly tight (all widths
+        # < 0.06 across models) and would be visually crammed against the dot
+        # at this figure size — omitted in favor of legibility. Persona-endpoint
+        # CIs carry the meaningful variance and are still drawn.
         if pd.notna(baseline):
-            if pd.notna(baseline_lo) and pd.notna(baseline_hi):
-                ax.plot([baseline_lo, baseline_hi], [y_pos, y_pos],
-                       color=COLORS['baseline'], linewidth=1.0, alpha=0.5,
-                       solid_capstyle='butt', zorder=2.5)
-            ax.plot([baseline], [y_pos], marker='o', markersize=10,
+            ax.plot([baseline], [y_pos], marker='o', markersize=dot_size,
                    color=COLORS['baseline'], markeredgecolor='white',
                    markeredgewidth=1.5, zorder=3)
 
@@ -150,16 +185,16 @@ def create_steerability_chart(compact=False, model_map=None):
     ax.set_ylim(-0.5, n_models - 0.5)
 
     # X-axis
-    ax.set_xlabel('HumaneScore', fontsize=12, fontweight='bold')
+    ax.set_xlabel('HumaneScore', fontsize=font_xlabel, fontweight='bold')
     ax.set_xticks([-1.0, -0.5, 0.0, 0.5, 1.0])
     ax.set_xticklabels(['-1.0\n(Harmful)', '-0.5', '0.0', '+0.5', '+1.0\n(Humane)'])
-    ax.tick_params(axis='x', labelsize=10)
+    ax.tick_params(axis='x', labelsize=font_xtick)
 
     # Y-axis - model names
     model_labels = df['model'].tolist()
     model_labels.reverse()  # Reverse to match y_pos inversion
     ax.set_yticks(range(n_models))
-    ax.set_yticklabels(model_labels, fontsize=10)
+    ax.set_yticklabels(model_labels, fontsize=font_ytick)
     ax.tick_params(axis='y', length=0)  # Remove tick marks
 
     # Add category labels on right side
@@ -174,7 +209,7 @@ def create_steerability_chart(compact=False, model_map=None):
         robust_middle = (robust_indices[0] + robust_indices[-1]) / 2.0
         robust_y = n_models - robust_middle - 1
         ax.text(label_x, robust_y, f'✓ Robust ({len(robust_models)})',
-               transform=ax.get_yaxis_transform(), fontsize=9,
+               transform=ax.get_yaxis_transform(), fontsize=font_category,
                color='#059669', fontweight='bold', va='center')
 
     if len(moderate_models) > 0:
@@ -183,7 +218,7 @@ def create_steerability_chart(compact=False, model_map=None):
         moderate_middle = (moderate_indices[0] + moderate_indices[-1]) / 2.0
         moderate_y = n_models - moderate_middle - 1
         ax.text(label_x, moderate_y, f'⚠ Moderate ({len(moderate_models)})',
-               transform=ax.get_yaxis_transform(), fontsize=9,
+               transform=ax.get_yaxis_transform(), fontsize=font_category,
                color='#D97706', fontweight='bold', va='center')
 
     if len(failed_models) > 0:
@@ -192,7 +227,7 @@ def create_steerability_chart(compact=False, model_map=None):
         failed_middle = (failed_indices[0] + failed_indices[-1]) / 2.0
         failed_y = n_models - failed_middle - 1
         ax.text(label_x, failed_y, f'✗ Failed ({len(failed_models)})',
-               transform=ax.get_yaxis_transform(), fontsize=9,
+               transform=ax.get_yaxis_transform(), fontsize=font_category,
                color='#DC2626', fontweight='bold', va='center')
 
     # Grid
@@ -216,8 +251,9 @@ def create_steerability_chart(compact=False, model_map=None):
         f'but {flip_to_negative_count}/{n_models} flip to harmful behavior under adversarial prompts'
     )
 
-    fig.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
-    ax.set_title(subtitle_text, fontsize=11, pad=20, color='#374151')
+    if not paper:
+        fig.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
+        ax.set_title(subtitle_text, fontsize=11, pad=20, color='#374151')
 
     # Legend
     legend_elements = [
@@ -229,8 +265,15 @@ def create_steerability_chart(compact=False, model_map=None):
         mpatches.Patch(facecolor='none', edgecolor=COLORS['point_five_line'],
                       linestyle='--', label='| Acceptable Threshold (HumaneScore = 0.5)')
     ]
-    ax.legend(handles=legend_elements, loc='upper left', fontsize=9,
-             frameon=True, fancybox=False, shadow=False)
+    if paper:
+        # Place legend below the plot so it doesn't overlap the top model rows
+        # at the smaller paper figsize.
+        ax.legend(handles=legend_elements, loc='upper center',
+                 bbox_to_anchor=(0.5, -0.10), ncol=2, fontsize=font_legend,
+                 frameon=True, fancybox=False, shadow=False)
+    else:
+        ax.legend(handles=legend_elements, loc='upper left', fontsize=font_legend,
+                 frameon=True, fancybox=False, shadow=False)
 
     # Adjust layout
     plt.tight_layout()
@@ -307,6 +350,12 @@ def main():
     fig_compact, ax_compact = create_steerability_chart(compact=True)
     save_chart(fig_compact, 'steerability_candlestick_compact')
     plt.close(fig_compact)
+
+    # Create paper version (no in-figure title/subtitle, sized for AAAI \textwidth)
+    print("\nCreating paper version (15 models, no title/subtitle)...")
+    fig_paper, _ = create_steerability_chart(compact=False, paper=True)
+    save_chart(fig_paper, 'steerability_candlestick_paper')
+    plt.close(fig_paper)
 
     # Create alt-text
     print("\nCreating accessibility alt-text...")
