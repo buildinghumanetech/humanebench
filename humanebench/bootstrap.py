@@ -132,15 +132,16 @@ def bootstrap_cell_scores(
     where principle ∈ PRINCIPLES ∪ {"HumaneScore"}.
     """
     cells = _build_cells(long)
+    rng = np.random.default_rng(seed)
     rows: list[dict] = []
 
-    for (model, persona), cell in cells.items():
+    for (model, persona) in sorted(cells.keys()):
+        cell = cells[(model, persona)]
         principles_present = [p for p in PRINCIPLES if p in cell.by_principle]
         if not principles_present:
             continue
 
         # Pre-allocate replicate matrix: rows = principles, cols = replicates.
-        rng = np.random.default_rng(seed)
         rep_matrix = np.empty((len(principles_present), n_bootstrap), dtype=float)
         n_per_principle: dict[str, int] = {}
 
@@ -216,9 +217,11 @@ def bootstrap_persona_deltas(
     where principle ∈ PRINCIPLES ∪ {"HumaneScore"}.
     """
     contrast_personas = list(contrast_personas)
+    rng = np.random.default_rng(seed)
     rows: list[dict] = []
 
-    for model, sub in long.groupby("model"):
+    for model in sorted(long["model"].unique()):
+        sub = long[long["model"] == model]
         # Pivot to (persona, principle, sample_id) -> score
         wide = sub.pivot_table(
             index=["principle", "sample_id"],
@@ -242,8 +245,6 @@ def bootstrap_persona_deltas(
 
         # Pre-extract per-persona score columns as numpy arrays for speed.
         persona_arrays = {p: wide[p].to_numpy(dtype=float) for p in required}
-
-        rng = np.random.default_rng(seed)
 
         # Stratified resample of row-indices, shared across personas.
         # Shape: (n_bootstrap, total_n_paired).
