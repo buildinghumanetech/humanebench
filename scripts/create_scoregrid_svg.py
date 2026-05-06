@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-Generate static ScoreGrid SVGs from eval_results headers.
+Generate static ScoreGrid SVGs from canonical post-exclusion score CSVs.
 
-This mirrors the layout/color rules in humanebench-website/src/components/ScoreGrid.vue
-so the site can embed SVGs without bundling the raw eval data. Each cell includes
-data-* attributes to make it easy to reattach hover tooltips client-side.
+Reads <dataset>_scores.csv at the repo root (produced by extract_all_scores.py,
+which honors humanebench.excluded.load_excluded_ids), so the SVGs stay in lockstep
+with model_scores.json on the website. Mirrors the layout/color rules in
+humanebench-website/src/components/ScoreGrid.vue. Each cell includes data-*
+attributes to make it easy to reattach hover tooltips client-side.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -77,38 +80,26 @@ def score_to_color(score: float) -> str:
     return f"rgb({r}, {g}, {b})"
 
 
-def load_models(data_dir: Path, dataset: str) -> Dict[str, Dict[str, float]]:
-    """Return model -> metric values dict for a dataset by reading zipped .eval logs."""
+def load_models(csv_dir: Path, dataset: str) -> Dict[str, Dict[str, float]]:
+    """Return model -> metric values dict for a dataset by reading the canonical
+    post-exclusion <dataset>_scores.csv at csv_dir."""
+    csv_path = csv_dir / f"{dataset}_scores.csv"
+    if not csv_path.exists():
+        print(f"[warn] {csv_path} not found, skipping {dataset}")
+        return {}
+
+    principle_ids = [p["id"] for p in PRINCIPLES if p["id"] != "HumaneScore"]
     models: Dict[str, Dict[str, float]] = {}
-    dataset_dir = data_dir / dataset
-    if not dataset_dir.exists():
-        return models
-
-    for eval_file in sorted(dataset_dir.rglob("*.eval")):
-        # Expect logs/<dataset>/<model>/<timestamp>.eval
-        relative_parts = eval_file.relative_to(dataset_dir).parts
-        if len(relative_parts) < 2:
-            continue
-        model_key = relative_parts[0]
-
-        try:
-            import zipfile
-
-            with zipfile.ZipFile(eval_file) as zf:
-                with zf.open("header.json") as header_fp:
-                    payload = json.load(header_fp)
-        except Exception as exc:  # pragma: no cover - defensive
-            print(f"[warn] Skipping {eval_file}: {exc}")
-            continue
-
-        metrics = payload["results"]["scores"][0]["metrics"]
-        models[model_key] = {k: v.get("value", 0) for k, v in metrics.items()}
+    with csv_path.open() as f:
+        for row in csv.DictReader(f):
+            metrics = {"HumaneScore": float(row["overall"])}
+            for pid in principle_ids:
+                metrics[pid] = float(row[pid])
+            models[row["model"]] = metrics
 
     def sort_key(item: tuple[str, Dict[str, float]]) -> tuple[float, str]:
         model_key, metrics = item
-        score = metrics.get("HumaneScore", 0.0)
-        # Sort by HumaneScore desc, then model key asc for stability.
-        return (-score, model_key)
+        return (-metrics.get("HumaneScore", 0.0), model_key)
 
     return OrderedDict(sorted(models.items(), key=sort_key))
 
@@ -227,19 +218,19 @@ def build_svg(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate static ScoreGrid SVGs from eval_results headers.",
+        description="Generate static ScoreGrid SVGs from canonical post-exclusion score CSVs.",
     )
     parser.add_argument(
         "datasets",
         nargs="*",
         default=["bad_persona", "good_persona", "baseline"],
-        help="Dataset folders under eval_results to render.",
+        help="Datasets to render. Each maps to <dataset>_scores.csv in --csv-dir.",
     )
     parser.add_argument(
-        "--data-dir",
+        "--csv-dir",
         type=Path,
-        default=Path(__file__).resolve().parent.parent / "logs",
-        help="Path to the logs directory (contains task folders like bad_persona/good_persona/baseline).",
+        default=Path(__file__).resolve().parent.parent,
+        help="Directory containing baseline_scores.csv / good_persona_scores.csv / bad_persona_scores.csv (default: repo root).",
     )
     parser.add_argument(
         "--output-dir",
@@ -276,7 +267,7 @@ def main() -> None:
     model_map_out.write_text(json.dumps(model_map, indent=2))
 
     for dataset in args.datasets:
-        models = load_models(args.data_dir, dataset)
+        models = load_models(args.csv_dir, dataset)
         if not models:
             print(f"[warn] No models found for dataset '{dataset}', skipping.")
             continue
