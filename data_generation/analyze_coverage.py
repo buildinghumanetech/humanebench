@@ -9,8 +9,12 @@ Usage: python analyze_coverage.py path/to/humane_bench.jsonl
 import json
 import statistics
 import sys
+from pathlib import Path
 import pandas as pd
 from collections import Counter
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from humanebench.excluded import load_excluded_ids
 
 # Predefined taxonomies from config.py
 EXPECTED_DOMAINS = [
@@ -240,6 +244,75 @@ def analyze_dataset(filepath):
             print(f"    {i}. {issue}")
     else:
         print("\n  ✅ No data quality issues found")
+
+    # ============================================================
+    # 7. EXTENDED: POST-EXCLUSION COVERAGE
+    # ============================================================
+    print("\n" + "=" * 70)
+    print("7. EXTENDED: POST-EXCLUSION COVERAGE")
+    print("=" * 70)
+
+    excluded_ids = load_excluded_ids(filepath)
+    if not excluded_ids:
+        print("\n  No items flagged excluded_from_analysis — extended view matches full dataset.")
+        return
+
+    kept = [r for r in rows if r.get('id') not in excluded_ids]
+    cut = [r for r in rows if r.get('id') in excluded_ids]
+    print(f"\n  Excluded {len(cut)} items → kept {len(kept)} of {len(rows)}")
+
+    cut_by_principle = Counter(r.get('metadata', {}).get('principle', 'MISSING') for r in cut)
+    print("  Cuts by principle:")
+    for p, c in sorted(cut_by_principle.items(), key=lambda x: -x[1]):
+        print(f"    -{c:<3d} {p}")
+
+    def _meta(rs, key, default=''):
+        return [r.get('metadata', {}).get(key, default) for r in rs]
+
+    def _vp(rs):
+        return [(v if v else '(none)') for v in _meta(rs, 'vulnerable-population', '')]
+
+    def _print_delta_table(label, full_vals, kept_vals, sort_by_filtered=True):
+        full_c = Counter(full_vals)
+        kept_c = Counter(kept_vals)
+        keys = set(full_c) | set(kept_c)
+        rows_out = [(k, full_c.get(k, 0), kept_c.get(k, 0)) for k in keys]
+        rows_out.sort(key=lambda x: (-x[2], -x[1], x[0]) if sort_by_filtered else (-x[1], x[0]))
+        width = max((len(k) for k in keys), default=10)
+        width = max(width, len(label))
+        print(f"\n  {label:<{width}}    full   filtered     Δ")
+        print(f"  {'-' * width}   -----   --------   ---")
+        for k, fc, kc in rows_out:
+            delta = kc - fc
+            print(f"  {k:<{width}}   {fc:5d}   {kc:8d}   {delta:+3d}")
+
+    full_principles = _meta(rows, 'principle', 'MISSING')
+    kept_principles = _meta(kept, 'principle', 'MISSING')
+    _print_delta_table('principle', full_principles, kept_principles)
+
+    full_vps = _vp(rows)
+    kept_vps = _vp(kept)
+    _print_delta_table('vulnerable population', full_vps, kept_vps)
+
+    full_tagged = sum(1 for v in full_vps if v != '(none)')
+    kept_tagged = sum(1 for v in kept_vps if v != '(none)')
+    print(
+        f"\n  tagged: {kept_tagged}/{len(kept)} ({kept_tagged/len(kept)*100:.1f}%)  "
+        f"[was {full_tagged}/{len(rows)} ({full_tagged/len(rows)*100:.1f}%)]"
+    )
+
+    full_domains = _meta(rows, 'domain', 'MISSING')
+    kept_domains = _meta(kept, 'domain', 'MISSING')
+    _print_delta_table('domain', full_domains, kept_domains)
+
+    print("\n  Excluded IDs:")
+    cut_by_p = {}
+    for r in cut:
+        p = r.get('metadata', {}).get('principle', 'MISSING')
+        cut_by_p.setdefault(p, []).append(r.get('id', ''))
+    for p in sorted(cut_by_p):
+        for rid in sorted(cut_by_p[p]):
+            print(f"    {rid}")
 
 
 if __name__ == "__main__":
