@@ -48,18 +48,33 @@ MODEL_ORDER = [
     "llama-4-maverick"
 ]
 
-def format_score(val):
-    """Format score for display."""
+def format_score(val, ci_lower=None, ci_upper=None):
+    """Format score for display, optionally with `[lo, hi]` CI."""
     if pd.isna(val):
         return "N/A"
-    return f"{val:.3f}"
+    s = f"{val:.3f}"
+    if ci_lower is not None and ci_upper is not None and not (pd.isna(ci_lower) or pd.isna(ci_upper)):
+        s += f" [{ci_lower:.3f}, {ci_upper:.3f}]"
+    return s
 
-def format_delta(val):
-    """Format delta for display with +/- sign."""
+def format_delta(val, ci_lower=None, ci_upper=None):
+    """Format delta for display with +/- sign and optional CI."""
     if pd.isna(val):
         return "N/A"
     sign = "+" if val >= 0 else ""
-    return f"{sign}{val:.3f}"
+    s = f"{sign}{val:.3f}"
+    if ci_lower is not None and ci_upper is not None and not (pd.isna(ci_lower) or pd.isna(ci_upper)):
+        s += f" [{ci_lower:+.3f}, {ci_upper:+.3f}]"
+    return s
+
+
+def _ci_pair(row, col):
+    """Return (ci_lower, ci_upper) for `col`, or (None, None) if columns absent."""
+    lo_key = f"{col}_ci_lower"
+    hi_key = f"{col}_ci_upper"
+    if lo_key in row.index and hi_key in row.index:
+        return row.get(lo_key), row.get(hi_key)
+    return None, None
 
 def create_table1_steerability_summary():
     """Table 1: Comprehensive Steerability Summary."""
@@ -76,11 +91,11 @@ def create_table1_steerability_summary():
     for _, row in steer.iterrows():
         table_data.append({
             'Model': row['model'],
-            'Baseline HumaneScore': format_score(row['baseline_score']),
-            'Good Persona HumaneScore': format_score(row['good_persona_score']),
-            'Good Δ': format_delta(row['good_delta']),
-            'Bad Persona HumaneScore': format_score(row['bad_persona_score']),
-            'Bad Δ': format_delta(row['bad_delta']),
+            'Baseline HumaneScore': format_score(row['baseline_score'], *_ci_pair(row, 'baseline_score')),
+            'Good Persona HumaneScore': format_score(row['good_persona_score'], *_ci_pair(row, 'good_persona_score')),
+            'Good Δ': format_delta(row['good_delta'], *_ci_pair(row, 'good_delta')),
+            'Bad Persona HumaneScore': format_score(row['bad_persona_score'], *_ci_pair(row, 'bad_persona_score')),
+            'Bad Δ': format_delta(row['bad_delta'], *_ci_pair(row, 'bad_delta')),
             'Robustness Status': row['robustness_status'] if pd.notna(row['robustness_status']) else 'N/A'
         })
 
@@ -100,110 +115,63 @@ def create_table1_steerability_summary():
     print(f"  Saved table1_steerability_summary (13 models)")
     return df
 
-def create_table2_baseline_heatmap():
-    """Table 2: Baseline Performance Heatmap."""
-    print("Creating Table 2: Baseline Performance Heatmap...")
-
-    baseline = pd.read_csv('baseline_scores.csv')
-
-    # Apply standard model ordering
-    baseline['model'] = pd.Categorical(baseline['model'], categories=MODEL_ORDER, ordered=True)
-    baseline = baseline.sort_values('model')
-
-    # Create heatmap data with HumaneScore first
-    table_data = []
-    for _, row in baseline.iterrows():
-        data = {
+def _build_heatmap_table(scores: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return (csv_df, md_df). CSV stays clean (point estimates); MD includes CIs."""
+    csv_rows, md_rows = [], []
+    for _, row in scores.iterrows():
+        csv_data = {'Model': row['model'], 'HumaneScore': format_score(row['overall'])}
+        md_data = {
             'Model': row['model'],
-            'HumaneScore': format_score(row['overall'])
+            'HumaneScore': format_score(row['overall'], *_ci_pair(row, 'overall')),
         }
         for principle in PRINCIPLES:
-            data[PRINCIPLE_LABELS[principle]] = format_score(row[principle])
-        table_data.append(data)
+            label = PRINCIPLE_LABELS[principle]
+            csv_data[label] = format_score(row[principle])
+            md_data[label] = format_score(row[principle], *_ci_pair(row, principle))
+        csv_rows.append(csv_data)
+        md_rows.append(md_data)
+    return pd.DataFrame(csv_rows), pd.DataFrame(md_rows)
 
-    df = pd.DataFrame(table_data)
 
-    # Save as CSV
-    df.to_csv('tables/table2_baseline_heatmap.csv', index=False)
+def _heatmap_table(scores_csv: str, table_num: int, title: str, blurb: str, slug: str) -> pd.DataFrame:
+    print(f"Creating Table {table_num}: {title}...")
+    df = pd.read_csv(scores_csv)
+    df['model'] = pd.Categorical(df['model'], categories=MODEL_ORDER, ordered=True)
+    df = df.sort_values('model')
+    csv_df, md_df = _build_heatmap_table(df)
+    csv_df.to_csv(f'tables/table{table_num}_{slug}.csv', index=False)
+    with open(f'tables/table{table_num}_{slug}.md', 'w') as f:
+        f.write(f"# Table {table_num}: {title}\n\n{blurb}\n\n")
+        f.write(md_df.to_markdown(index=False))
+    print(f"  Saved table{table_num}_{slug} ({len(csv_df)} models × {csv_df.shape[1]} columns)")
+    return csv_df
 
-    # Save as Markdown
-    with open('tables/table2_baseline_heatmap.md', 'w') as f:
-        f.write("# Table 2: Baseline Performance Heatmap\n\n")
-        f.write("Per-principle and overall humaneness scores for all 13 models in baseline condition.\n\n")
-        f.write(df.to_markdown(index=False))
 
-    print(f"  Saved table2_baseline_heatmap (13 models × 9 columns)")
-    return df
+def create_table2_baseline_heatmap():
+    return _heatmap_table(
+        'baseline_scores.csv', 2, 'Baseline Performance Heatmap',
+        'Per-principle and overall humaneness scores for all 13 models in baseline condition. '
+        'Markdown cells include 95% bootstrap CIs.',
+        'baseline_heatmap',
+    )
+
 
 def create_table3_good_persona_heatmap():
-    """Table 3: Good Persona Performance Heatmap."""
-    print("Creating Table 3: Good Persona Performance Heatmap...")
+    return _heatmap_table(
+        'good_persona_scores.csv', 3, 'Good Persona Performance Heatmap',
+        'Per-principle and overall humaneness scores with humane-aligned system prompts. '
+        'Markdown cells include 95% bootstrap CIs.',
+        'good_persona_heatmap',
+    )
 
-    good = pd.read_csv('good_persona_scores.csv')
-
-    # Apply standard model ordering
-    good['model'] = pd.Categorical(good['model'], categories=MODEL_ORDER, ordered=True)
-    good = good.sort_values('model')
-
-    # Create heatmap data with HumaneScore first
-    table_data = []
-    for _, row in good.iterrows():
-        data = {
-            'Model': row['model'],
-            'HumaneScore': format_score(row['overall'])
-        }
-        for principle in PRINCIPLES:
-            data[PRINCIPLE_LABELS[principle]] = format_score(row[principle])
-        table_data.append(data)
-
-    df = pd.DataFrame(table_data)
-
-    # Save as CSV
-    df.to_csv('tables/table3_good_persona_heatmap.csv', index=False)
-
-    # Save as Markdown
-    with open('tables/table3_good_persona_heatmap.md', 'w') as f:
-        f.write("# Table 3: Good Persona Performance Heatmap\n\n")
-        f.write("Per-principle and overall humaneness scores with humane-aligned system prompts.\n\n")
-        f.write(df.to_markdown(index=False))
-
-    print(f"  Saved table3_good_persona_heatmap (13 models × 9 columns)")
-    return df
 
 def create_table4_bad_persona_heatmap():
-    """Table 4: Bad Persona (Adversarial) Performance Heatmap."""
-    print("Creating Table 4: Bad Persona Performance Heatmap...")
-
-    bad = pd.read_csv('bad_persona_scores.csv')
-
-    # Apply standard model ordering
-    bad['model'] = pd.Categorical(bad['model'], categories=MODEL_ORDER, ordered=True)
-    bad = bad.sort_values('model')
-
-    # Create heatmap data with HumaneScore first
-    table_data = []
-    for _, row in bad.iterrows():
-        data = {
-            'Model': row['model'],
-            'HumaneScore': format_score(row['overall'])
-        }
-        for principle in PRINCIPLES:
-            data[PRINCIPLE_LABELS[principle]] = format_score(row[principle])
-        table_data.append(data)
-
-    df = pd.DataFrame(table_data)
-
-    # Save as CSV
-    df.to_csv('tables/table4_bad_persona_heatmap.csv', index=False)
-
-    # Save as Markdown
-    with open('tables/table4_bad_persona_heatmap.md', 'w') as f:
-        f.write("# Table 4: Bad Persona (Adversarial) Performance Heatmap\n\n")
-        f.write("Per-principle and overall humaneness scores under adversarial system prompts.\n\n")
-        f.write(df.to_markdown(index=False))
-
-    print(f"  Saved table4_bad_persona_heatmap (13 models × 9 columns)")
-    return df
+    return _heatmap_table(
+        'bad_persona_scores.csv', 4, 'Bad Persona (Adversarial) Performance Heatmap',
+        'Per-principle and overall humaneness scores under adversarial system prompts. '
+        'Markdown cells include 95% bootstrap CIs.',
+        'bad_persona_heatmap',
+    )
 
 def create_table5_longitudinal_comparison():
     """Table 5: Longitudinal Comparison Across Labs."""
@@ -218,11 +186,11 @@ def create_table5_longitudinal_comparison():
             'Lab': row['lab'],
             'Model': row['model'],
             'Generation': row['generation'],
-            'Baseline HumaneScore': format_score(row['baseline_score']),
-            'Good Persona HumaneScore': format_score(row['good_persona_score']),
-            'Bad Persona HumaneScore': format_score(row['bad_persona_score']),
-            'Good Δ': format_delta(row['good_delta']),
-            'Bad Δ': format_delta(row['bad_delta']),
+            'Baseline HumaneScore': format_score(row['baseline_score'], *_ci_pair(row, 'baseline_score')),
+            'Good Persona HumaneScore': format_score(row['good_persona_score'], *_ci_pair(row, 'good_persona_score')),
+            'Bad Persona HumaneScore': format_score(row['bad_persona_score'], *_ci_pair(row, 'bad_persona_score')),
+            'Good Δ': format_delta(row['good_delta'], *_ci_pair(row, 'good_delta')),
+            'Bad Δ': format_delta(row['bad_delta'], *_ci_pair(row, 'bad_delta')),
             'Robustness Status': row['robustness_status'] if pd.notna(row['robustness_status']) else 'N/A'
         })
 
