@@ -12,6 +12,10 @@ from collections import defaultdict
 import csv
 from inspect_ai.log import read_eval_log
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_SCORE_CIS = REPO_ROOT / "tables" / "score_cis_long.csv"
+DEFAULT_DELTA_CIS = REPO_ROOT / "tables" / "persona_delta_cis_long.csv"
+
 # Define the 8 principles
 PRINCIPLES = [
     "respect-user-attention",
@@ -23,6 +27,40 @@ PRINCIPLES = [
     "be-transparent-and-honest",
     "design-for-equity-and-inclusion"
 ]
+
+
+def _load_cell_cis(path: Path) -> dict:
+    """Return {(model, persona, principle_or_HumaneScore): {ci_lower, ci_upper, n_eff}}."""
+    if not path.exists():
+        return {}
+    out = {}
+    with path.open() as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            key = (row["model"], row["persona"], row["principle"])
+            out[key] = {
+                "ci_lower": float(row["ci_lower"]) if row["ci_lower"] else None,
+                "ci_upper": float(row["ci_upper"]) if row["ci_upper"] else None,
+                "n_eff": int(row["n_eff"]) if row["n_eff"] else None,
+            }
+    return out
+
+
+def _load_delta_cis(path: Path) -> dict:
+    """Return {(model, contrast_persona, principle_or_HumaneScore): {...}}."""
+    if not path.exists():
+        return {}
+    out = {}
+    with path.open() as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            key = (row["model"], row["contrast_persona"], row["principle"])
+            out[key] = {
+                "ci_lower": float(row["ci_lower"]) if row["ci_lower"] else None,
+                "ci_upper": float(row["ci_upper"]) if row["ci_upper"] else None,
+                "n_eff": int(row["n_eff"]) if row["n_eff"] else None,
+            }
+    return out
 
 def extract_scores_from_eval(eval_path):
     """Extract scores from a single .eval file."""
@@ -98,7 +136,28 @@ def main():
         default=Path(__file__).resolve().parent.parent / "logs",
         help="Directory containing persona subdirectories (baseline/good_persona/bad_persona)",
     )
+    parser.add_argument(
+        "--score-cis-csv",
+        type=Path,
+        default=DEFAULT_SCORE_CIS,
+        help="Long-format per-cell CIs from scripts/compute_score_cis.py "
+             "(used to add *_ci_lower/*_ci_upper columns; warns if missing).",
+    )
+    parser.add_argument(
+        "--delta-cis-csv",
+        type=Path,
+        default=DEFAULT_DELTA_CIS,
+        help="Long-format paired persona-delta CIs (used for steerability_comparison).",
+    )
     args = parser.parse_args()
+
+    cell_cis = _load_cell_cis(args.score_cis_csv)
+    delta_cis = _load_delta_cis(args.delta_cis_csv)
+    if not cell_cis:
+        print(f"WARNING: {args.score_cis_csv} not found; CI columns will be empty.")
+        print("         Run `python scripts/compute_score_cis.py` first.")
+    if not delta_cis:
+        print(f"WARNING: {args.delta_cis_csv} not found; delta CI columns will be empty.")
 
     logs_dir = args.logs_dir.expanduser().resolve()
 
@@ -139,18 +198,31 @@ def main():
                     'scored_samples': data.get('scored_samples', 0)
                 }
 
-                # Add principle scores
+                # Add principle scores + CIs
                 for principle in PRINCIPLES:
                     row[principle] = data.get(principle)
+                    ci = cell_cis.get((model_name, persona, principle), {})
+                    row[f"{principle}_ci_lower"] = ci.get("ci_lower")
+                    row[f"{principle}_ci_upper"] = ci.get("ci_upper")
 
                 row['overall'] = data.get('overall')
+                hs_ci = cell_cis.get((model_name, persona, "HumaneScore"), {})
+                row['overall_ci_lower'] = hs_ci.get("ci_lower")
+                row['overall_ci_upper'] = hs_ci.get("ci_upper")
                 row['negative_rate'] = data.get('negative_rate')
 
                 rows.append(row)
 
         # Write CSV
         if rows:
-            fieldnames = ['model', 'total_samples', 'scored_samples'] + PRINCIPLES + ['overall', 'negative_rate']
+            principle_cols = []
+            for p in PRINCIPLES:
+                principle_cols.extend([p, f"{p}_ci_lower", f"{p}_ci_upper"])
+            fieldnames = (
+                ['model', 'total_samples', 'scored_samples']
+                + principle_cols
+                + ['overall', 'overall_ci_lower', 'overall_ci_upper', 'negative_rate']
+            )
             with open(output_file, 'w', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
@@ -164,7 +236,7 @@ def main():
     for model_name in sorted(all_data.keys()):
         row = {'model': model_name}
 
-        # Get scores from each persona
+        # Get scores from each persona, plus marginal HumaneScore CIs.
         for persona in personas:
             if persona in all_data[model_name]:
                 score = all_data[model_name][persona].get('overall')
@@ -174,8 +246,13 @@ def main():
             else:
                 row[f'{persona}_score'] = None
                 row[f'{persona}_negative_rate'] = None
+            ci = cell_cis.get((model_name, persona, "HumaneScore"), {})
+            row[f'{persona}_score_ci_lower'] = ci.get("ci_lower")
+            row[f'{persona}_score_ci_upper'] = ci.get("ci_upper")
 
-        # Calculate deltas
+        # Deltas: point estimate is the simple difference; CIs come from the
+        # paired bootstrap (NOT differences of marginal CIs — wrong for paired
+        # data).
         baseline_score = row.get('baseline_score')
         good_score = row.get('good_persona_score')
         bad_score = row.get('bad_persona_score')
@@ -184,6 +261,9 @@ def main():
             row['good_delta'] = good_score - baseline_score
         else:
             row['good_delta'] = None
+        good_dci = delta_cis.get((model_name, "good_persona", "HumaneScore"), {})
+        row['good_delta_ci_lower'] = good_dci.get("ci_lower")
+        row['good_delta_ci_upper'] = good_dci.get("ci_upper")
 
         if baseline_score is not None and bad_score is not None:
             row['bad_delta'] = bad_score - baseline_score
@@ -198,12 +278,20 @@ def main():
         else:
             row['bad_delta'] = None
             row['robustness_status'] = None
+        bad_dci = delta_cis.get((model_name, "bad_persona", "HumaneScore"), {})
+        row['bad_delta_ci_lower'] = bad_dci.get("ci_lower")
+        row['bad_delta_ci_upper'] = bad_dci.get("ci_upper")
 
         comparison_rows.append(row)
 
     # Write comparison CSV
-    fieldnames = ['model', 'baseline_score', 'good_persona_score', 'good_delta',
-                  'bad_persona_score', 'bad_delta', 'robustness_status',
+    fieldnames = ['model',
+                  'baseline_score', 'baseline_score_ci_lower', 'baseline_score_ci_upper',
+                  'good_persona_score', 'good_persona_score_ci_lower', 'good_persona_score_ci_upper',
+                  'good_delta', 'good_delta_ci_lower', 'good_delta_ci_upper',
+                  'bad_persona_score', 'bad_persona_score_ci_lower', 'bad_persona_score_ci_upper',
+                  'bad_delta', 'bad_delta_ci_lower', 'bad_delta_ci_upper',
+                  'robustness_status',
                   'baseline_negative_rate', 'good_persona_negative_rate', 'bad_persona_negative_rate']
 
     with open('steerability_comparison.csv', 'w', newline='') as f:

@@ -79,29 +79,45 @@ def load_and_merge_data():
     # Filter to only models with HELM scores
     helm_df = helm_df[helm_df['in_helm'] == True].copy()
 
-    # Merge HELM with baseline
+    # Pick the columns to merge from each side, including CIs if present.
+    def _ci_cols(df, base, prefix=None):
+        out = [base]
+        for suf in ("_ci_lower", "_ci_upper"):
+            col = f"{base}{suf}"
+            if col in df.columns:
+                out.append(col)
+        return out
+
+    # Merge HELM with baseline (carry overall + CI columns)
+    base_cols = ['model'] + _ci_cols(baseline_df, 'overall')
     merged_df = helm_df.merge(
-        baseline_df[['model', 'overall']],
+        baseline_df[base_cols],
         left_on='model_normalized',
         right_on='model',
         how='inner'
     )
 
-    # Merge with steerability
+    # Merge with steerability (bad_delta + CI columns)
+    steer_cols = ['model'] + _ci_cols(steerability_df, 'bad_delta')
     merged_df = merged_df.merge(
-        steerability_df[['model', 'bad_delta']],
+        steerability_df[steer_cols],
         on='model',
         how='inner'
     )
 
-    # Merge with bad persona scores
+    # Merge with bad persona scores (overall + CI columns)
+    bad_cols = ['model'] + _ci_cols(bad_persona_df, 'overall')
     merged_df = merged_df.merge(
-        bad_persona_df[['model', 'overall']],
+        bad_persona_df[bad_cols],
         on='model',
         how='inner',
         suffixes=('', '_bad_persona')
     )
-    merged_df.rename(columns={'overall_bad_persona': 'bad_persona_score'}, inplace=True)
+    merged_df.rename(columns={
+        'overall_bad_persona': 'bad_persona_score',
+        'overall_ci_lower_bad_persona': 'bad_persona_score_ci_lower',
+        'overall_ci_upper_bad_persona': 'bad_persona_score_ci_upper',
+    }, inplace=True)
 
     # Add family information
     merged_df['family'], merged_df['color'] = zip(*merged_df['model_name'].map(get_model_family))
@@ -117,6 +133,10 @@ def create_capability_chart(df, y_column, y_label, title, subtitle, invert_y=Fal
     ax.set_facecolor(COLORS['background'])
     fig.patch.set_facecolor(COLORS['background'])
 
+    ci_lower_col = f"{y_column}_ci_lower"
+    ci_upper_col = f"{y_column}_ci_upper"
+    has_ci = ci_lower_col in df.columns and ci_upper_col in df.columns
+
     # Plot points by family
     families_plotted = set()
     for idx, row in df.iterrows():
@@ -127,6 +147,17 @@ def create_capability_chart(df, y_column, y_label, title, subtitle, invert_y=Fal
         label = family if family not in families_plotted else None
         if family not in families_plotted:
             families_plotted.add(family)
+
+        # Vertical CI whisker behind the point.
+        if has_ci and pd.notna(row.get(ci_lower_col)) and pd.notna(row.get(ci_upper_col)):
+            err_low = row[y_column] - row[ci_lower_col]
+            err_high = row[ci_upper_col] - row[y_column]
+            ax.errorbar(
+                row['helm_aggregate_score'], row[y_column],
+                yerr=[[err_low], [err_high]],
+                fmt='none', ecolor=color, alpha=0.6,
+                elinewidth=1.2, capsize=3, capthick=1.0, zorder=2.5,
+            )
 
         ax.scatter(
             row['helm_aggregate_score'],

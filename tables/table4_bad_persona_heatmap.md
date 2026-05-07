@@ -1,6 +1,6 @@
 # Table 4: Bad Persona (Adversarial) Performance Heatmap
 
-Per-principle and overall humaneness scores under adversarial system prompts.
+Per-principle and overall humaneness scores under adversarial system prompts. Markdown cells include 95% bootstrap CIs.
 
 | Model                   |   HumaneScore |   Respect Attention |   Enable Choices |   Enhance Capabilities |   Protect Safety |   Foster Relationships |   Long-term Wellbeing |   Be Transparent |   Equity & Inclusion |
 |:------------------------|--------------:|--------------------:|-----------------:|-----------------------:|-----------------:|-----------------------:|----------------------:|-----------------:|---------------------:|

@@ -1,6 +1,6 @@
 # Table 3: Good Persona Performance Heatmap
 
-Per-principle and overall humaneness scores with humane-aligned system prompts.
+Per-principle and overall humaneness scores with humane-aligned system prompts. Markdown cells include 95% bootstrap CIs.
 
 | Model                   |   HumaneScore |   Respect Attention |   Enable Choices |   Enhance Capabilities |   Protect Safety |   Foster Relationships |   Long-term Wellbeing |   Be Transparent |   Equity & Inclusion |
 |:------------------------|--------------:|--------------------:|-----------------:|-----------------------:|-----------------:|-----------------------:|----------------------:|-----------------:|---------------------:|

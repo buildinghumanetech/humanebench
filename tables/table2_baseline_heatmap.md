@@ -1,6 +1,6 @@
 # Table 2: Baseline Performance Heatmap
 
-Per-principle and overall humaneness scores for all 13 models in baseline condition.
+Per-principle and overall humaneness scores for all 13 models in baseline condition. Markdown cells include 95% bootstrap CIs.
 
 | Model                   |   HumaneScore |   Respect Attention |   Enable Choices |   Enhance Capabilities |   Protect Safety |   Foster Relationships |   Long-term Wellbeing |   Be Transparent |   Equity & Inclusion |
 |:------------------------|--------------:|--------------------:|-----------------:|-----------------------:|-----------------:|-----------------------:|----------------------:|-----------------:|---------------------:|
