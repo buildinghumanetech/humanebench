@@ -4,12 +4,13 @@
 Outputs:
   tables/vp_table5_by_principle.csv   — VP vs non-VP steerability by principle
   tables/vp_table6_age_gradient.csv   — age-group summary (children/teenagers/elderly)
-  figures/vp_age_gradient.png         — grouped dot chart for age groups
+  figures/vp_age_gradient.png         — horizontal candlestick chart for age groups
   figures/vp_age_gradient.pdf         — PDF version for LaTeX
 """
 
 from pathlib import Path
 
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -116,50 +117,85 @@ def make_table6():
 # ── Figure: Age gradient dot chart ─────────────────────────────────
 
 def make_figure(t6):
+    order = ["Children", "Teenagers", "Elderly"]
+    t6 = t6.set_index("group").loc[order].reset_index()
     groups = t6["group"].tolist()
     n = len(groups)
 
     non_vp_bl = non_vp[non_vp["persona"] == "baseline"]["score"].mean()
-    non_vp_good = non_vp[non_vp["persona"] == "good_persona"]["score"].mean()
-    non_vp_bad = non_vp[non_vp["persona"] == "bad_persona"]["score"].mean()
 
-    fig, ax = plt.subplots(figsize=(5.0, 3.5))
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     ax.set_facecolor(COLORS["background"])
     fig.patch.set_facecolor(COLORS["background"])
 
-    x = np.arange(n)
+    bar_lw = 3
+    cap_size = 9
+    dot_size = 6
 
     for i, (_, row) in enumerate(t6.iterrows()):
-        ax.plot(
-            [x[i], x[i]],
-            [row["bad_persona"], row["good_persona"]],
-            color=COLORS["grid"], linewidth=1.5, zorder=1,
-        )
+        y_pos = n - i - 1
 
-    ax.scatter(x, t6["baseline"], color=COLORS["baseline"],
-               marker="o", s=50, zorder=3, label="Baseline")
-    ax.scatter(x, t6["good_persona"], color=COLORS["good"],
-               marker="^", s=50, zorder=3, label="Good persona")
-    ax.scatter(x, t6["bad_persona"], color=COLORS["bad"],
-               marker="v", s=50, zorder=3, label="Bad persona")
+        baseline = row["baseline"]
+        good = row["good_persona"]
+        bad = row["bad_persona"]
 
-    ax.axhline(y=non_vp_bl, color=COLORS["ref_line"], linestyle="--",
-               linewidth=0.8, zorder=0)
-    ax.text((n - 1) / 2.0, non_vp_bl + 0.02, "non-VP baseline",
-            fontsize=6.5, color=COLORS["ref_line"], ha="center", va="bottom")
+        ax.plot([baseline, good], [y_pos, y_pos],
+                color=COLORS["good"], linewidth=bar_lw,
+                solid_capstyle="butt", zorder=2)
+        ax.plot([good], [y_pos], marker="|", markersize=cap_size,
+                color=COLORS["good"], markeredgewidth=2, zorder=2)
 
-    ax.axhline(y=0.0, color="#000000", linewidth=0.5, zorder=0)
-    ax.axhline(y=0.5, color=COLORS["ref_line"], linewidth=0.5,
-               linestyle=":", zorder=0)
+        ax.plot([bad, baseline], [y_pos, y_pos],
+                color=COLORS["bad"], linewidth=bar_lw,
+                solid_capstyle="butt", zorder=2)
+        ax.plot([bad], [y_pos], marker="|", markersize=cap_size,
+                color=COLORS["bad"], markeredgewidth=2, zorder=2)
 
-    ax.set_xticks(x)
-    ax.set_xticklabels(groups, fontsize=9)
-    ax.set_ylabel("Mean HumaneScore", fontsize=9)
-    ax.set_ylim(-0.15, 1.05)
-    ax.tick_params(axis="y", labelsize=8)
-    ax.legend(fontsize=7, loc="upper center", ncol=3, framealpha=0.9,
-              bbox_to_anchor=(0.5, 1.12))
-    ax.grid(axis="y", color=COLORS["grid"], linewidth=0.5, zorder=0)
+        ax.plot([baseline], [y_pos], marker="o", markersize=dot_size,
+                color=COLORS["baseline"], markeredgecolor="white",
+                markeredgewidth=1.5, zorder=3)
+
+    ax.axvline(x=0, color=COLORS["baseline"], linewidth=1.5,
+               linestyle="--", alpha=0.7, zorder=1)
+    ax.axvline(x=non_vp_bl, color=COLORS["ref_line"], linewidth=1.0,
+               linestyle="--", alpha=0.5, zorder=1)
+    ax.text(non_vp_bl, n - 0.3, "non-VP\nbaseline",
+            fontsize=5.5, color=COLORS["ref_line"],
+            ha="center", va="bottom")
+
+    ax.set_xlim(-0.2, 1.0)
+    ax.set_ylim(-0.5, n - 0.5)
+
+    ax.set_xlabel("HumaneScore", fontsize=9, fontweight="bold")
+    ax.set_xticks([-0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    ax.set_xticklabels(["-0.2", "0.0", "+0.2", "+0.4", "+0.6", "+0.8", "+1.0"])
+    ax.tick_params(axis="x", labelsize=7)
+
+    y_labels = groups[::-1]
+    ax.set_yticks(range(n))
+    ax.set_yticklabels(y_labels, fontsize=8)
+    ax.tick_params(axis="y", length=0)
+
+    ax.grid(True, axis="x", alpha=0.2, color=COLORS["grid"],
+            linewidth=0.5, zorder=0)
+    ax.set_axisbelow(True)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        mpatches.Patch(facecolor=COLORS["good"], label="Good persona"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor=COLORS["baseline"],
+               markeredgecolor="white", markersize=6, label="Baseline"),
+        mpatches.Patch(facecolor=COLORS["bad"], label="Bad persona"),
+        Line2D([0], [0], color=COLORS["baseline"], linewidth=1.5,
+               linestyle="--", alpha=0.7, label="Harmful threshold"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper center",
+              bbox_to_anchor=(0.5, -0.25), ncol=2, fontsize=6.5,
+              frameon=True, fancybox=False, shadow=False)
 
     plt.tight_layout()
     fig.savefig(FIGURES / "vp_age_gradient.pdf", dpi=300, bbox_inches="tight")
