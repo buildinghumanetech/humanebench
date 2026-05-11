@@ -6,6 +6,8 @@ tables/vp_sample_scores.csv with one row per sample per model per persona.
 """
 
 import argparse
+import json
+import logging
 import math
 import sys
 from pathlib import Path
@@ -15,6 +17,25 @@ from inspect_ai.log import read_eval_log
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from humanebench.excluded import load_excluded_ids  # noqa: E402
+
+DEFAULT_DATASET = Path(__file__).resolve().parent.parent / "data" / "humane_bench.jsonl"
+
+
+def _load_jsonl_metadata(jsonl_path: Path) -> dict[str, dict]:
+    """Load principle and VP tags from the canonical JSONL dataset."""
+    lookup: dict[str, dict] = {}
+    with jsonl_path.open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            meta = row.get("metadata") or {}
+            lookup[row["id"]] = {
+                "principle": meta.get("principle", ""),
+                "vulnerable-population": meta.get("vulnerable-population", ""),
+            }
+    return lookup
 
 PERSONAS = ["baseline", "good_persona", "bad_persona"]
 
@@ -43,6 +64,12 @@ def main():
         help="Directory containing persona subdirectories (baseline/good_persona/bad_persona)",
     )
     parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_DATASET,
+        help="Canonical JSONL dataset for VP/principle metadata",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=Path(__file__).resolve().parent.parent / "tables" / "vp_sample_scores.csv",
@@ -52,17 +79,24 @@ def main():
 
     logs_dir = args.logs_dir.expanduser().resolve()
     output_path = args.output.expanduser().resolve()
+    dataset_path = args.dataset.expanduser().resolve()
 
     if not logs_dir.exists():
         raise FileNotFoundError(f"Logs directory not found: {logs_dir}")
 
     excluded = load_excluded_ids()
+    jsonl_meta = _load_jsonl_metadata(dataset_path)
+    print(f"Loaded metadata for {len(jsonl_meta)} scenarios from {dataset_path.name}")
     print(f"Loaded {len(excluded)} excluded IDs")
+
+    log_fmt = logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+    logger = logging.getLogger(__name__)
 
     rows = []
     files_scanned = 0
     rows_excluded = 0
     nan_dropped = 0
+    missing_ids = 0
 
     for persona in PERSONAS:
         persona_dir = logs_dir / persona
@@ -87,7 +121,13 @@ def main():
                 if sample_id in excluded:
                     rows_excluded += 1
                     continue
-                meta = ((sample.metadata or {}).get("metadata") or {})
+                if sample_id not in jsonl_meta:
+                    missing_ids += 1
+                    logger.warning(
+                        "sample %s (%s/%s) not found in JSONL metadata",
+                        sample_id, persona, model_name,
+                    )
+                canonical = jsonl_meta.get(sample_id, {})
                 overseer = (sample.scores or {}).get("overseer")
                 score = overseer.value if overseer is not None else None
                 if score is None or _is_nan(score):
@@ -97,8 +137,8 @@ def main():
                     "sample_id": sample_id,
                     "model": model_name,
                     "persona": persona,
-                    "principle": meta.get("principle", ""),
-                    "vulnerable_population": meta.get("vulnerable-population", ""),
+                    "principle": canonical.get("principle", ""),
+                    "vulnerable_population": canonical.get("vulnerable-population", ""),
                     "score": score,
                 })
 
@@ -109,6 +149,8 @@ def main():
     print(f"\nFiles scanned: {files_scanned}")
     print(f"Sample rows excluded: {rows_excluded}")
     print(f"Dropped {nan_dropped} NaN/None scores (ensemble judge failures)")
+    if missing_ids:
+        print(f"WARNING: {missing_ids} sample IDs not found in JSONL metadata")
     print(f"Total rows written: {len(df)}")
     print(f"\nVP distribution (unique scenario IDs per VP):")
     vp_counts = (
