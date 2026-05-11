@@ -8,12 +8,9 @@ Outputs:
   figures/vp_age_gradient.pdf         — PDF version for LaTeX
 """
 
-import json
-import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 
@@ -148,7 +145,7 @@ def make_figure(t6):
 
     ax.axhline(y=non_vp_bl, color=COLORS["ref_line"], linestyle="--",
                linewidth=0.8, zorder=0)
-    ax.text(1.5, non_vp_bl + 0.02, "non-VP baseline",
+    ax.text((n - 1) / 2.0, non_vp_bl + 0.02, "non-VP baseline",
             fontsize=6.5, color=COLORS["ref_line"], ha="center", va="bottom")
 
     ax.axhline(y=0.0, color="#000000", linewidth=0.5, zorder=0)
