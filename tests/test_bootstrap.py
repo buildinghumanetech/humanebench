@@ -17,6 +17,7 @@ from humanebench.bootstrap import (
     HUMANESCORE_KEY,
     PRINCIPLES,
     bootstrap_cell_scores,
+    bootstrap_cohort_principle_means,
     bootstrap_persona_deltas,
 )
 
@@ -155,3 +156,164 @@ def test_seed_reproducibility():
         df, contrast_personas=["bad_persona"], n_bootstrap=200, seed=BOOTSTRAP_SEED,
     )
     pd.testing.assert_frame_equal(da, db)
+
+
+def _multi_model_long(
+    rng: np.random.Generator,
+    *,
+    models: list[str],
+    personas: list[str],
+    persona_means: dict[str, float],
+    n_per_principle: int = 40,
+    pair_correlation: float = 0.0,
+) -> pd.DataFrame:
+    """Synthetic long table spanning multiple models, paired across personas.
+
+    Each (principle, sample_id) has one latent ε shared across models and
+    personas; each (model, persona) draws independent noise on top. With
+    pair_correlation > 0 the same scenarios are easy / hard across models too.
+    """
+    rows = []
+    for principle in PRINCIPLES:
+        for k in range(n_per_principle):
+            sample_id = f"{principle}-{k:03d}"
+            eps = rng.normal()
+            for model in models:
+                for persona in personas:
+                    noise = rng.normal()
+                    score = (
+                        persona_means[persona]
+                        + pair_correlation * eps
+                        + (1.0 - pair_correlation) * noise
+                    )
+                    rows.append({
+                        "persona": persona,
+                        "model": model,
+                        "principle": principle,
+                        "sample_id": sample_id,
+                        "score": score,
+                    })
+    return pd.DataFrame(rows)
+
+
+@pytest.mark.unit
+def test_cohort_point_estimate_matches_mean_of_model_means():
+    """Cohort point estimate equals the simple mean across models of per-model means."""
+    rng = np.random.default_rng(2026)
+    models = ["m1", "m2", "m3"]
+    personas = ["baseline", "good_persona", "bad_persona"]
+    df = _multi_model_long(
+        rng,
+        models=models,
+        personas=personas,
+        persona_means={"baseline": 0.5, "good_persona": 0.8, "bad_persona": -0.3},
+        n_per_principle=30,
+        pair_correlation=0.4,
+    )
+
+    cells, deltas = bootstrap_cohort_principle_means(
+        df, models=models, personas=personas, n_bootstrap=50,
+    )
+
+    # Hand-compute one cell: respect-user-attention, baseline.
+    principle = "respect-user-attention"
+    sub = df[(df["principle"] == principle) & (df["persona"] == "baseline")]
+    per_model = sub.groupby("model")["score"].mean()
+    expected = float(per_model.loc[models].mean())
+    got = float(
+        cells[(cells["principle"] == principle) & (cells["persona"] == "baseline")][
+            "point_estimate"
+        ].iloc[0]
+    )
+    assert got == pytest.approx(expected, abs=1e-10)
+
+    # And the bad - baseline delta point estimate equals the difference of cohort means.
+    bad_pt = float(
+        cells[(cells["principle"] == principle) & (cells["persona"] == "bad_persona")][
+            "point_estimate"
+        ].iloc[0]
+    )
+    base_pt = float(
+        cells[(cells["principle"] == principle) & (cells["persona"] == "baseline")][
+            "point_estimate"
+        ].iloc[0]
+    )
+    delta_pt = float(
+        deltas[(deltas["principle"] == principle) & (deltas["contrast_persona"] == "bad_persona")][
+            "point_estimate"
+        ].iloc[0]
+    )
+    assert delta_pt == pytest.approx(bad_pt - base_pt, abs=1e-10)
+
+
+@pytest.mark.unit
+def test_cohort_bootstrap_seed_reproducibility():
+    """Identical seeds give identical cohort CIs (cells and deltas)."""
+    rng = np.random.default_rng(7)
+    models = ["m1", "m2", "m3"]
+    personas = ["baseline", "bad_persona"]
+    df = _multi_model_long(
+        rng,
+        models=models,
+        personas=personas,
+        persona_means={"baseline": 0.4, "bad_persona": -0.1},
+        n_per_principle=25,
+    )
+    a_cells, a_deltas = bootstrap_cohort_principle_means(
+        df, models=models, personas=personas, n_bootstrap=150, seed=BOOTSTRAP_SEED,
+    )
+    b_cells, b_deltas = bootstrap_cohort_principle_means(
+        df, models=models, personas=personas, n_bootstrap=150, seed=BOOTSTRAP_SEED,
+    )
+    pd.testing.assert_frame_equal(a_cells, b_cells)
+    pd.testing.assert_frame_equal(a_deltas, b_deltas)
+
+
+@pytest.mark.unit
+def test_cohort_resampling_unit_is_scenario_not_model():
+    """When per-scenario noise dominates and model noise is zero, cohort-replicate
+    variance should equal the variance of the per-scenario mean across models —
+    i.e. scenarios drive bootstrap variation, models do not. We test this by
+    constructing data where all models give identical scores for each
+    (principle, sample_id) and confirming the cohort CI width matches the
+    per-scenario-mean CI width from a one-model bootstrap.
+    """
+    rng = np.random.default_rng(11)
+    models = ["m1", "m2", "m3", "m4"]
+    personas = ["baseline"]
+    # Build one base table with shared scenario scores; replicate it per model.
+    base = _synth_long(
+        rng,
+        personas=personas,
+        persona_means={"baseline": 0.5},
+        n_per_principle=60,
+    )
+    base = base.drop(columns=["model"])
+    rows = []
+    for m in models:
+        sub = base.copy()
+        sub["model"] = m
+        rows.append(sub)
+    df = pd.concat(rows, ignore_index=True)
+
+    cohort_cells, _ = bootstrap_cohort_principle_means(
+        df, models=models, personas=personas, delta_personas=(),
+        n_bootstrap=400, seed=BOOTSTRAP_SEED,
+    )
+    # Compare to the single-model marginal CI (which is the per-scenario-mean CI).
+    one_model = df[df["model"] == "m1"].copy()
+    one_cells = bootstrap_cell_scores(one_model, n_bootstrap=400, seed=BOOTSTRAP_SEED)
+
+    principle = "respect-user-attention"
+    cohort = cohort_cells[(cohort_cells["principle"] == principle)
+                          & (cohort_cells["persona"] == "baseline")].iloc[0]
+    single = one_cells[(one_cells["principle"] == principle)
+                       & (one_cells["persona"] == "baseline")].iloc[0]
+    cohort_width = cohort["ci_upper"] - cohort["ci_lower"]
+    single_width = single["ci_upper"] - single["ci_lower"]
+    # Widths must agree closely — any large gap means models are contributing
+    # bootstrap variation, which would mean the resampling unit is wrong.
+    assert abs(cohort_width - single_width) < 0.05 * single_width, (
+        f"cohort width {cohort_width:.4f} differs from single-model width "
+        f"{single_width:.4f} by more than 5% — resampling unit suspect"
+    )

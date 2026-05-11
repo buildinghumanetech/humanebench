@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -315,6 +315,142 @@ def bootstrap_persona_deltas(
     return pd.DataFrame(rows).sort_values(
         ["model", "contrast_persona", "principle"]
     ).reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Public API: cohort-mean per-principle CIs (across-model average)
+# ---------------------------------------------------------------------------
+
+
+def bootstrap_cohort_principle_means(
+    long: pd.DataFrame,
+    models: Sequence[str],
+    personas: Sequence[str] = PERSONAS,
+    delta_personas: Sequence[tuple[str, str]] = (("bad_persona", "baseline"),),
+    n_bootstrap: int = N_BOOTSTRAP_DEFAULT,
+    seed: int = BOOTSTRAP_SEED,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Bootstrap CIs for the cohort-mean per-principle scores in Table 4.
+
+    For each (principle, persona), the estimator is
+
+        cohort_mean = (1 / |models|) * sum_m mean_{s in scenarios(p)} score(m, persona, s)
+
+    i.e. the average across `models` of each model's per-scenario mean within
+    the principle. The CI comes from `n_bootstrap` paired-scenario resamples
+    stratified by principle. Within each replicate the same resampled
+    `sample_id`s are reused across all models AND all personas — this is
+    strictly stronger pairing than `bootstrap_persona_deltas` (which only
+    pairs across personas within a model) and is what makes the cohort-level
+    paired delta meaningful.
+
+    Scenarios are restricted, per principle, to the intersection of
+    `sample_id`s present for every (model, persona) cell. This mirrors the
+    788-subset analysis in §3.2 of the paper.
+
+    Returns
+    -------
+    cells_df : DataFrame
+        Columns: (principle, persona, point_estimate, ci_lower, ci_upper,
+                  n_scenarios, n_models)
+    deltas_df : DataFrame
+        Columns: (principle, contrast_persona, baseline_persona,
+                  point_estimate, ci_lower, ci_upper, n_scenarios, n_models)
+        One row per (principle, delta_pair).
+    """
+    models = list(models)
+    personas = list(personas)
+    persona_to_idx = {p: i for i, p in enumerate(personas)}
+
+    sub = long[long["model"].isin(models) & long["persona"].isin(personas)]
+    rng = np.random.default_rng(seed)
+    cell_rows: list[dict] = []
+    delta_rows: list[dict] = []
+
+    for principle in PRINCIPLES:
+        p_sub = sub[sub["principle"] == principle]
+        if p_sub.empty:
+            continue
+
+        # Pivot to wide: index=sample_id, columns=(model, persona), values=score.
+        wide = p_sub.pivot_table(
+            index="sample_id",
+            columns=["model", "persona"],
+            values="score",
+            aggfunc="first",
+        )
+        required_cols = [(m, pe) for m in models for pe in personas]
+        missing_cols = [c for c in required_cols if c not in wide.columns]
+        if missing_cols:
+            # Some (model, persona) cell never scored this principle — skip
+            # rather than silently inflate the cohort mean. This shouldn't
+            # happen on the production data but is worth being defensive about.
+            continue
+        wide = wide[required_cols].dropna()  # paired intersection
+        if wide.empty:
+            continue
+
+        n_scenarios = wide.shape[0]
+        # Reshape (n_scenarios, n_models * n_personas) -> (n_scenarios, n_models, n_personas).
+        flat = wide.to_numpy(dtype=float)
+        scores = flat.reshape(n_scenarios, len(models), len(personas))
+
+        # Resample scenario indices (shared across models AND personas in each replicate).
+        idx = rng.integers(0, n_scenarios, size=(n_bootstrap, n_scenarios))
+        # Replicate-level cohort means: (n_bootstrap, n_personas)
+        rep_scores = scores[idx]                       # (n_boot, n_scen, n_models, n_personas)
+        per_model_means = rep_scores.mean(axis=1)      # (n_boot, n_models, n_personas)
+        cohort_reps = per_model_means.mean(axis=1)     # (n_boot, n_personas)
+
+        # Point estimates: mean across models of each model's mean over the (unsampled) scenarios.
+        point_per_persona = scores.mean(axis=0).mean(axis=0)  # (n_personas,)
+
+        for persona, p_idx in persona_to_idx.items():
+            lo, hi = _percentile_ci(cohort_reps[:, p_idx])
+            cell_rows.append({
+                "principle": principle,
+                "persona": persona,
+                "point_estimate": float(point_per_persona[p_idx]),
+                "ci_lower": lo,
+                "ci_upper": hi,
+                "n_scenarios": n_scenarios,
+                "n_models": len(models),
+            })
+
+        for contrast, baseline in delta_personas:
+            if contrast not in persona_to_idx or baseline not in persona_to_idx:
+                continue
+            c_idx = persona_to_idx[contrast]
+            b_idx = persona_to_idx[baseline]
+            delta_reps = cohort_reps[:, c_idx] - cohort_reps[:, b_idx]
+            lo, hi = _percentile_ci(delta_reps)
+            delta_rows.append({
+                "principle": principle,
+                "contrast_persona": contrast,
+                "baseline_persona": baseline,
+                "point_estimate": float(point_per_persona[c_idx] - point_per_persona[b_idx]),
+                "ci_lower": lo,
+                "ci_upper": hi,
+                "n_scenarios": n_scenarios,
+                "n_models": len(models),
+            })
+
+    cell_cols = ["principle", "persona", "point_estimate", "ci_lower",
+                 "ci_upper", "n_scenarios", "n_models"]
+    delta_cols = ["principle", "contrast_persona", "baseline_persona",
+                  "point_estimate", "ci_lower", "ci_upper",
+                  "n_scenarios", "n_models"]
+    cells_df = (
+        pd.DataFrame(cell_rows, columns=cell_cols)
+        .sort_values(["principle", "persona"])
+        .reset_index(drop=True)
+    )
+    deltas_df = (
+        pd.DataFrame(delta_rows, columns=delta_cols)
+        .sort_values(["principle", "contrast_persona"])
+        .reset_index(drop=True)
+    )
+    return cells_df, deltas_df
 
 
 # ---------------------------------------------------------------------------
