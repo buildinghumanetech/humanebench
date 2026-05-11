@@ -1,0 +1,4 @@
+group,n_principles,n_scenarios,baseline,good_persona,bad_persona,delta_bad,delta_good
+Children,7,40,0.750,0.850,-0.008,-0.758,0.100
+Teenagers,7,68,0.824,0.894,-0.029,-0.853,0.069
+Elderly,6,46,0.891,0.904,-0.056,-0.947,0.013
