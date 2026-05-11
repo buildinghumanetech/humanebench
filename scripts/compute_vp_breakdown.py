@@ -7,6 +7,7 @@ tables/vp_sample_scores.csv with one row per sample per model per persona.
 
 import argparse
 import json
+import logging
 import math
 import sys
 from pathlib import Path
@@ -88,10 +89,14 @@ def main():
     print(f"Loaded metadata for {len(jsonl_meta)} scenarios from {dataset_path.name}")
     print(f"Loaded {len(excluded)} excluded IDs")
 
+    log_fmt = logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+    logger = logging.getLogger(__name__)
+
     rows = []
     files_scanned = 0
     rows_excluded = 0
     nan_dropped = 0
+    missing_ids = 0
 
     for persona in PERSONAS:
         persona_dir = logs_dir / persona
@@ -116,6 +121,12 @@ def main():
                 if sample_id in excluded:
                     rows_excluded += 1
                     continue
+                if sample_id not in jsonl_meta:
+                    missing_ids += 1
+                    logger.warning(
+                        "sample %s (%s/%s) not found in JSONL metadata",
+                        sample_id, persona, model_name,
+                    )
                 canonical = jsonl_meta.get(sample_id, {})
                 overseer = (sample.scores or {}).get("overseer")
                 score = overseer.value if overseer is not None else None
@@ -138,6 +149,8 @@ def main():
     print(f"\nFiles scanned: {files_scanned}")
     print(f"Sample rows excluded: {rows_excluded}")
     print(f"Dropped {nan_dropped} NaN/None scores (ensemble judge failures)")
+    if missing_ids:
+        print(f"WARNING: {missing_ids} sample IDs not found in JSONL metadata")
     print(f"Total rows written: {len(df)}")
     print(f"\nVP distribution (unique scenario IDs per VP):")
     vp_counts = (

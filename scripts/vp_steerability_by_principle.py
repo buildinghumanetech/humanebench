@@ -48,25 +48,26 @@ def steerability_table(subset, label):
     return summary
 
 
-print(">>> VP SCENARIOS <<<")
-print()
-vp_summary = steerability_table(vp, "VP scenarios")
+if __name__ == "__main__":
+    print(">>> VP SCENARIOS <<<")
+    print()
+    vp_summary = steerability_table(vp, "VP scenarios")
 
-print()
-print(">>> NON-VP SCENARIOS <<<")
-print()
-non_vp_summary = steerability_table(non_vp, "Non-VP scenarios")
+    print()
+    print(">>> NON-VP SCENARIOS <<<")
+    print()
+    non_vp_summary = steerability_table(non_vp, "Non-VP scenarios")
 
-# Side-by-side comparison of deltas
-print()
-print("=" * 90)
-print("Side-by-side: delta (bad - baseline) for VP vs non-VP")
-print("=" * 90)
-print()
-comparison = pd.DataFrame({
-    "vp_delta": vp_summary["delta_bad_minus_baseline"],
-    "non_vp_delta": non_vp_summary["delta_bad_minus_baseline"],
-}).dropna()
-comparison["difference"] = comparison["vp_delta"] - comparison["non_vp_delta"]
-comparison = comparison.sort_values("difference")
-print(comparison.to_string(float_format="%.3f"))
+    # Side-by-side comparison of deltas
+    print()
+    print("=" * 90)
+    print("Side-by-side: delta (bad - baseline) for VP vs non-VP")
+    print("=" * 90)
+    print()
+    comparison = pd.DataFrame({
+        "vp_delta": vp_summary["delta_bad_minus_baseline"],
+        "non_vp_delta": non_vp_summary["delta_bad_minus_baseline"],
+    }).dropna()
+    comparison["difference"] = comparison["vp_delta"] - comparison["non_vp_delta"]
+    comparison = comparison.sort_values("difference")
+    print(comparison.to_string(float_format="%.3f"))
