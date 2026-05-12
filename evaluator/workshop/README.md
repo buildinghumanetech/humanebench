@@ -136,7 +136,17 @@ python batch_evaluate.py --input my_conversations.jsonl \
 ```
 
 `--append` is what you want when running continuously in production — each
-batch tacks new rows onto the same JSONL.
+batch tacks new rows onto the same JSONL. It's also the right flag for
+comparing multiple judge models against the same conversation set:
+
+```bash
+python batch_evaluate.py --model openai/gpt-4o-mini
+python batch_evaluate.py --model anthropic/claude-3.5-haiku --append
+python batch_evaluate.py --model google/gemini-2.5-pro --append
+```
+
+The dashboard will pick up all three judges and render grouped bars per
+principle so you can see where they agree and where they don't.
 
 ---
 
@@ -148,12 +158,21 @@ Goal: visualize everything in `results.jsonl` as a one-page Streamlit app.
 streamlit run dashboard.py
 ```
 
-Open the URL it prints. You'll see:
+Open the URL it prints. The sidebar lets you filter by **judge model** and
+**principle**; the rest of the page reacts to those filters.
 
-- **HumaneScore** (overall mean), conversation count, global-violation count, judge confidence
-- **Per-principle averages** bar chart
-- **HumaneScore distribution** banded into Violation / Concerning / Acceptable / Exemplary
-- **Lowest-scoring conversations** with expandable per-principle pills, rationales, and global violations
+- **Top metrics:** HumaneScore (mean over selected principles), scored rows,
+  global-violation count, judge confidence
+- **Per-principle averages:** bar chart. With multiple judges selected, you
+  get grouped bars (one cluster per principle, one bar per judge) for
+  side-by-side comparison.
+- **Score distribution:** rows binned into Violation / Concerning /
+  Acceptable / Exemplary. Also splits by judge when more than one is
+  selected.
+- **Lowest-scoring conversations:** expandable rows with per-principle pills
+  (selected principles are highlighted), rationales, and global violations.
+  Sorted by the mean of the selected principles, so this becomes a
+  per-principle drilldown when you narrow the filter.
 
 Re-run `batch_evaluate.py --append` and refresh the dashboard to see new
 results show up.
