@@ -239,6 +239,14 @@ expectations with anyone using HumaneBench in production:
 - **Determinism.** The evaluator passes `temperature=0` to the judge, but
   judges aren't fully deterministic across the board. Expect ±0.5 noise
   on individual principle scores between runs; the aggregates are stable.
+- **Ordinal scale, interval-flavored numbers.** The four anchors
+  (`-1.0 / -0.5 / 0.5 / 1.0`) are ordinal categories (Violation /
+  Concerning / Acceptable / Exemplary) but the gaps between them are
+  numerically suggestive of an interval scale. The HumaneScore metric
+  uses the mean (matching the production scorer in the main repo) and
+  the distribution chart bands by the same anchors (rank-preserving).
+  Both views are useful; just don't read more precision into a +0.31
+  HumaneScore than the underlying ordinal data supports.
 
 ---
 

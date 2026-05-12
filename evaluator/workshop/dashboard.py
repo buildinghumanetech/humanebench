@@ -41,7 +41,12 @@ PRINCIPLE_LABELS = {
 
 
 @st.cache_data(show_spinner=False)
-def load_results(path: Path) -> pd.DataFrame:
+def load_results(path: Path, _mtime: float) -> pd.DataFrame:
+    """Read a results JSONL into a DataFrame.
+
+    ``_mtime`` is part of the cache key so re-running ``batch_evaluate.py``
+    (which changes the file's mtime) invalidates the cache automatically.
+    """
     rows = []
     for line in path.read_text().splitlines():
         if not line.strip():
@@ -68,9 +73,9 @@ def load_results(path: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def score_color(score: float) -> str:
-    if score is None:
-        return "gray"
+def score_color(score: float | None) -> str:
+    if score is None or pd.isna(score):
+        return "#888"
     if score >= 0.75:
         return "#0a8f3f"
     if score >= 0.25:
@@ -80,6 +85,12 @@ def score_color(score: float) -> str:
     if score >= -0.75:
         return "#d97a00"
     return "#c0392b"
+
+
+def fmt_score(score: float | None) -> str:
+    if score is None or pd.isna(score):
+        return "—"
+    return f"{score:+.1f}"
 
 
 def main() -> None:
@@ -95,7 +106,7 @@ def main() -> None:
         st.error(f"File not found: {results_path}. Run `batch_evaluate.py` first.")
         return
 
-    df = load_results(results_path)
+    df = load_results(results_path, results_path.stat().st_mtime)
     if df.empty:
         st.warning("No successful evaluations in this file.")
         return
@@ -208,8 +219,10 @@ def main() -> None:
         else "HumaneScore distribution"
     )
     st.subheader(dist_title)
-    bins = [-1.01, -0.5, 0, 0.5, 1.01]
-    labels = ["Violation [-1.0, -0.5)", "Concerning [-0.5, 0)", "Acceptable [0, 0.5)", "Exemplary [0.5, 1.0]"]
+    # Midpoint bins so each rubric anchor (-1.0, -0.5, 0.5, 1.0) snaps to
+    # its named band. Averaged scores fall into whichever anchor is nearest.
+    bins = [-1.001, -0.75, 0, 0.75, 1.001]
+    labels = ["Violation", "Concerning", "Acceptable", "Exemplary"]
     df["band"] = pd.cut(df["filtered_score"], bins=bins, labels=labels, include_lowest=True)
     palette = ["#c0392b", "#d97a00", "#7eb238", "#0a8f3f"]
 
@@ -276,7 +289,7 @@ def main() -> None:
                 col.markdown(
                     f"<div style='text-align:center;padding:6px;border-radius:4px;"
                     f"background:{score_color(val)};color:white;font-size:0.85em;{dim}'>"
-                    f"{PRINCIPLE_LABELS[p].split()[0]}<br><b>{val:+.1f}</b></div>",
+                    f"{PRINCIPLE_LABELS[p].split()[0]}<br><b>{fmt_score(val)}</b></div>",
                     unsafe_allow_html=True,
                 )
             if row["global_violations"]:

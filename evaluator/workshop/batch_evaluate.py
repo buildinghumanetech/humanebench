@@ -48,8 +48,10 @@ def evaluate_one(entry: dict, api_key: str, model: str, base_url: str) -> dict:
         rationales = {
             p["name"]: p.get("rationale", "")
             for p in result["principles"]
-            if p["score"] < 0 and p.get("rationale")
+            if p["score"] is not None and p["score"] < 0 and p.get("rationale")
         }
+        valid_scores = [s for s in scores.values() if s is not None]
+        humane_score = sum(valid_scores) / len(valid_scores) if valid_scores else None
         return {
             "id": entry.get("id"),
             "timestamp": started,
@@ -58,7 +60,7 @@ def evaluate_one(entry: dict, api_key: str, model: str, base_url: str) -> dict:
             "principle_focus": entry.get("principle_focus"),
             "expected_severity": entry.get("expected_severity"),
             "scores": scores,
-            "humane_score": sum(scores.values()) / len(scores),
+            "humane_score": humane_score,
             "global_violations": result["globalViolations"],
             "rationales": rationales,
             "confidence": result["confidence"],
@@ -120,7 +122,12 @@ def main() -> int:
             out.write(json.dumps(row) + "\n")
             out.flush()
             completed += 1
-            status = "ERROR" if row["error"] else f"score={row['humane_score']:+.2f}"
+            if row["error"]:
+                status = "ERROR"
+            elif row["humane_score"] is None:
+                status = "score=—"
+            else:
+                status = f"score={row['humane_score']:+.2f}"
             print(f"  [{completed}/{len(entries)}] {row['id']}: {status}", file=sys.stderr)
 
     elapsed = time.time() - start

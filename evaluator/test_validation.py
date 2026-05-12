@@ -5,7 +5,9 @@ Tests validation logic and prompt formatting.
 """
 
 import json
-from humanebench_evaluator import validate_result, format_prompt
+from unittest.mock import MagicMock, patch
+
+from humanebench_evaluator import call_openai, format_prompt, validate_result
 
 def test_valid_result():
     """Test validation with a valid result."""
@@ -139,12 +141,47 @@ def test_invalid_confidence():
     return True
 
 
+def test_call_openai_passes_base_url():
+    """call_openai must forward base_url to openai.OpenAI() so OpenRouter / Together / vLLM work."""
+    print("\nTest 7: call_openai forwards base_url")
+    fake_message = MagicMock()
+    fake_message.content = '{"ok": true}'
+    fake_response = MagicMock()
+    fake_response.choices = [MagicMock(message=fake_message)]
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = fake_response
+
+    with patch("humanebench_evaluator.openai.OpenAI", return_value=fake_client) as mock_ctor:
+        # No base_url: should NOT pass the kwarg through.
+        call_openai("prompt", api_key="sk-test", model="gpt-4o")
+        assert mock_ctor.call_args.kwargs == {"api_key": "sk-test"}, (
+            f"Expected only api_key, got {mock_ctor.call_args.kwargs}"
+        )
+
+        # With base_url: should pass it through to the client constructor.
+        mock_ctor.reset_mock()
+        call_openai(
+            "prompt",
+            api_key="sk-test",
+            model="openai/gpt-4o-mini",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        kwargs = mock_ctor.call_args.kwargs
+        assert kwargs.get("base_url") == "https://openrouter.ai/api/v1", (
+            f"base_url not forwarded: {kwargs}"
+        )
+        assert kwargs.get("api_key") == "sk-test"
+
+    print("  ✓ base_url passthrough verified for both with and without")
+    return True
+
+
 def run_all_tests():
     """Run all tests."""
     print("=" * 60)
     print("HumaneBench Evaluator - Validation Tests")
     print("=" * 60)
-    
+
     tests = [
         test_valid_result,
         test_invalid_missing_principles,
@@ -152,6 +189,7 @@ def run_all_tests():
         test_missing_rationale,
         test_prompt_formatting,
         test_invalid_confidence,
+        test_call_openai_passes_base_url,
     ]
     
     passed = 0
