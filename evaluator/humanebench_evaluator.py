@@ -695,7 +695,13 @@ Examples:
     )
     parser.add_argument(
         "--api-url",
-        help="Custom API URL (required for custom provider)"
+        help=(
+            "Endpoint URL for --provider custom only. Expects a service that "
+            "accepts {\"prompt\": <text>} POST bodies and returns the raw "
+            "evaluator JSON. NOT for OpenAI-compatible endpoints — to target "
+            "OpenRouter / Together / Groq / vLLM / Ollama, use "
+            "--provider openai with --base-url instead."
+        ),
     )
     parser.add_argument(
         "--base-url",
