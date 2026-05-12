@@ -155,8 +155,13 @@ principle so you can see where they agree and where they don't.
 Goal: visualize everything in `results.jsonl` as a one-page Streamlit app.
 
 ```bash
+# from evaluator/workshop/, with the venv from step 0 activated:
 streamlit run dashboard.py
 ```
+
+If you opened a new terminal since step 0, re-activate the venv first
+(`source ../.venv/bin/activate`). The dashboard reads `./results.jsonl`
+by default; you can point it at a different file from the sidebar.
 
 Open the URL it prints. The sidebar lets you filter by **judge model** and
 **principle**; the rest of the page reacts to those filters.
