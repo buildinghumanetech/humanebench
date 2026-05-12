@@ -486,12 +486,20 @@ def validate_result(result: Dict) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def call_openai(prompt: str, api_key: str, model: str = "gpt-4o") -> str:
-    """Call OpenAI API to get evaluation."""
+def call_openai(prompt: str, api_key: str, model: str = "gpt-4o", base_url: Optional[str] = None) -> str:
+    """Call an OpenAI-compatible API to get evaluation.
+
+    Passing ``base_url`` lets this function target OpenRouter, Together, Groq,
+    a local vLLM/Ollama server, or any other endpoint that speaks the OpenAI
+    chat-completions API.
+    """
     if not HAS_OPENAI:
         raise ImportError("openai package not installed. Install with: pip install openai")
-    
-    client = openai.OpenAI(api_key=api_key)
+
+    client_kwargs = {"api_key": api_key}
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    client = openai.OpenAI(**client_kwargs)
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -581,6 +589,7 @@ def evaluate(
     api_key: Optional[str] = None,
     model: Optional[str] = None,
     api_url: Optional[str] = None,
+    base_url: Optional[str] = None,
     custom_headers: Optional[Dict] = None,
 ) -> Dict:
     """
@@ -607,7 +616,7 @@ def evaluate(
             model = "gpt-4o"
         if not api_key:
             raise ValueError("api_key required for OpenAI provider")
-        llm_response = call_openai(prompt, api_key, model)
+        llm_response = call_openai(prompt, api_key, model, base_url=base_url)
     elif llm_provider == "anthropic":
         if not model:
             model = "claude-3-5-sonnet-20241022"
@@ -686,7 +695,21 @@ Examples:
     )
     parser.add_argument(
         "--api-url",
-        help="Custom API URL (required for custom provider)"
+        help=(
+            "Endpoint URL for --provider custom only. Expects a service that "
+            "accepts {\"prompt\": <text>} POST bodies and returns the raw "
+            "evaluator JSON. NOT for OpenAI-compatible endpoints — to target "
+            "OpenRouter / Together / Groq / vLLM / Ollama, use "
+            "--provider openai with --base-url instead."
+        ),
+    )
+    parser.add_argument(
+        "--base-url",
+        help=(
+            "Base URL for an OpenAI-compatible endpoint (e.g. "
+            "https://openrouter.ai/api/v1). Used with --provider openai to "
+            "target OpenRouter, Together, Groq, vLLM, Ollama, etc."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -705,10 +728,15 @@ Examples:
     if not api_key:
         import os
         if args.provider == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
+            # When pointed at OpenRouter, fall back to OPENROUTER_API_KEY too.
+            api_key = os.getenv("OPENAI_API_KEY") or (
+                os.getenv("OPENROUTER_API_KEY")
+                if args.base_url and "openrouter" in args.base_url
+                else None
+            )
         elif args.provider == "anthropic":
             api_key = os.getenv("ANTHROPIC_API_KEY")
-    
+
     try:
         result = evaluate(
             user_prompt=args.user_prompt,
@@ -717,6 +745,7 @@ Examples:
             api_key=api_key,
             model=args.model,
             api_url=args.api_url,
+            base_url=args.base_url,
         )
         
         # Output result
