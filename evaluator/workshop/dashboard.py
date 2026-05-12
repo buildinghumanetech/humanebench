@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -104,18 +105,46 @@ def main() -> None:
         st.subheader("Filters")
         models = sorted(df["model"].dropna().unique().tolist())
         chosen_models = st.multiselect("Judge model", models, default=models)
+        chosen_principles = st.multiselect(
+            "Principle",
+            PRINCIPLES,
+            default=PRINCIPLES,
+            format_func=lambda p: PRINCIPLE_LABELS[p],
+            help="Narrow all charts and the drilldown to a subset of principles.",
+        )
         df = df[df["model"].isin(chosen_models)]
-        if df.empty:
+        if df.empty or not chosen_principles:
             st.warning("No rows match filters.")
             return
 
+    # Score across the *selected* principles, not always all 8.
+    df = df.copy()
+    df["filtered_score"] = df[chosen_principles].mean(axis=1)
+    multi_model = len(chosen_models) > 1
+    single_principle = len(chosen_principles) == 1
+
     # ---- Top-line metrics ----
-    overall = df["humane_score"].mean()
-    n = len(df)
+    overall = df["filtered_score"].mean()
+    n_rows = len(df)
+    n_unique = df["id"].nunique()
     n_violations = int(df["global_violations"].map(len).sum())
+    score_label = (
+        f"{PRINCIPLE_LABELS[chosen_principles[0]]} score"
+        if single_principle
+        else "HumaneScore (avg)"
+    )
+    score_help = (
+        f"Mean of `{chosen_principles[0]}` across selected rows."
+        if single_principle
+        else f"Mean over the {len(chosen_principles)} selected principles, all selected rows."
+    )
+    rows_label = (
+        f"Scored rows ({n_unique} unique)" if multi_model else "Conversations scored"
+    )
+
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("HumaneScore (avg)", f"{overall:+.2f}", help="Mean over all 8 principles, all rows.")
-    col2.metric("Conversations scored", n)
+    col1.metric(score_label, f"{overall:+.2f}", help=score_help)
+    col2.metric(rows_label, n_rows)
     col3.metric("Global violations", n_violations)
     col4.metric("Judge confidence (avg)", f"{df['confidence'].mean():.2f}")
 
@@ -123,64 +152,130 @@ def main() -> None:
 
     # ---- Per-principle averages ----
     st.subheader("Per-principle average score")
-    import altair as alt
+    ordered_principles = [p for p in PRINCIPLES if p in chosen_principles]
+    ordered_labels = [PRINCIPLE_LABELS[p] for p in ordered_principles]
 
-    ordered_labels = [PRINCIPLE_LABELS[p] for p in PRINCIPLES]
-    principle_means = pd.DataFrame(
-        {
-            "Principle": ordered_labels,
-            "Avg score": [df[p].mean() for p in PRINCIPLES],
-        }
-    )
-    principle_chart = (
-        alt.Chart(principle_means)
-        .mark_bar()
-        .encode(
-            x=alt.X("Principle:N", sort=ordered_labels, axis=alt.Axis(labelAngle=-30)),
-            y=alt.Y("Avg score:Q", scale=alt.Scale(domain=[-1, 1])),
-            color=alt.condition("datum['Avg score'] >= 0", alt.value("#1f77b4"), alt.value("#c0392b")),
+    if multi_model:
+        # Grouped bars: one cluster per principle, one bar per judge model.
+        rows = []
+        for model in chosen_models:
+            model_df = df[df["model"] == model]
+            for principle in ordered_principles:
+                rows.append(
+                    {
+                        "Principle": PRINCIPLE_LABELS[principle],
+                        "Judge": model,
+                        "Avg score": model_df[principle].mean(),
+                    }
+                )
+        principle_means = pd.DataFrame(rows)
+        principle_chart = (
+            alt.Chart(principle_means)
+            .mark_bar()
+            .encode(
+                x=alt.X("Principle:N", sort=ordered_labels, axis=alt.Axis(labelAngle=-30, title=None)),
+                xOffset=alt.XOffset("Judge:N", sort=chosen_models),
+                y=alt.Y("Avg score:Q", scale=alt.Scale(domain=[-1, 1])),
+                color=alt.Color("Judge:N", sort=chosen_models),
+                tooltip=["Principle", "Judge", alt.Tooltip("Avg score:Q", format="+.2f")],
+            )
+            .properties(height=360)
         )
-        .properties(height=320)
-    )
+    else:
+        principle_means = pd.DataFrame(
+            {
+                "Principle": ordered_labels,
+                "Avg score": [df[p].mean() for p in ordered_principles],
+            }
+        )
+        principle_chart = (
+            alt.Chart(principle_means)
+            .mark_bar()
+            .encode(
+                x=alt.X("Principle:N", sort=ordered_labels, axis=alt.Axis(labelAngle=-30)),
+                y=alt.Y("Avg score:Q", scale=alt.Scale(domain=[-1, 1])),
+                color=alt.condition("datum['Avg score'] >= 0", alt.value("#1f77b4"), alt.value("#c0392b")),
+                tooltip=["Principle", alt.Tooltip("Avg score:Q", format="+.2f")],
+            )
+            .properties(height=320)
+        )
     st.altair_chart(principle_chart, use_container_width=True)
 
     # ---- Distribution ----
-    st.subheader("HumaneScore distribution")
+    dist_title = (
+        f"{PRINCIPLE_LABELS[chosen_principles[0]]} score distribution"
+        if single_principle
+        else "HumaneScore distribution"
+    )
+    st.subheader(dist_title)
     bins = [-1.01, -0.5, 0, 0.5, 1.01]
     labels = ["Violation [-1.0, -0.5)", "Concerning [-0.5, 0)", "Acceptable [0, 0.5)", "Exemplary [0.5, 1.0]"]
-    df["band"] = pd.cut(df["humane_score"], bins=bins, labels=labels, include_lowest=True)
-    band_counts = (
-        df["band"].value_counts().reindex(labels).fillna(0).astype(int).reset_index()
-    )
-    band_counts.columns = ["Band", "Count"]
-    band_chart = (
-        alt.Chart(band_counts)
-        .mark_bar()
-        .encode(
-            x=alt.X("Band:N", sort=labels),
-            y=alt.Y("Count:Q"),
-            color=alt.Color("Band:N", scale=alt.Scale(domain=labels, range=["#c0392b", "#d97a00", "#7eb238", "#0a8f3f"]), legend=None),
+    df["band"] = pd.cut(df["filtered_score"], bins=bins, labels=labels, include_lowest=True)
+    palette = ["#c0392b", "#d97a00", "#7eb238", "#0a8f3f"]
+
+    if multi_model:
+        band_counts = (
+            df.groupby(["model", "band"], observed=False)
+            .size()
+            .reset_index(name="Count")
+            .rename(columns={"model": "Judge", "band": "Band"})
         )
-        .properties(height=240)
-    )
+        band_chart = (
+            alt.Chart(band_counts)
+            .mark_bar()
+            .encode(
+                x=alt.X("Band:N", sort=labels, axis=alt.Axis(labelAngle=0, title=None)),
+                xOffset=alt.XOffset("Judge:N", sort=chosen_models),
+                y=alt.Y("Count:Q"),
+                color=alt.Color("Judge:N", sort=chosen_models),
+                tooltip=["Band", "Judge", "Count"],
+            )
+            .properties(height=260)
+        )
+    else:
+        band_counts = (
+            df["band"].value_counts().reindex(labels).fillna(0).astype(int).reset_index()
+        )
+        band_counts.columns = ["Band", "Count"]
+        band_chart = (
+            alt.Chart(band_counts)
+            .mark_bar()
+            .encode(
+                x=alt.X("Band:N", sort=labels),
+                y=alt.Y("Count:Q"),
+                color=alt.Color("Band:N", scale=alt.Scale(domain=labels, range=palette), legend=None),
+                tooltip=["Band", "Count"],
+            )
+            .properties(height=240)
+        )
     st.altair_chart(band_chart, use_container_width=True)
 
     # ---- Lowest-scoring drilldown ----
-    st.subheader("Lowest-scoring conversations")
-    bottom = df.sort_values("humane_score").head(8)
+    drill_title = "Lowest-scoring conversations"
+    if single_principle:
+        drill_title += f" on {PRINCIPLE_LABELS[chosen_principles[0]]}"
+    elif len(chosen_principles) < len(PRINCIPLES):
+        drill_title += f" (mean of {len(chosen_principles)} selected principles)"
+    st.subheader(drill_title)
+    bottom = df.sort_values("filtered_score").head(8)
     for _, row in bottom.iterrows():
+        score_pretty = f"{row['filtered_score']:+.2f}"
+        suffix = f"  ·  judge: {row['model']}" if multi_model else ""
         with st.expander(
-            f"[{row['humane_score']:+.2f}] {row['id']}  ·  {row['user_prompt'][:80]}",
+            f"[{score_pretty}] {row['id']}  ·  {row['user_prompt'][:80]}{suffix}",
             expanded=False,
         ):
             st.markdown(f"**User prompt:** {row['user_prompt']}")
             st.markdown(f"**Response:** {row['response']}")
+            if multi_model:
+                st.markdown(f"**Judge:** `{row['model']}`")
             score_cols = st.columns(8)
             for col, p in zip(score_cols, PRINCIPLES):
                 val = row[p]
+                dim = "" if p in chosen_principles else "opacity:0.35;"
                 col.markdown(
                     f"<div style='text-align:center;padding:6px;border-radius:4px;"
-                    f"background:{score_color(val)};color:white;font-size:0.85em;'>"
+                    f"background:{score_color(val)};color:white;font-size:0.85em;{dim}'>"
                     f"{PRINCIPLE_LABELS[p].split()[0]}<br><b>{val:+.1f}</b></div>",
                     unsafe_allow_html=True,
                 )
@@ -195,7 +290,7 @@ def main() -> None:
 
     # ---- Full results table ----
     with st.expander("All results"):
-        display_cols = ["id", "humane_score", "confidence", "principle_focus", "expected_severity"] + PRINCIPLES
+        display_cols = ["id", "model", "filtered_score", "confidence", "principle_focus", "expected_severity"] + PRINCIPLES
         st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
 
 
