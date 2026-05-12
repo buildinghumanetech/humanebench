@@ -1,0 +1,3 @@
+# Workshop kit deps (in addition to evaluator/requirements.txt)
+streamlit>=1.30
+pandas>=2.0

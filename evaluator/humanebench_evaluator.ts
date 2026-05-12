@@ -490,12 +490,17 @@ function validateResult(result: any): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
-async function callOpenAI(prompt: string, apiKey: string, model: string = 'gpt-4o'): Promise<string> {
+async function callOpenAI(
+  prompt: string,
+  apiKey: string,
+  model: string = 'gpt-4o',
+  baseURL?: string,
+): Promise<string> {
   if (!OpenAI) {
     throw new Error('openai package not installed. Install with: npm install openai');
   }
 
-  const client = new OpenAI({ apiKey });
+  const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
   const response = await client.chat.completions.create({
     model,
     messages: [{ role: 'user', content: prompt }],
@@ -586,6 +591,7 @@ export async function evaluate(
     apiKey?: string;
     model?: string;
     apiUrl?: string;
+    baseURL?: string;
     customHeaders?: Record<string, string>;
   } = {}
 ): Promise<HumaneBenchResult> {
@@ -594,6 +600,7 @@ export async function evaluate(
     apiKey,
     model,
     apiUrl,
+    baseURL,
     customHeaders,
   } = options;
 
@@ -604,11 +611,16 @@ export async function evaluate(
   let llmResponse: string;
   if (llmProvider === 'openai') {
     const finalModel = model || 'gpt-4o';
-    const finalApiKey = apiKey || process.env.OPENAI_API_KEY;
+    // If pointed at OpenRouter, fall back to OPENROUTER_API_KEY too.
+    const isOpenRouter = !!baseURL && baseURL.includes('openrouter');
+    const finalApiKey =
+      apiKey ||
+      process.env.OPENAI_API_KEY ||
+      (isOpenRouter ? process.env.OPENROUTER_API_KEY : undefined);
     if (!finalApiKey) {
       throw new Error('apiKey required for OpenAI provider (or set OPENAI_API_KEY env var)');
     }
-    llmResponse = await callOpenAI(prompt, finalApiKey, finalModel);
+    llmResponse = await callOpenAI(prompt, finalApiKey, finalModel, baseURL);
   } else if (llmProvider === 'anthropic') {
     const finalModel = model || 'claude-3-5-sonnet-20241022';
     const finalApiKey = apiKey || process.env.ANTHROPIC_API_KEY;
@@ -645,6 +657,7 @@ if (require.main === module) {
   let apiKey: string | undefined;
   let model: string | undefined;
   let apiUrl: string | undefined;
+  let baseURL: string | undefined;
   let outputFile: string | undefined;
   let pretty = false;
 
@@ -662,6 +675,8 @@ if (require.main === module) {
       model = args[++i];
     } else if (arg === '--api-url' && args[i + 1]) {
       apiUrl = args[++i];
+    } else if (arg === '--base-url' && args[i + 1]) {
+      baseURL = args[++i];
     } else if (arg === '--output' && args[i + 1]) {
       outputFile = args[++i];
     } else if (arg === '--pretty') {
@@ -699,7 +714,7 @@ Examples:
     process.exit(1);
   }
 
-  evaluate(userPrompt, response, { llmProvider: provider, apiKey, model, apiUrl })
+  evaluate(userPrompt, response, { llmProvider: provider, apiKey, model, apiUrl, baseURL })
     .then((result) => {
       const output = pretty ? JSON.stringify(result, null, 2) : JSON.stringify(result);
       if (outputFile) {
