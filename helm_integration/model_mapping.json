@@ -2,8 +2,8 @@
   "mappings": [
     {
       "your_model_name": "GPT-5.1",
-      "helm_model_name": "",
-      "notes": "Not found in initial research - check HELM leaderboard"
+      "helm_model_name": "OpenAI GPT 5.1",
+      "notes": "Mean score 0.656, from HELM leaderboard 2026-05-16"
     },
     {
       "your_model_name": "GPT-5",
@@ -33,7 +33,7 @@
     {
       "your_model_name": "Claude Opus 4.1",
       "helm_model_name": "",
-      "notes": "Possible match: 'Claude 4 Opus' - close version match"
+      "notes": "Not on HELM Capabilities leaderboard as of 2026-05-16"
     },
     {
       "your_model_name": "Gemini 3 Pro Preview",
@@ -47,8 +47,8 @@
     },
     {
       "your_model_name": "Gemini 2.5 Flash",
-      "helm_model_name": "",
-      "notes": "User reports seeing this on HELM leaderboard"
+      "helm_model_name": "Google Gemini 2.5 Flash",
+      "notes": "Mean score 0.626, from HELM leaderboard 2026-05-16. Distinct from 'Gemini 2.5 Flash Lite'."
     },
     {
       "your_model_name": "Gemini 2.0 Flash",
@@ -57,8 +57,8 @@
     },
     {
       "your_model_name": "Llama 3.1 405B",
-      "helm_model_name": "",
-      "notes": "Likely 'Llama 3.1 Instruct Turbo 405B' - exact match"
+      "helm_model_name": "Meta Llama 3.1 405B Instruct Turbo",
+      "notes": "Mean score 0.618 on HELM leaderboard 2026-05-16; matches cached 'Meta Llama 3.1 405B Instruct Turbo' (0.6177)"
     },
     {
       "your_model_name": "Llama 4",
@@ -68,7 +68,7 @@
     {
       "your_model_name": "DeepSeek V3",
       "helm_model_name": "",
-      "notes": "Likely 'DeepSeek v3' - exact match (case difference only)"
+      "notes": "HumaneBench evaluated 'deepseek-v3.1-terminus'; HELM only lists 'DeepSeek v3' (a different version). v3.1 not on HELM as of 2026-05-16; leave unmapped to avoid version mismatch."
     },
     {
       "your_model_name": "Grok-4",

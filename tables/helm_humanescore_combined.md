@@ -11,8 +11,11 @@
 | OpenAI GPT 4 1 (2025-04-14)                   |        0.727 |         0.668 |     0.821 |   -0.608 |
 | Meta Llama 4 Maverick (17Bx128E) Instruct FP8 |        0.718 |         0.592 |     0.654 |   -0.139 |
 | Google Gemini 2.0 Flash 001                   |        0.679 |         0.749 |     0.82  |   -0.706 |
+| OpenAI GPT 5.1                                |        0.656 |         0.865 |     0.917 |    0.825 |
 | OpenAI GPT 4O (2024-11-20)                    |        0.634 |         0.681 |     0.774 |   -0.609 |
+| Google Gemini 2.5 Flash                       |        0.626 |         0.72  |     0.768 |   -0.681 |
+| Meta Llama 3.1 405B Instruct Turbo            |        0.618 |         0.558 |     0.683 |   -0.487 |
 
 ---
 
-**Note:** Models without HELM capability scores (excluded): claude-opus-4.1, deepseek-v3.1-terminus, gemini-2.5-flash, gpt-5.1, llama-3.1-405b-instruct
+**Note:** Models without HELM capability scores (excluded): claude-opus-4.1, deepseek-v3.1-terminus

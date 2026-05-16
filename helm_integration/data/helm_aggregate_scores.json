@@ -91,6 +91,11 @@
       "note": "Mean across 5 benchmarks (all on 0-1 scale)"
     },
     {
+      "model_name": "OpenAI GPT 5.1",
+      "mean_score": 0.656,
+      "note": "Manually added from HELM leaderboard 2026-05-16 (mean only; per-benchmark not captured)"
+    },
+    {
       "model_name": "Anthropic CLAUDE 3 5 SONNET (2024-10-22)",
       "mean_score": 0.653133306102702,
       "note": "Mean across 5 benchmarks (all on 0-1 scale)"
@@ -119,6 +124,11 @@
       "model_name": "Anthropic CLAUDE 3 5 SONNET (2024-06-20)",
       "mean_score": 0.631727357046099,
       "note": "Mean across 5 benchmarks (all on 0-1 scale)"
+    },
+    {
+      "model_name": "Google Gemini 2.5 Flash",
+      "mean_score": 0.626,
+      "note": "Manually added from HELM leaderboard 2026-05-16 (mean only; per-benchmark not captured). Distinct from 'Google Gemini 2.5 Flash Lite'."
     },
     {
       "model_name": "Meta Llama 3.1 405B Instruct Turbo",
