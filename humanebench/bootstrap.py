@@ -17,6 +17,7 @@ one bootstrap design.
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -383,8 +384,14 @@ def bootstrap_cohort_principle_means(
         missing_cols = [c for c in required_cols if c not in wide.columns]
         if missing_cols:
             # Some (model, persona) cell never scored this principle — skip
-            # rather than silently inflate the cohort mean. This shouldn't
-            # happen on the production data but is worth being defensive about.
+            # rather than silently inflate the cohort mean. Warn so a missing
+            # Table 4 row surfaces at runtime instead of in Overleaf.
+            warnings.warn(
+                f"bootstrap_cohort_principle_means: skipping principle "
+                f"{principle!r} — missing (model, persona) cells: {missing_cols}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
             continue
         wide = wide[required_cols].dropna()  # paired intersection
         if wide.empty:
