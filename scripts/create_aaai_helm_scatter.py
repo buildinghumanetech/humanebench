@@ -3,9 +3,14 @@
 Render the HELM × Δ_bad scatter for §4.6 of the AAAI paper.
 
 Single-panel chart: HELM aggregate capability (x) vs adversarial
-degradation Δ_bad = S_bad − S_baseline (y), for the n=10 HELM-matched
-models. The absence of a clean positive slope is §4.6's visual claim
-("Intelligence ≠ Humaneness").
+degradation Δ_bad = S_bad − S_baseline (y), across the HELM-matched
+cohort defined by HELM_TO_EVAL below. The absence of a clean positive
+slope is §4.6's visual claim ("Intelligence ≠ Humaneness").
+
+Inputs:
+  - helm_integration/data/helm_aggregate_scores.json
+  - tables/table1_steerability_summary.csv
+  - figures/model_display_names.json
 
 Output: paper_notes/latex/figs/fig_helm_scatter_1col.pdf
 
@@ -116,6 +121,18 @@ def load_merged():
 
     df = helm.merge(summary[['eval_model', 'baseline', 'good', 'bad']],
                     on='eval_model', how='inner')
+
+    expected = set(HELM_TO_EVAL.values())
+    got = set(df['eval_model'])
+    missing = sorted(expected - got)
+    if missing:
+        raise RuntimeError(
+            f"HELM_TO_EVAL drift -- expected {len(expected)} matched "
+            f"models, got {len(got)}. Missing: {missing}. Either HELM "
+            f"renamed a display string (update HELM_TO_EVAL keys) or "
+            f"table1_steerability_summary.csv lost a row (regenerate it)."
+        )
+
     df['delta_bad'] = df['bad'] - df['baseline']
     df['family'], df['color'] = zip(*df['eval_model'].map(get_family))
 
