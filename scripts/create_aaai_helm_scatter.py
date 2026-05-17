@@ -63,19 +63,23 @@ FAMILY_COLORS = {
 
 # Standardized label placement: every label sits either directly ABOVE
 # or directly BELOW its marker, with a thin gray leader line connecting
-# the two. ABOVE is the default; the entries below override to BELOW for
-# close-y pairs that would otherwise share a row.
-ABOVE = ('center', 'bottom',  0,  10)
-BELOW = ('center', 'top',     0, -10)
+# the two. ABOVE is the default; entries below override to BELOW.
+ABOVE = ('center', 'bottom',  0,   7)
+BELOW = ('center', 'top',     0,  -7)
 
 LABEL_DIRECTION = {
-    # Claude Sonnet 4.5 sits near the top-left where the r/p annotation
-    # box lives; flip BELOW to clear it.
-    'claude-sonnet-4.5':     BELOW,
-    # Bottom cluster (Δ_bad ≲ -1): Gemini 2.0 Flash / GPT-4.1 / Gemini
-    # 2.5 Pro / Grok 4 all sit near y ≈ -1.3 to -1.5. Alternate the two
-    # Gemini models BELOW so their labels don't collide with the
-    # ABOVE-labelled GPT-4.1 / Grok 4 / Gemini 3 Pro Preview.
+    # Sonnet 4 and Sonnet 4.5 are vertically stacked at nearly the same x
+    # (Sonnet 4.5 higher at y ≈ +0.02, Sonnet 4 lower at y ≈ -0.19).
+    # Push each label outward — away from the other dot — so leader lines
+    # don't cross over the wrong marker.
+    'claude-sonnet-4':       BELOW,
+    # GPT-5.1 sits near the top of the plot; an ABOVE label would collide
+    # with the (top-left) r/p stats box. Below GPT-5.1's x is empty down
+    # to Llama 4 Maverick, so flip BELOW.
+    'gpt-5.1':               BELOW,
+    # Bottom cluster (Δ_bad ≲ -1): alternate every other label BELOW so
+    # they don't pile up on one horizontal row.
+    'gemini-2.5-flash':      BELOW,
     'gemini-2.0-flash-001':  BELOW,
     'gemini-2.5-pro':        BELOW,
 }
