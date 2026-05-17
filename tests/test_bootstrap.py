@@ -245,6 +245,21 @@ def test_cohort_point_estimate_matches_mean_of_model_means():
     )
     assert delta_pt == pytest.approx(bad_pt - base_pt, abs=1e-10)
 
+    # n_models in output matches len(models) for every row in both frames.
+    assert (cells["n_models"] == len(models)).all()
+    assert (deltas["n_models"] == len(models)).all()
+
+    # CI bounds are well-ordered around the point estimate. Use <= between
+    # bound and point because a zero-variance bootstrap sample can pin a
+    # percentile to the mean; strict < between the bounds themselves is fine
+    # given the synthetic noise.
+    assert (cells["ci_lower"] <= cells["point_estimate"]).all()
+    assert (cells["point_estimate"] <= cells["ci_upper"]).all()
+    assert (cells["ci_lower"] < cells["ci_upper"]).all()
+    assert (deltas["ci_lower"] <= deltas["point_estimate"]).all()
+    assert (deltas["point_estimate"] <= deltas["ci_upper"]).all()
+    assert (deltas["ci_lower"] < deltas["ci_upper"]).all()
+
 
 @pytest.mark.unit
 def test_cohort_bootstrap_seed_reproducibility():

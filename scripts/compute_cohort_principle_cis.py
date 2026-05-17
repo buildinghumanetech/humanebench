@@ -81,20 +81,23 @@ def main() -> None:
     header = f"{'principle':<32} {'baseline':>22} {'good_persona':>22} {'bad_persona':>22} {'bad - base':>22}  n"
     print(header)
     print("-" * len(header))
+
+    def cell(principle, persona):
+        return (
+            f"{pivot.loc[principle, persona]:+.3f} "
+            f"[{pivot_lo.loc[principle, persona]:+.3f},{pivot_hi.loc[principle, persona]:+.3f}]"
+        )
+
     for principle in pivot.index:
-        def cell(persona):
-            return (
-                f"{pivot.loc[principle, persona]:+.3f} "
-                f"[{pivot_lo.loc[principle, persona]:+.3f},{pivot_hi.loc[principle, persona]:+.3f}]"
-            )
         bd = bad_delta.loc[principle]
         delta_str = (
             f"{bd['point_estimate']:+.3f} [{bd['ci_lower']:+.3f},{bd['ci_upper']:+.3f}]"
         )
         n = int(bd["n_scenarios"])
         print(
-            f"{principle:<32} {cell('baseline'):>22} {cell('good_persona'):>22} "
-            f"{cell('bad_persona'):>22} {delta_str:>22}  {n}"
+            f"{principle:<32} {cell(principle, 'baseline'):>22} "
+            f"{cell(principle, 'good_persona'):>22} "
+            f"{cell(principle, 'bad_persona'):>22} {delta_str:>22}  {n}"
         )
 
 
