@@ -61,17 +61,30 @@ FAMILY_COLORS = {
     "Other":     "#6B7280",
 }
 
-ABOVE = ("center", "bottom",  0,   7)
-BELOW = ("center", "top",     0,  -7)
+ABOVE       = ("center", "bottom",  0,   7)
+BELOW       = ("center", "top",     0,  -7)
+ABOVE_CLOSE = ("center", "bottom",  0,   3)
+BELOW_CLOSE = ("center", "top",     0,  -3)
+# Diagonal placements: the (ha, va) anchor is the corner of the text closest
+# to the dot, and (dx, dy) shifts that corner so a short leader line angles
+# from the dot to the label.
+BELOW_LEFT  = ("right",  "top",    -4,  -7)   # label down-and-to-the-left
+BELOW_RIGHT = ("left",   "top",     4,  -7)   # label down-and-to-the-right
 
 # Inherits from create_aaai_helm_scatter.py's overrides (same cohort, same
-# y-axis convention) and adds a few more for the safety x-axis layout.
+# y-axis convention) plus two more for the safety x-axis layout, where
+# GPT-4.1 ↔ GPT-4o ↔ Gemini 3 Pro Preview cluster tightly in the bottom-middle
+# and need to alternate to avoid label merge.
 LABEL_DIRECTION = {
     "claude-sonnet-4":      BELOW,
-    "gpt-5.1":              BELOW,
-    "gemini-2.5-flash":     BELOW,
-    "gemini-2.0-flash-001": BELOW,
-    "gemini-2.5-pro":       BELOW,
+    "gpt-5":                ABOVE_CLOSE,
+    "gpt-5.1":              BELOW_CLOSE,
+    "gpt-4o-2024-11-20":    BELOW,
+    "gemini-3-pro-preview": BELOW,
+    # Gemini 2.5 Flash and 2.0 Flash share x ≈ 0.91 — alternate ABOVE/BELOW
+    # to keep their labels from stacking on the same row.
+    "gemini-2.0-flash-001": BELOW_LEFT,
+    "gemini-2.5-pro":       BELOW_RIGHT,
 }
 
 LABEL_OVERRIDES = {
