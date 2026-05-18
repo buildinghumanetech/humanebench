@@ -1,0 +1,80 @@
+{
+  "mappings": [
+    {
+      "your_model_name": "gpt-5",
+      "helm_model_name": "GPT-5 (2025-08-07)",
+      "notes": ""
+    },
+    {
+      "your_model_name": "gpt-5.1",
+      "helm_model_name": "GPT-5.1 (2025-11-13)",
+      "notes": ""
+    },
+    {
+      "your_model_name": "gpt-4.1",
+      "helm_model_name": "GPT-4.1 (2025-04-14)",
+      "notes": ""
+    },
+    {
+      "your_model_name": "gpt-4o-2024-11-20",
+      "helm_model_name": "GPT-4o (2024-05-13)",
+      "notes": "proxy: HELM Safety release only has 2024-05-13; paired with HumaneBench's 2024-11-20 baseline/bad scores"
+    },
+    {
+      "your_model_name": "claude-sonnet-4.5",
+      "helm_model_name": "Claude 4.5 Sonnet (20250929)",
+      "notes": ""
+    },
+    {
+      "your_model_name": "claude-sonnet-4",
+      "helm_model_name": "Claude 4 Sonnet (20250514)",
+      "notes": ""
+    },
+    {
+      "your_model_name": "claude-opus-4.1",
+      "helm_model_name": "",
+      "notes": "expected-absent on HELM Safety release"
+    },
+    {
+      "your_model_name": "gemini-3-pro-preview",
+      "helm_model_name": "Gemini 3 Pro (Preview)",
+      "notes": ""
+    },
+    {
+      "your_model_name": "gemini-2.5-pro",
+      "helm_model_name": "Gemini 2.5 Pro (03-25 preview)",
+      "notes": ""
+    },
+    {
+      "your_model_name": "gemini-2.5-flash",
+      "helm_model_name": "Gemini 2.5 Flash (04-17 preview)",
+      "notes": ""
+    },
+    {
+      "your_model_name": "gemini-2.0-flash-001",
+      "helm_model_name": "Gemini 2.0 Flash",
+      "notes": ""
+    },
+    {
+      "your_model_name": "llama-3.1-405b-instruct",
+      "helm_model_name": "Llama 3.1 Instruct Turbo (405B)",
+      "notes": ""
+    },
+    {
+      "your_model_name": "llama-4-maverick",
+      "helm_model_name": "Llama 4 Maverick (17Bx128E) Instruct FP8",
+      "notes": ""
+    },
+    {
+      "your_model_name": "deepseek-v3.1",
+      "helm_model_name": "",
+      "notes": "expected-absent on HELM Safety release"
+    },
+    {
+      "your_model_name": "grok-4",
+      "helm_model_name": "Grok 4 (0709)",
+      "notes": ""
+    }
+  ],
+  "instructions": "Mirror of model_mapping.json for the HELM Safety release. helm_model_name values match the display strings in helm_integration/data/helm_safety_aggregate_scores.json. The two expected-absent entries (Opus 4.1, DeepSeek V3.1) are not treated as errors by the stats script."
+}

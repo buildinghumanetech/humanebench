@@ -1,0 +1,17 @@
+{
+  "models": [
+    {"model_name": "GPT-5 (2025-08-07)",                       "mean_score": 0.981, "note": "HELM Safety aggregate (user-supplied from leaderboard, 2026-05-18)"},
+    {"model_name": "Claude 4 Sonnet (20250514)",               "mean_score": 0.974, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "Claude 4.5 Sonnet (20250929)",             "mean_score": 0.971, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "GPT-5.1 (2025-11-13)",                     "mean_score": 0.967, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "GPT-4.1 (2025-04-14)",                     "mean_score": 0.963, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "GPT-4o (2024-05-13)",                      "mean_score": 0.946, "note": "HELM Safety aggregate (user-supplied); paired with HumaneBench gpt-4o-2024-11-20 as a proxy (HELM Safety only has the 2024-05-13 snapshot)"},
+    {"model_name": "Gemini 2.5 Pro (03-25 preview)",           "mean_score": 0.926, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "Gemini 3 Pro (Preview)",                   "mean_score": 0.926, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "Gemini 2.5 Flash (04-17 preview)",         "mean_score": 0.912, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "Gemini 2.0 Flash",                         "mean_score": 0.910, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "Llama 4 Maverick (17Bx128E) Instruct FP8", "mean_score": 0.906, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "Llama 3.1 Instruct Turbo (405B)",          "mean_score": 0.897, "note": "HELM Safety aggregate (user-supplied)"},
+    {"model_name": "Grok 4 (0709)",                            "mean_score": 0.836, "note": "HELM Safety aggregate (user-supplied)"}
+  ]
+}

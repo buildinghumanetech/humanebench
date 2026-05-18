@@ -1,5 +1,6 @@
 # HELM Integration - Downloaded data and caches
 helm_integration/data/gcs_cache/
+helm_integration/data/gcs_safety_cache/
 helm_integration/data/helm_raw_data.json
 helm_integration/data/helm_aggregate_scores.json
 
