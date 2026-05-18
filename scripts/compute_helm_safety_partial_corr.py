@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Correlate HELM Safety against HumaneBench adversarial drop magnitude.
+Correlate HELM Safety against HumaneBench adversarial robustness Δ_bad.
 
-Drop magnitude := baseline HumaneScore − bad-persona HumaneScore
-                = − Δ_bad   (per tables/table1_steerability_summary.csv)
+Δ_bad := bad-persona HumaneScore − baseline HumaneScore
+       (matches scripts/create_aaai_helm_scatter.py; more negative = larger
+        adversarial degradation; 0 = no degradation)
 
 The "necessary but not sufficient" hypothesis predicts:
-  * Spearman ρ(Safety, drop_mag) < 0  (more safety → smaller drop)
+  * Spearman ρ(Safety, Δ_bad) > 0  (more safety → Δ_bad closer to zero)
   * ρ_partial (controlling for HELM Capabilities) closer to zero than ρ
 
 Inputs (read-only):
@@ -87,8 +88,8 @@ def load_humanescores() -> pd.DataFrame:
         "Baseline HumaneScore": "baseline_humanescore",
         "Bad Persona HumaneScore": "bad_humanescore",
     })
-    df["drop_mag"] = df["baseline_humanescore"] - df["bad_humanescore"]
-    return df[["eval_model", "baseline_humanescore", "bad_humanescore", "drop_mag"]]
+    df["delta_bad"] = df["bad_humanescore"] - df["baseline_humanescore"]
+    return df[["eval_model", "baseline_humanescore", "bad_humanescore", "delta_bad"]]
 
 
 FAMILY_PREFIXES = {
@@ -152,7 +153,7 @@ def build_merged() -> pd.DataFrame:
     # Diagnostics.
     missing_safety = df[df["safety_score"].isna()]["eval_model"].tolist()
     missing_cap = df[df["capability_score"].isna()]["eval_model"].tolist()
-    missing_hs = df[df["drop_mag"].isna()]["eval_model"].tolist()
+    missing_hs = df[df["delta_bad"].isna()]["eval_model"].tolist()
     if missing_safety:
         print(f"WARNING: safety_score missing for: {missing_safety}")
         print("  (mapping has a name but the safety aggregate JSON did not "
@@ -243,14 +244,14 @@ def main() -> int:
     merged.to_csv(MERGED_CSV, index=False)
     print(f"✓ Wrote {MERGED_CSV.relative_to(REPO_ROOT)}")
 
-    cohort = merged.dropna(subset=["safety_score", "drop_mag"]).copy()
+    cohort = merged.dropna(subset=["safety_score", "delta_bad"]).copy()
     n = len(cohort)
     if n < 3:
         print(f"✗ Cohort too small (n={n}) for correlation. Check merged CSV.")
         return 1
 
     x = cohort["safety_score"].to_numpy(dtype=float)
-    y = cohort["drop_mag"].to_numpy(dtype=float)
+    y = cohort["delta_bad"].to_numpy(dtype=float)
 
     # Primary + secondary.
     rho_obs, p_rho = permutation_p(spearman_stat, x, y)
@@ -279,7 +280,7 @@ def main() -> int:
     partial_summary = None
     if has_partial:
         xp = partial_cohort["safety_score"].to_numpy(dtype=float)
-        yp = partial_cohort["drop_mag"].to_numpy(dtype=float)
+        yp = partial_cohort["delta_bad"].to_numpy(dtype=float)
         zp = partial_cohort["capability_score"].to_numpy(dtype=float)
         partial_obs, p_partial = permutation_p(partial_spearman, xp, yp, zp)
         partial_lo, partial_hi = bootstrap_ci(partial_spearman, xp, yp, zp)
@@ -306,13 +307,15 @@ def main() -> int:
 
     # Markdown report.
     lines = [
-        "# HELM Safety × HumaneBench adversarial drop",
+        "# HELM Safety × HumaneBench adversarial robustness (Δ_bad)",
         "",
         f"Cohort: n = {n} (DeepSeek V3.1 and Claude Opus 4.1 expected-absent "
         f"per the HELM Safety release).",
         "",
-        "drop_mag = baseline HumaneScore − bad-persona HumaneScore "
-        "(positive = bigger drop). The hypothesis predicts a **negative** ρ.",
+        "Δ_bad = bad-persona HumaneScore − baseline HumaneScore "
+        "(more negative = larger adversarial degradation; matches "
+        "scripts/create_aaai_helm_scatter.py). The hypothesis predicts a "
+        "**positive** ρ.",
         "",
         "## Primary",
         "",
@@ -331,7 +334,7 @@ def main() -> int:
         (partial_obs, partial_lo, partial_hi, p_partial,
          partial_min, partial_med, partial_max, n_partial) = partial_summary
         lines += [
-            "## Partial Spearman ρ(Safety, drop_mag | Capability)",
+            "## Partial Spearman ρ(Safety, Δ_bad | Capability)",
             "",
             f"n = {n_partial} (subset with HELM Capability score).",
             "",
@@ -370,7 +373,7 @@ def main() -> int:
     print(f"✓ Wrote {STATS_MD.relative_to(REPO_ROOT)}")
 
     print()
-    print(f"Spearman ρ(Safety, drop_mag) = {rho_obs:+.3f}  "
+    print(f"Spearman ρ(Safety, Δ_bad) = {rho_obs:+.3f}  "
           f"[{rho_lo:+.3f}, {rho_hi:+.3f}]  p_perm={p_rho:.4f}  n={n}")
     if partial_summary is not None:
         print(f"Partial ρ | Capability  = {partial_summary[0]:+.3f}  "

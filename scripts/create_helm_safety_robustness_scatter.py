@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-Render the HELM Safety × HumaneBench drop-magnitude scatter.
+Render the HELM Safety × HumaneBench Δ_bad scatter.
 
-Single panel: HELM Safety aggregate (x) vs drop_mag = baseline - bad (y).
+Single panel: HELM Safety aggregate (x) vs Δ_bad = bad − baseline (y).
+Matches the y-axis convention of scripts/create_aaai_helm_scatter.py so
+the safety and capability scatters pair directly.
 Family-colored markers, all points labeled, regression line, and stats box
 with Spearman ρ, ρ_partial, permutation p, n. Mirrors the styling of
 scripts/create_aaai_helm_scatter.py so the two figures pair visually.
@@ -62,24 +64,14 @@ FAMILY_COLORS = {
 ABOVE = ("center", "bottom",  0,   7)
 BELOW = ("center", "top",     0,  -7)
 
-# Hand-tuned to avoid collisions in the n=13 safety cohort. The stats box
-# occupies the upper-left, and there are three dense clusters:
-#   - top-right at (~0.96, ~1.28): GPT-4.1 and GPT-4o nearly stacked
-#   - top-middle at (~0.91-0.93, ~1.4-1.5): three Geminis very close
-#   - bottom-right at (~0.97, ~0): two Sonnets and two GPT-5 variants
-# For each pair, one label goes ABOVE and one BELOW; Grok 4 is pushed BELOW
-# so its label clears the stats box.
+# Inherits from create_aaai_helm_scatter.py's overrides (same cohort, same
+# y-axis convention) and adds a few more for the safety x-axis layout.
 LABEL_DIRECTION = {
-    "grok-4":               BELOW,
-    "gpt-4o-2024-11-20":    BELOW,
-    "gemini-3-pro-preview": BELOW,
-    "gemini-2.5-flash":     BELOW,
-    "gemini-2.0-flash-001": ABOVE,
-    "gemini-2.5-pro":       ABOVE,
-    "claude-sonnet-4":      ABOVE,
-    "claude-sonnet-4.5":    BELOW,
-    "gpt-5":                ABOVE,
+    "claude-sonnet-4":      BELOW,
     "gpt-5.1":              BELOW,
+    "gemini-2.5-flash":     BELOW,
+    "gemini-2.0-flash-001": BELOW,
+    "gemini-2.5-pro":       BELOW,
 }
 
 LABEL_OVERRIDES = {
@@ -112,7 +104,7 @@ def stat_lookup(stats: pd.DataFrame, name: str) -> dict | None:
 
 
 def render(merged: pd.DataFrame, stats: pd.DataFrame, out_stem: Path) -> None:
-    cohort = merged.dropna(subset=["safety_score", "drop_mag"]).copy()
+    cohort = merged.dropna(subset=["safety_score", "delta_bad"]).copy()
     display_names = load_display_names()
     cohort["display"] = cohort["eval_model"].map(
         lambda s: LABEL_OVERRIDES.get(s, display_names.get(s, s))
@@ -128,12 +120,12 @@ def render(merged: pd.DataFrame, stats: pd.DataFrame, out_stem: Path) -> None:
         fam = row["family"]
         label = fam if fam not in seen else None
         seen.add(fam)
-        ax.scatter(row["safety_score"], row["drop_mag"],
+        ax.scatter(row["safety_score"], row["delta_bad"],
                    c=row["color"], s=28, zorder=3,
                    edgecolors="white", linewidths=0.5, label=label)
         ha, va, dx, dy = LABEL_DIRECTION.get(row["eval_model"], ABOVE)
         ax.annotate(row["display"],
-                    xy=(row["safety_score"], row["drop_mag"]),
+                    xy=(row["safety_score"], row["delta_bad"]),
                     xytext=(dx, dy), textcoords="offset points",
                     fontsize=5.5, ha=ha, va=va,
                     color="#1f2937", zorder=4,
@@ -142,7 +134,7 @@ def render(merged: pd.DataFrame, stats: pd.DataFrame, out_stem: Path) -> None:
                                     shrinkA=2.5, shrinkB=1.0))
 
     x = cohort["safety_score"].to_numpy(dtype=float)
-    y = cohort["drop_mag"].to_numpy(dtype=float)
+    y = cohort["delta_bad"].to_numpy(dtype=float)
     if len(x) >= 3 and np.std(x) > 0:
         slope, intercept, _, _, _ = sp_stats.linregress(x, y)
         xs = np.linspace(x.min(), x.max(), 50)
@@ -167,13 +159,13 @@ def render(merged: pd.DataFrame, stats: pd.DataFrame, out_stem: Path) -> None:
         )
     box_lines.append(f"$n = {len(cohort)}$")
 
-    ax.text(0.04, 0.04, "\n".join(box_lines),
-            transform=ax.transAxes, fontsize=5.5, va="bottom", ha="left",
+    ax.text(0.04, 0.96, "\n".join(box_lines),
+            transform=ax.transAxes, fontsize=5.5, va="top", ha="left",
             bbox=dict(boxstyle="round,pad=0.25", facecolor="white",
                       edgecolor="#9CA3AF", linewidth=0.5))
 
     ax.set_xlabel("HELM Safety Aggregate (higher = safer)")
-    ax.set_ylabel(r"drop magnitude $= S^{(\mathrm{base})} - S^{(\mathrm{bad})}$")
+    ax.set_ylabel(r"$\Delta_{\mathrm{bad}} = S^{(\mathrm{bad})} - S^{(\mathrm{base})}$")
     ax.grid(True, alpha=0.18, lw=0.5)
     for s in ["top", "right"]:
         ax.spines[s].set_visible(False)

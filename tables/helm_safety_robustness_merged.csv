@@ -1,14 +1,14 @@
-eval_model,helm_safety_model_name,notes,safety_score,helm_capability_model_name,capability_score,baseline_humanescore,bad_humanescore,drop_mag,family
-gpt-5,GPT-5 (2025-08-07),,0.981,OpenAI GPT 5 (2025-08-07),0.806750930922304,0.862,0.829,0.03300000000000003,OpenAI
-gpt-5.1,GPT-5.1 (2025-11-13),,0.967,OpenAI GPT 5.1,0.656,0.865,0.825,0.040000000000000036,OpenAI
-gpt-4.1,GPT-4.1 (2025-04-14),,0.963,OpenAI GPT 4 1 (2025-04-14),0.727,0.668,-0.608,1.276,OpenAI
-gpt-4o-2024-11-20,GPT-4o (2024-05-13),proxy: HELM Safety release only has 2024-05-13; paired with HumaneBench's 2024-11-20 baseline/bad scores,0.946,OpenAI GPT 4O (2024-11-20),0.6343356348283181,0.681,-0.609,1.29,OpenAI
-claude-sonnet-4.5,Claude 4.5 Sonnet (20250929),,0.971,Anthropic CLAUDE 4 5 SONNET (2025-09-29),0.7524,0.755,0.771,-0.016000000000000014,Anthropic
-claude-sonnet-4,Claude 4 Sonnet (20250514),,0.974,Anthropic CLAUDE 4 SONNET (2025-05-14),0.762,0.691,0.5,0.19099999999999995,Anthropic
-gemini-3-pro-preview,Gemini 3 Pro (Preview),,0.926,Google Gemini 3 Pro (Preview),0.799,0.785,-0.451,1.236,Google
-gemini-2.5-pro,Gemini 2.5 Pro (03-25 preview),,0.926,Google Gemini 2 5 Pro,0.745,0.765,-0.722,1.487,Google
-gemini-2.5-flash,Gemini 2.5 Flash (04-17 preview),,0.912,Google Gemini 2.5 Flash,0.626,0.72,-0.681,1.401,Google
-gemini-2.0-flash-001,Gemini 2.0 Flash,,0.91,Google Gemini 2.0 Flash 001,0.6786117276224539,0.749,-0.706,1.455,Google
-llama-3.1-405b-instruct,Llama 3.1 Instruct Turbo (405B),,0.897,Meta Llama 3.1 405B Instruct Turbo,0.6177036312831163,0.558,-0.487,1.045,Meta
-llama-4-maverick,Llama 4 Maverick (17Bx128E) Instruct FP8,,0.906,Meta Llama 4 Maverick (17Bx128E) Instruct FP8,0.718,0.592,-0.139,0.731,Meta
-grok-4,Grok 4 (0709),,0.836,Grok 4 (0709),0.785,0.687,-0.726,1.413,xAI
+eval_model,helm_safety_model_name,notes,safety_score,helm_capability_model_name,capability_score,baseline_humanescore,bad_humanescore,delta_bad,family
+gpt-5,GPT-5 (2025-08-07),,0.981,OpenAI GPT 5 (2025-08-07),0.806750930922304,0.862,0.829,-0.03300000000000003,OpenAI
+gpt-5.1,GPT-5.1 (2025-11-13),,0.967,OpenAI GPT 5.1,0.656,0.865,0.825,-0.040000000000000036,OpenAI
+gpt-4.1,GPT-4.1 (2025-04-14),,0.963,OpenAI GPT 4 1 (2025-04-14),0.727,0.668,-0.608,-1.276,OpenAI
+gpt-4o-2024-11-20,GPT-4o (2024-05-13),proxy: HELM Safety release only has 2024-05-13; paired with HumaneBench's 2024-11-20 baseline/bad scores,0.946,OpenAI GPT 4O (2024-11-20),0.6343356348283181,0.681,-0.609,-1.29,OpenAI
+claude-sonnet-4.5,Claude 4.5 Sonnet (20250929),,0.971,Anthropic CLAUDE 4 5 SONNET (2025-09-29),0.7524,0.755,0.771,0.016000000000000014,Anthropic
+claude-sonnet-4,Claude 4 Sonnet (20250514),,0.974,Anthropic CLAUDE 4 SONNET (2025-05-14),0.762,0.691,0.5,-0.19099999999999995,Anthropic
+gemini-3-pro-preview,Gemini 3 Pro (Preview),,0.926,Google Gemini 3 Pro (Preview),0.799,0.785,-0.451,-1.236,Google
+gemini-2.5-pro,Gemini 2.5 Pro (03-25 preview),,0.926,Google Gemini 2 5 Pro,0.745,0.765,-0.722,-1.487,Google
+gemini-2.5-flash,Gemini 2.5 Flash (04-17 preview),,0.912,Google Gemini 2.5 Flash,0.626,0.72,-0.681,-1.401,Google
+gemini-2.0-flash-001,Gemini 2.0 Flash,,0.91,Google Gemini 2.0 Flash 001,0.6786117276224539,0.749,-0.706,-1.455,Google
+llama-3.1-405b-instruct,Llama 3.1 Instruct Turbo (405B),,0.897,Meta Llama 3.1 405B Instruct Turbo,0.6177036312831163,0.558,-0.487,-1.045,Meta
+llama-4-maverick,Llama 4 Maverick (17Bx128E) Instruct FP8,,0.906,Meta Llama 4 Maverick (17Bx128E) Instruct FP8,0.718,0.592,-0.139,-0.731,Meta
+grok-4,Grok 4 (0709),,0.836,Grok 4 (0709),0.785,0.687,-0.726,-1.413,xAI
