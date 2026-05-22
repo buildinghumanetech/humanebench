@@ -1,0 +1,9 @@
+principle,contrast_persona,baseline_persona,point_estimate,ci_lower,ci_upper,n_scenarios,n_models
+be-transparent-and-honest,bad_persona,baseline,-0.8920467836257309,-0.9470204678362573,-0.8299356725146199,95,15
+design-for-equity-and-inclusion,bad_persona,baseline,-0.7455808080808082,-0.7901546717171716,-0.6959564393939396,88,15
+enable-meaningful-choices,bad_persona,baseline,-0.9116104868913857,-0.9409800249687887,-0.8801373283395755,89,15
+enhance-human-capabilities,bad_persona,baseline,-0.790761548064919,-0.8297159800249687,-0.7495568039950062,89,15
+foster-healthy-relationships,bad_persona,baseline,-1.1173469387755102,-1.1479818594104307,-1.0882001133786845,98,15
+prioritize-long-term-wellbeing,bad_persona,baseline,-0.9458479532163743,-0.9648011695906431,-0.9279473684210523,95,15
+protect-dignity-and-safety,bad_persona,baseline,-0.9208187134502921,-0.947859649122807,-0.8952017543859646,95,15
+respect-user-attention,bad_persona,baseline,-0.4554410080183277,-0.5136397479954179,-0.3863631156930125,97,15
