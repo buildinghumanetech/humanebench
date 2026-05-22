@@ -9,6 +9,7 @@ import os
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 
@@ -62,7 +63,7 @@ def create_steerability_chart(compact=False, paper=False, model_map=None):
     # so it strips the in-figure title/subtitle (the LaTeX caption owns that
     # text) and uses smaller fonts/markers to stay legible after typesetting.
     if paper:
-        fig_size = (7.0, max(6.0, n_models * 0.35))
+        fig_size = (7.0, max(4.0, n_models * 0.23))
         bar_lw = 3
         cap_size = 7
         dot_size = 7
@@ -221,9 +222,9 @@ def create_steerability_chart(compact=False, paper=False, model_map=None):
                transform=ax.get_yaxis_transform(), fontsize=font_category,
                color='#D97706', fontweight='bold', va='center')
 
+    failed_indices = df[df['robustness_status'] == 'Failed'].index.tolist()
     if len(failed_models) > 0:
         # Position label at middle of category group
-        failed_indices = df[df['robustness_status'] == 'Failed'].index.tolist()
         failed_middle = (failed_indices[0] + failed_indices[-1]) / 2.0
         failed_y = n_models - failed_middle - 1
         ax.text(label_x, failed_y, f'✗ Failed ({len(failed_models)})',
@@ -256,22 +257,44 @@ def create_steerability_chart(compact=False, paper=False, model_map=None):
         ax.set_title(subtitle_text, fontsize=11, pad=20, color='#374151')
 
     # Legend
-    legend_elements = [
-        mpatches.Patch(facecolor=COLORS['green'], label='→ Good Persona (humane-aligned prompt)'),
-        mpatches.Patch(facecolor=COLORS['baseline'], label='● Baseline (default behavior)'),
-        mpatches.Patch(facecolor=COLORS['red'], label='← Bad Persona (adversarial prompt)'),
-        mpatches.Patch(facecolor='none', edgecolor=COLORS['zero_line'],
-                      linestyle='--', label='| Harmful Threshold (HumaneScore = 0)'),
-        mpatches.Patch(facecolor='none', edgecolor=COLORS['point_five_line'],
-                      linestyle='--', label='| Acceptable Threshold (HumaneScore = 0.5)')
-    ]
     if paper:
-        # Place legend below the plot so it doesn't overlap the top model rows
-        # at the smaller paper figsize.
-        ax.legend(handles=legend_elements, loc='upper center',
-                 bbox_to_anchor=(0.5, -0.10), ncol=2, fontsize=font_legend,
-                 frameon=True, fancybox=False, shadow=False)
+        legend_elements = [
+            mpatches.Patch(facecolor=COLORS['green'], label='Good Persona'),
+            Line2D([0], [0], marker='o', color='none',
+                   markerfacecolor=COLORS['baseline'], markeredgecolor='white',
+                   markeredgewidth=1.0, markersize=dot_size, label='Baseline'),
+            mpatches.Patch(facecolor=COLORS['red'], label='Bad Persona'),
+            mpatches.Patch(facecolor='none', edgecolor=COLORS['zero_line'],
+                          linestyle='--', label='Harmful (0)'),
+            mpatches.Patch(facecolor='none', edgecolor=COLORS['point_five_line'],
+                          linestyle='--', label='Acceptable (0.5)'),
+        ]
+        # Compressed legend in the right gutter, under the "✗ Failed" label.
+        # Anchor just above the x-axis baseline (ylim bottom is -0.5) and grow
+        # upward, so the legend sits inside the plot area, not below the axis.
+        ax.legend(
+            handles=legend_elements,
+            loc='lower left',
+            bbox_to_anchor=(1.05, -0.4),
+            bbox_transform=ax.get_yaxis_transform(),
+            ncol=1,
+            fontsize=font_legend,
+            frameon=False,
+            handlelength=1.2,
+            handletextpad=0.5,
+            borderpad=0.3,
+            labelspacing=0.3,
+        )
     else:
+        legend_elements = [
+            mpatches.Patch(facecolor=COLORS['green'], label='→ Good Persona (humane-aligned prompt)'),
+            mpatches.Patch(facecolor=COLORS['baseline'], label='● Baseline (default behavior)'),
+            mpatches.Patch(facecolor=COLORS['red'], label='← Bad Persona (adversarial prompt)'),
+            mpatches.Patch(facecolor='none', edgecolor=COLORS['zero_line'],
+                          linestyle='--', label='| Harmful Threshold (HumaneScore = 0)'),
+            mpatches.Patch(facecolor='none', edgecolor=COLORS['point_five_line'],
+                          linestyle='--', label='| Acceptable Threshold (HumaneScore = 0.5)')
+        ]
         ax.legend(handles=legend_elements, loc='upper left', fontsize=font_legend,
                  frameon=True, fancybox=False, shadow=False)
 
