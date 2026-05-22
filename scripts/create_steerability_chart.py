@@ -222,9 +222,9 @@ def create_steerability_chart(compact=False, paper=False, model_map=None):
                transform=ax.get_yaxis_transform(), fontsize=font_category,
                color='#D97706', fontweight='bold', va='center')
 
-    failed_indices = df[df['robustness_status'] == 'Failed'].index.tolist()
     if len(failed_models) > 0:
         # Position label at middle of category group
+        failed_indices = df[df['robustness_status'] == 'Failed'].index.tolist()
         failed_middle = (failed_indices[0] + failed_indices[-1]) / 2.0
         failed_y = n_models - failed_middle - 1
         ax.text(label_x, failed_y, f'✗ Failed ({len(failed_models)})',
