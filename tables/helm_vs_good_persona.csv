@@ -8,4 +8,7 @@ Google Gemini 2 5 Pro,0.745,0.904
 OpenAI GPT 4 1 (2025-04-14),0.727,0.821
 Meta Llama 4 Maverick (17Bx128E) Instruct FP8,0.718,0.654
 Google Gemini 2.0 Flash 001,0.679,0.82
+OpenAI GPT 5.1,0.656,0.917
 OpenAI GPT 4O (2024-11-20),0.634,0.774
+Google Gemini 2.5 Flash,0.626,0.768
+Meta Llama 3.1 405B Instruct Turbo,0.618,0.683

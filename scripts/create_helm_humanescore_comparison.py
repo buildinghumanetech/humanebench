@@ -30,14 +30,17 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 # HELM model name -> eval model name mapping
 HELM_TO_EVAL_MAP = {
     'OpenAI GPT 5 (2025-08-07)': 'gpt-5',
+    'OpenAI GPT 5.1': 'gpt-5.1',
     'OpenAI GPT 4 1 (2025-04-14)': 'gpt-4.1',
     'OpenAI GPT 4O (2024-11-20)': 'gpt-4o-2024-11-20',
     'Anthropic CLAUDE 4 5 SONNET (2025-09-29)': 'claude-sonnet-4.5',
     'Anthropic CLAUDE 4 SONNET (2025-05-14)': 'claude-sonnet-4',
     'Google Gemini 3 Pro (Preview)': 'gemini-3-pro-preview',
     'Google Gemini 2 5 Pro': 'gemini-2.5-pro',
+    'Google Gemini 2.5 Flash': 'gemini-2.5-flash',
     'Google Gemini 2.0 Flash 001': 'gemini-2.0-flash-001',
     'Meta Llama 4 Maverick (17Bx128E) Instruct FP8': 'llama-4-maverick',
+    'Meta Llama 3.1 405B Instruct Turbo': 'llama-3.1-405b-instruct',
     'Grok 4 (0709)': 'grok-4',
 }
 
