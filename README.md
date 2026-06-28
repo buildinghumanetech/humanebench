@@ -371,12 +371,6 @@ python scripts/extract_for_human_rating.py
 
 Evaluation results are saved in the `logs/` directory with detailed scoring and analysis of how each model performs across the 8 humane principles in three conditions (baseline, good persona, bad persona).
 
-## Demo Video
-
-Here is a video of Humane Tech member Jack Senechal running this Inspect framework against OpenAI's GPT-4o vs. Claude Sonnet 3.5:
-
-[![Inspect LLM Demo](https://p144.p3.n0.cdn.zight.com/items/6qupqLxX/293550a6-cea8-4cc4-bb0a-f7f6f530c577.png)](https://drodio.wistia.com/medias/njfoa1856w)
-
 ## Acknowledgements
 We thank the [DarkBench](https://github.com/apartresearch/DarkBench/tree/main) authors for open-sourcing their code and dataset, which offered significant guidance for our programmers in working with the Inspect AI framework.
 
