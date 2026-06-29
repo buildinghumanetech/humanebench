@@ -1,62 +1,49 @@
 # HumaneBench evaluation provenance
 
-This document establishes that the reported HumaneBench numbers were produced by
-scoring the **finalized dataset** — not by iteratively tuning prompts against eval
-results until the numbers looked good. The argument is mechanical and independently
-checkable: run `python scripts/verify_provenance.py`.
+This document records how to reproduce and independently verify that the reported
+HumaneBench numbers were computed against the finalized dataset. Everything here is
+factual and checkable — run `python scripts/verify_provenance.py`.
 
-## TL;DR
+## Summary
 
-- Every reported run scored prompts **byte-identical** to the frozen dataset. We prove
-  this by hashing the `(id, input, target)` triples embedded in each `.eval` log and
-  showing they equal the frozen prompt hash
-  `e1af241db346e0299bb96c893b43746bff7a70d7a50efdd105ba9ded3cfe5d5f`.
-- Because each run *is* bound to the frozen prompts, "the prompts were tuned afterward"
-  is logically impossible for the reported numbers — there is no later prompt version
-  that was scored.
-- The prompt content froze at commit
-  [`9dc15bd`](https://github.com/buildinghumanetech/humanebench/commit/9dc15bd) (2025-11-16
-  23:28). All reported runs executed **2025-11-17 → 2025-11-23**, after the freeze.
-- Every later edit to `data/humane_bench.jsonl` (Mar–Apr 2026) preserves that exact
-  prompt hash — i.e. it touched only metadata / exclusion flags, never `input` or
-  `target`.
+- The 800-prompt dataset's content (`input`/`target`) is fingerprinted by a canonical
+  hash, `FROZEN_PROMPT_HASH = e1af241db346e0299bb96c893b43746bff7a70d7a50efdd105ba9ded3cfe5d5f`.
+- Every reported run's `.eval` log embeds the exact prompts it scored; all of them hash to
+  that value, binding each run to the finalized prompt set.
+- Prompt content reached its final state at commit `9dc15bd` (2025-11-16). The 45 reported
+  runs executed 2025-11-17 → 2025-11-23. Later dataset commits change only metadata /
+  exclusion flags and preserve the prompt hash.
 
-## Why content hashes, not "creation timestamps"
+## Why a content hash, not file timestamps
 
-The intuitive instinct is to preserve file creation timestamps. We deliberately do **not**
-rely on those: git does not store file mtimes, and both filesystem and git commit dates
-are trivially forgeable. They prove nothing to a skeptical reader.
+Git does not preserve file mtimes, and local/commit dates are easily changed, so this
+record does not depend on them. The durable identifier is the **content hash** of the
+prompts: each `.eval` embeds the `input`/`target` it scored, which we check against the
+dataset's frozen prompt hash. Embedded timestamps and git revisions are recorded as
+supplementary metadata only.
 
-The robust evidence is **content-binding**. An Inspect `.eval` log embeds the full
-per-sample `input` and `target` it actually scored. We hash those and compare to the
-frozen dataset. Identity of content is direction-independent and tamper-evident: you
-cannot fake an `.eval` whose 800 embedded prompts hash to the frozen set unless they
-genuinely *are* the frozen set. Timestamps and git revisions are recorded as
-corroboration only.
-
-## The artifacts
+## Artifacts
 
 | Artifact | What it is |
 | --- | --- |
-| `humanebench/provenance.py` | Single source of truth: the freeze commit, the frozen prompt hash, the canonical hashing recipe, and the helpers used by both scripts below. Small and human-auditable. |
+| `humanebench/provenance.py` | Single source of truth: the freeze commit, the frozen prompt hash, the canonical hashing recipe, and the helpers used by the two scripts below. |
 | `scripts/build_provenance.py` | Regenerates the manifest from the logs + repo. |
-| `provenance/MANIFEST.json` / `MANIFEST.md` | Per-run record: file SHA-256, `eval.created`, `eval.revision.commit`, embedded prompt hash, and pass/fail of each binding check. |
+| `provenance/MANIFEST.json` / `MANIFEST.md` | Per-run record: file SHA-256, `eval.created`, `eval.revision.commit`, embedded prompt hash, and the result of each binding check. |
 | `scripts/verify_provenance.py` | Independent verifier. Recomputes every claim from disk and exits non-zero on any mismatch. No network needed. |
-| Zenodo deposit (DOI: _pending_) | Immutable, third-party-timestamped archive of the 54 raw `.eval` logs + this manifest + the frozen dataset, so anyone can download and re-verify. |
+| Zenodo deposit (DOI: _pending_) | Archived copy of the raw `.eval` logs + this manifest + the finalized dataset, so the logs can be downloaded and re-verified. |
 
-The raw logs (~0.5 GB) are **not** committed to git (`logs/` is gitignored, and the repo
-flags possible sensitive content). They live in the Zenodo deposit; the repo carries the
-hashes and the verifier.
+The raw logs (~0.5 GB) are not committed to git (`logs/` is gitignored); they live in the
+Zenodo deposit, while the repo carries the hashes and the verifier.
 
 ## The canonical prompt hash
 
 `FROZEN_PROMPT_HASH` is `sha256` over the **sorted** `(id, input, target)` triples, each
 record encoded as `id \x1f input \x1f target \x1e` (UTF-8). Sorting by `id` makes the hash
 independent of dataset row order and of sample-file order inside an `.eval` zip. Metadata
-(`domain`, `vulnerable-population`, `excluded_from_analysis`) is intentionally excluded:
-the hash captures exactly what a model is shown and scored on, nothing else.
+(`domain`, `vulnerable-population`, `excluded_from_analysis`) is excluded, so the hash
+captures exactly what a model is shown and scored on.
 
-Reproduce it by hand without any of our code:
+Reproduce it without any of our code:
 
 ```bash
 git cat-file -p 9dc15bd:data/humane_bench.jsonl \
@@ -70,53 +57,35 @@ git cat-file -p 9dc15bd:data/humane_bench.jsonl \
 Unzip any published `.eval`, hash its `samples/*.json` `input`/`target` the same way, and
 you get the same digest.
 
-## Chronology, honestly
+## Dataset timeline
 
-- **Prompt-content freeze: 2025-11-16 23:28** (commit `9dc15bd`). Note this is *not* the
-  Nov 7–8 "final dataset" commits (`822833f`, `1e6fb71`) — those have a **different**
-  prompt hash, because prompt text was still being edited until Nov 16. We anchor on the
-  hash precisely so this nuance can't be used against us: `9dc15bd` is the earliest commit
-  whose prompt hash equals what was actually run.
-- **Reported runs: 2025-11-17 → 2025-11-23**, each with `eval.created` after the freeze.
-- **Post-run dataset edits** (`b754d34`, `d119c0f`, `79cdbcb`, `ef43b81`, Mar–Apr 2026)
-  all preserve the frozen prompt hash → metadata / exclusion-flag changes only.
+- **Prompt content finalized: commit `9dc15bd` (2025-11-16 23:28).** This is the earliest
+  commit whose prompt hash equals the value every reported run scored. (The Nov 7–8 "final
+  dataset" commits `822833f` / `1e6fb71` have a *different* prompt hash — prompt text was
+  still being edited until Nov 16 — which is why the finalized state is identified by hash
+  rather than by date.)
+- **Reported runs: 2025-11-17 → 2025-11-23.**
+- **Post-freeze dataset commits** (`b754d34`, `d119c0f`, `79cdbcb`, `ef43b81`, Mar–Apr
+  2026) preserve the prompt hash; they change only metadata / exclusion flags.
 
-GitHub records the push/commit dates of `9dc15bd` and the post-freeze commits server-side,
-and the Zenodo deposit carries a trusted third-party timestamp on the logs. Combined with
-content-binding to the publicly-dated freeze commit, this establishes the ordering without
-relying on any single forgeable clock.
+## Reproducibility notes
 
-## What this proves, and what it does not
-
-**Proven (robust):**
-- Each reported run scored the frozen prompt set (content hash identity).
-- The dataset's `input`/`target` have not changed since the freeze; later commits are
-  metadata-only.
-- The runs postdate the freeze.
-
-**Acknowledged limitations (not hidden):**
 - **Run-time git commit is local-only.** Each `.eval` records `eval.revision.commit` (e.g.
-  `7032d35`), but that working commit was never pushed and does not resolve in the public
-  history. We therefore do **not** rely on git ancestry of the run-time SHA; the content
-  hash carries the proof, and the manifest flags `revision_resolved_in_repo: false`
-  honestly.
+  `7032d35`), a working commit that was not pushed and does not resolve in public history.
+  Verification therefore uses the content hash, not that revision; the manifest records
+  `revision_resolved_in_repo: false`.
 - **Judge models are not version-pinned.** The 3-judge ensemble is addressed via OpenRouter
-  (`claude-4.5-sonnet`, `gpt-5.1`, `gemini-2.5-pro`), which serves unversioned endpoints.
-  Re-running later may not reproduce identical judge outputs. This is a reproducibility
-  limitation of the judging step, separate from the dataset-integrity claim above.
-- **"Existed-by," not "existed-exactly-at."** Third-party timestamps (Zenodo, GitHub) bound
-  when artifacts existed; the dataset-integrity claim does not depend on exact run instants.
+  (`claude-4.5-sonnet`, `gpt-5.1`, `gemini-2.5-pro`), which serves unversioned endpoints, so
+  re-running may not reproduce identical judge outputs.
 
-## Related rigor already in the repo
+## Related materials
 
-- `paper_notes/cut_diff_report__cuts_v2_all_confabulation.md` — the 12 excluded items move
-  every headline number by < 0.005 and reclassify zero models; exclusions were flagged in
-  place (`metadata.excluded_from_analysis`), never deleted or silently rewritten.
 - `tables/golden_set_provenance.md` — provenance of the 24-item human-agreement validation
-  set (scored by `src/golden_questions_task.py`; logged at
-  `logs/golden_questions_eval/`).
-- `humanebench/bootstrap.py` — fixed bootstrap design (seed `20260407`, 1000 replicates)
-  shared by every CI in the paper.
+  set (scored by `src/golden_questions_task.py`; logged under `logs/golden_questions_eval/`).
+- `paper_notes/cut_diff_report__cuts_v2_all_confabulation.md` — effect of the 12 excluded
+  items on the reported numbers.
+- `humanebench/bootstrap.py` — bootstrap design (seed `20260407`, 1000 replicates) shared by
+  the confidence intervals in the paper.
 
 ## How to verify
 
@@ -128,5 +97,5 @@ python scripts/verify_provenance.py
 python scripts/verify_provenance.py --logs-dir /path/to/extracted/logs
 ```
 
-A clean tree prints `PROVENANCE VERIFIED: all checks passed.` and exits 0. Flip a single
+A clean tree prints `PROVENANCE VERIFIED: all checks passed.` and exits 0. Change a single
 byte of any prompt in a log or in the dataset and it exits non-zero.
