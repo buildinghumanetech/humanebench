@@ -188,7 +188,10 @@ def _full_synthetic() -> pd.DataFrame:
 
 def test_bootstrap_ranking_correlations_invariant_under_uniform_offset():
     long = _full_synthetic()
-    rc = sp.bootstrap_ranking_correlations(long, n_bootstrap=200, seed=sp.BOOTSTRAP_SEED)
+    config_aggs = sp.build_config_aggs(long)
+    rc = sp.bootstrap_ranking_correlations(
+        config_aggs, n_bootstrap=200, seed=sp.BOOTSTRAP_SEED
+    )
     sub = rc[rc["config"] != "ensemble3"]
     assert not sub.empty
     # A uniform per-judge offset cannot change the model ordering ⇒ τ = ρ = 1.
