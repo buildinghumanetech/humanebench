@@ -236,12 +236,12 @@ To generate additional scenarios, see [data_generation/README.md](data_generatio
 
 ## Provenance & Reproducibility
 
-The reported numbers come from scoring the **finalized** dataset — not from tuning prompts
-against results. This is independently checkable by **content-binding**: every reported
-`.eval` log embeds the exact `(id, input, target)` it scored, and those hash to the frozen
-prompt set (`e1af241d…`), identical to `data/humane_bench.jsonl` today. The prompt content
-froze at commit `9dc15bd` (2025-11-16); all 45 reported runs executed 2025-11-17→23; every
-later dataset edit is metadata/exclusion-only and preserves the prompt hash.
+The reported numbers were computed against the finalized dataset, and this is
+independently verifiable. Each reported `.eval` log embeds the exact `(id, input, target)`
+it scored, and all of them hash to the dataset's frozen prompt set (`e1af241d…`), identical
+to `data/humane_bench.jsonl` today. Prompt content was finalized at commit `9dc15bd`
+(2025-11-16); the 45 reported runs executed 2025-11-17→23; later dataset commits change only
+metadata and preserve the prompt hash.
 
 ```bash
 # Rebuild the manifest from logs + repo
@@ -251,9 +251,8 @@ python scripts/build_provenance.py
 python scripts/verify_provenance.py
 ```
 
-The full chain of custody, the honest list of limitations (e.g. judge models are not
-version-pinned), and the Zenodo DOI for the archived raw logs are in
-[PROVENANCE.md](PROVENANCE.md). The per-run record lives in
+See [PROVENANCE.md](PROVENANCE.md) for the full record, reproducibility notes, and the
+Zenodo DOI for the archived logs; per-run details are in
 [`provenance/MANIFEST.json`](provenance/MANIFEST.json).
 
 ## Testing
