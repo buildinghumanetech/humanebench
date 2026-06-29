@@ -32,7 +32,7 @@ The standard self-preference test: on the *same* response, is a judge's own seve
 
 **Result (computed from the data):** 2/3 judges (claude-4.5-sonnet, gpt-5.1) score their own family *below* peers (self-critical) [-0.096, -0.040]; 1/3 judges (gemini-2.5-pro) scores its own family *above* peers (mild self-preference, CI excludes 0) [+0.064].
 
-So self-preference is **mixed, not absent**. Crucially it is also immaterial: the self-preferring judge's lift does not change the ranking or the Robust set (Sections 4–5).
+So self-preference is **mixed, not absent**. The self-preferring case survives Holm-Bonferroni across the 6 raw self-preference tests (gemini-2.5-pro Holm-adj p=0.006). Crucially it is also immaterial: the self-preferring judge's lift does not change the ranking or the Robust set (Sections 4–5).
 
 ## 3. Leniency-adjusted view (difference-in-differences)
 
@@ -51,28 +51,28 @@ _Note: all DiDs here are negative, but per caveat 2 that is observationally equi
 
 ## 4. Single-judge & leave-one-out model rankings
 
-Each model's HumaneScore recomputed with one judge alone or with one judge dropped, then ranked and compared to the 3-judge ensemble ranking. Values near 1.0 mean the ranking is essentially unchanged.
+Each model's HumaneScore recomputed with one judge alone or with one judge dropped, then ranked and compared to the 3-judge ensemble ranking. **Kendall's τ is the primary stability statistic** (the leave-one-judge-out norm); 95% CIs are scenario-cluster bootstrap (shared scenario draws across models). Values near 1.0 ⇒ the ranking is essentially unchanged.
 
-| config | metric | n models | Spearman ρ vs ensemble | Kendall τ vs ensemble |
-| --- | --- | ---: | ---: | ---: |
-| claude_only | bad_humane | 15 | 0.989 | 0.943 |
-| drop_claude | bad_humane | 15 | 0.989 | 0.943 |
-| drop_gemini | bad_humane | 15 | 0.989 | 0.943 |
-| drop_gpt | bad_humane | 15 | 0.996 | 0.981 |
-| gemini_only | bad_humane | 15 | 0.996 | 0.981 |
-| gpt_only | bad_humane | 15 | 0.964 | 0.867 |
-| claude_only | baseline_humane | 15 | 0.971 | 0.886 |
-| drop_claude | baseline_humane | 15 | 0.971 | 0.905 |
-| drop_gemini | baseline_humane | 15 | 0.975 | 0.924 |
-| drop_gpt | baseline_humane | 15 | 0.964 | 0.886 |
-| gemini_only | baseline_humane | 15 | 0.936 | 0.829 |
-| gpt_only | baseline_humane | 15 | 0.936 | 0.829 |
-| claude_only | good_humane | 15 | 0.968 | 0.867 |
-| drop_claude | good_humane | 15 | 0.982 | 0.924 |
-| drop_gemini | good_humane | 15 | 0.996 | 0.981 |
-| drop_gpt | good_humane | 15 | 0.975 | 0.905 |
-| gemini_only | good_humane | 15 | 0.950 | 0.848 |
-| gpt_only | good_humane | 15 | 0.979 | 0.905 |
+| config | metric | n models | Kendall τ [95% CI] | Spearman ρ [95% CI] |
+| --- | --- | ---: | --- | --- |
+| claude_only | bad_humane | 15 | 0.943 [+0.886, +0.962] | 0.989 [+0.975, +0.993] |
+| drop_claude | bad_humane | 15 | 0.943 [+0.886, +0.981] | 0.989 [+0.971, +0.996] |
+| drop_gemini | bad_humane | 15 | 0.943 [+0.924, +1.000] | 0.989 [+0.986, +1.000] |
+| drop_gpt | bad_humane | 15 | 0.981 [+0.924, +1.000] | 0.996 [+0.986, +1.000] |
+| gemini_only | bad_humane | 15 | 0.981 [+0.905, +0.981] | 0.996 [+0.975, +0.996] |
+| gpt_only | bad_humane | 15 | 0.867 [+0.829, +0.943] | 0.964 [+0.950, +0.986] |
+| claude_only | baseline_humane | 15 | 0.886 [+0.790, +0.943] | 0.971 [+0.921, +0.989] |
+| drop_claude | baseline_humane | 15 | 0.905 [+0.848, +0.981] | 0.971 [+0.954, +0.996] |
+| drop_gemini | baseline_humane | 15 | 0.924 [+0.848, +0.981] | 0.975 [+0.953, +0.996] |
+| drop_gpt | baseline_humane | 15 | 0.886 [+0.810, +0.962] | 0.964 [+0.929, +0.993] |
+| gemini_only | baseline_humane | 15 | 0.829 [+0.733, +0.905] | 0.936 [+0.893, +0.975] |
+| gpt_only | baseline_humane | 15 | 0.829 [+0.752, +0.943] | 0.936 [+0.900, +0.986] |
+| claude_only | good_humane | 15 | 0.867 [+0.771, +0.943] | 0.968 [+0.918, +0.989] |
+| drop_claude | good_humane | 15 | 0.924 [+0.886, +0.981] | 0.982 [+0.971, +0.996] |
+| drop_gemini | good_humane | 15 | 0.981 [+0.924, +1.000] | 0.996 [+0.982, +1.000] |
+| drop_gpt | good_humane | 15 | 0.905 [+0.810, +0.962] | 0.975 [+0.932, +0.993] |
+| gemini_only | good_humane | 15 | 0.848 [+0.752, +0.924] | 0.950 [+0.886, +0.982] |
+| gpt_only | good_humane | 15 | 0.905 [+0.848, +0.962] | 0.979 [+0.961, +0.993] |
 
 ## 5. Leave-one-judge-out robustness invariance (headline)
 
@@ -89,8 +89,25 @@ Adversarial-robustness status recomputed per judge config. `bad_delta = S_bad �
 
 Cells show `status (bad_delta)`. The columns that matter for self-preference: **drop_claude** removes the Claude judge (tests the Claude models), **drop_gpt** removes the GPT judge (tests the GPT models).
 
+### How much does dropping a model's own-family judge move its score?
+
+For each in-family Robust model, the bootstrap 95% CI on the change in its **bad-persona HumaneScore** (and its `bad_delta`) when its own judge is removed. Every item has all 3 judges, so the change is a paired per-item quantity (tight CI). Read against the **0.1 Robust band**: `Δ = (own-judge-dropped) − (full ensemble)`.
+
+| model | judge dropped | Δ HumaneScore_bad [95% CI] | Δ bad_delta [95% CI] |
+| --- | --- | --- | --- |
+| `claude-opus-4.1` | claude-4.5-sonnet | +0.019 [+0.010, +0.029] | -0.004 [-0.014, +0.007] |
+| `claude-sonnet-4.5` | claude-4.5-sonnet | +0.073 [+0.059, +0.086] | +0.045 [+0.030, +0.060] |
+| `gpt-5` | gpt-5.1 | +0.031 [+0.022, +0.038] | -0.000 [-0.010, +0.008] |
+| `gpt-5.1` | gpt-5.1 | +0.015 [+0.007, +0.023] | -0.006 [-0.015, +0.003] |
+
+Largest absolute shift: **0.073** HumaneScore points — inside the 0.1 Robust band, and all CIs stay within it. Every shift is **positive** — dropping a model's own judge *raises* its score (the in-family judges Claude and GPT are self-critical, Section 2), the direction that can only *strengthen* Robust status, never weaken it. So no Robust model can be pushed out of Robust by removing its own judge.
+
+## Statistical methods
+
+All uncertainty is **scenario-cluster percentile bootstrap** (resample `sample_id`, stratified by principle; seed 20260407; 1000 replicates; 2.5/97.5 percentiles), matching `humanebench/bootstrap.py` and the main findings. Self-preference effects (§1–2) report bootstrap CIs and a two-sided bootstrap p, **Holm-Bonferroni-corrected** across the 6 raw self-preference tests. Ranking stability (§4) reports **Kendall's τ** (primary) and Spearman ρ with bootstrap CIs from shared scenario draws. Invariance (§5) reports the bootstrap CI on the per-model score change from dropping a judge, read against the 0.1 Robust band — the consensus "high stability + CI + per-model deltas" approach rather than a formal equivalence (TOST) test.
+
 ## Paste-ready summary
 
-- **The conclusions do not depend on any single judge.** Dropping any one judge — including a judge that is itself an evaluated model — leaves the model ranking unchanged (single-judge & leave-one-out Spearman ρ ≈ 0.94–1.0, Section 4), and every model that is Robust under the full ensemble stays Robust when its own-family judge is dropped (Section 5). This is the structural control the reviewer asks for, and it needs no assumption about self-preference.
+- **The conclusions do not depend on any single judge.** Dropping any one judge — including a judge that is itself an evaluated model — preserves the model ranking (Kendall τ ≥ 0.83 across all single-judge and leave-one-out configurations, bootstrap CIs in Section 4), and every model that is Robust under the full ensemble stays Robust when its own-family judge is dropped; the bad-persona HumaneScore moves by at most 0.073 when a model's own judge is removed (Section 5), within the 0.1 Robust band and in the direction that strengthens (never weakens) Robust status. This is the structural control the reviewer asks for, and it needs no assumption about self-preference.
 - **Direct self-preference is small and mixed, not absent.** Measured as own-vs-peer severity on identical responses (Section 2): 2/3 judges (claude-4.5-sonnet, gpt-5.1) score their own family *below* peers; 1 (gemini-2.5-pro) scores its own family *above* peers (mild self-preference) [+0.064]. The positive case does not rescue its own family — those models still Fail under the adversarial persona regardless of which judges score them — so it changes no conclusion.
 - **Stated caveat:** with three judges all from provider families and no neutral anchor, these self-preference figures are relative to the peer judges; we therefore rest the rebuttal on the judge-drop invariance (Sections 4–5), which does not require resolving that ambiguity.
