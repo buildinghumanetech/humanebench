@@ -62,6 +62,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling-script impor
 
 from humanebench.bootstrap import (  # noqa: E402
     BOOTSTRAP_SEED,
+    CI_HIGH_PCT,
+    CI_LOW_PCT,
     HUMANESCORE_KEY,
     N_BOOTSTRAP_DEFAULT,
     PRINCIPLES,
@@ -112,6 +114,15 @@ CONFIGS: dict[str, list[str]] = {
     "drop_claude": ["gpt-5.1", "gemini-2.5-pro"],
     "drop_gpt": ["claude-4.5-sonnet", "gemini-2.5-pro"],
     "drop_gemini": ["claude-4.5-sonnet", "gpt-5.1"],
+}
+
+# provider family -> (config that drops that family's judge, the dropped judge).
+# Single source of truth for the own-judge-drop logic (used by the config-change
+# bootstrap and the invariance narrative).
+DROP_MAP: dict[str, tuple[str, str]] = {
+    "anthropic": ("drop_claude", "claude-4.5-sonnet"),
+    "openai": ("drop_gpt", "gpt-5.1"),
+    "google": ("drop_gemini", "gemini-2.5-pro"),
 }
 
 
@@ -378,7 +389,10 @@ def compute_self_preference(data: dict, n_bootstrap: int, seed: int) -> dict:
     for k in keys:
         vals = boot[k]
         if vals:
-            ci[k] = (float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5)))
+            ci[k] = (
+                float(np.percentile(vals, CI_LOW_PCT)),
+                float(np.percentile(vals, CI_HIGH_PCT)),
+            )
         else:
             ci[k] = (np.nan, np.nan)
         pval[k] = _bootstrap_two_sided_p(vals)
@@ -403,19 +417,25 @@ def _humane_rows(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["principle"] == HUMANESCORE_KEY].copy()
 
 
-def compute_config_scores(long: pd.DataFrame, n_bootstrap: int) -> dict:
+def build_config_aggs(long: pd.DataFrame) -> dict:
+    """Aggregate the per-judge long table to per-item scores once per config. The
+    result is reused by both the HumaneScore pipeline and the ranking bootstrap,
+    so the dataset-wide groupby runs once per config rather than twice."""
+    return {name: aggregate_judge_subset(long, judges) for name, judges in CONFIGS.items()}
+
+
+def compute_config_scores(config_aggs: dict, n_bootstrap: int) -> dict:
     """For every judge config, compute per-(model, persona) HumaneScore + paired
-    bad/good deltas with CIs."""
+    bad/good deltas with CIs, from the pre-aggregated per-config frames."""
     results = {}
-    for name, judges in CONFIGS.items():
-        agg = aggregate_judge_subset(long, judges)
+    for name, agg in config_aggs.items():
         cell = bootstrap_cell_scores(agg, n_bootstrap=n_bootstrap)
         delta = bootstrap_persona_deltas(agg, n_bootstrap=n_bootstrap)
         results[name] = {
             "cell_humane": _humane_rows(cell),
             "delta_humane": _humane_rows(delta),
         }
-        print(f"  config {name:<12} judges={judges}")
+        print(f"  config {name:<12} judges={CONFIGS[name]}")
     return results
 
 
@@ -486,15 +506,21 @@ _PERSONA_METRIC = {
 }
 
 
-def _config_humane_matrices(long: pd.DataFrame) -> tuple:
+def _config_humane_matrices(config_aggs: dict) -> tuple:
     """Build per-(config, persona, principle) `scenario x model` score matrices,
     aligned to a canonical scenario order (from the ensemble) and a fixed model
-    order. Returns (mats, canon_rows, models) for the ranking bootstrap."""
-    models = sorted(long["model"].unique())
+    order. Returns (mats, canon_rows, models) for the ranking bootstrap.
+
+    Every config is aligned to the ensemble's scenario set. On the canonical
+    inter_judge_raw.csv (every item scored by all 3 judges) all configs share
+    this set; on a malformed CSV missing judges, single-judge configs would have
+    extra items that this alignment intersects out — consistent with Component 1,
+    which also requires the full-judge complement."""
+    config_agg = config_aggs
+    models = sorted(
+        pd.unique(pd.concat([a["model"] for a in config_agg.values()]))
+    )
     model_idx = {m: i for i, m in enumerate(models)}
-    config_agg = {
-        name: aggregate_judge_subset(long, judges) for name, judges in CONFIGS.items()
-    }
     ens = config_agg["ensemble3"]
     canon: dict[tuple, list[str]] = {}
     for persona in PERSONAS:
@@ -526,13 +552,13 @@ def _config_humane_matrices(long: pd.DataFrame) -> tuple:
 
 
 def bootstrap_ranking_correlations(
-    long: pd.DataFrame, n_bootstrap: int, seed: int
+    config_aggs: dict, n_bootstrap: int, seed: int
 ) -> pd.DataFrame:
     """Spearman + Kendall of each config's model ranking vs the 3-judge ensemble,
     with scenario-cluster bootstrap CIs. Scenario draws are shared across all
     models and configs within a replicate, so the CI reflects the joint sampling
     that drives the ranking. Kendall's tau is the primary statistic (LOJO norm)."""
-    mats, canon, models = _config_humane_matrices(long)
+    mats, canon, models = _config_humane_matrices(config_aggs)
 
     def humane(name: str, persona: str, idx_by_principle=None) -> np.ndarray:
         per_principle = []
@@ -592,6 +618,9 @@ def bootstrap_ranking_correlations(
     def pct(vals, q):
         return float(np.percentile(vals, q)) if vals else np.nan
 
+    # (CI_LOW_PCT / CI_HIGH_PCT come from humanebench.bootstrap — the paper's
+    # single source of truth for the published CI level.)
+
     rows = []
     for name in CONFIGS:
         for persona in PERSONAS:
@@ -606,11 +635,11 @@ def bootstrap_ranking_correlations(
                     "metric": _PERSONA_METRIC[persona],
                     "n_models": n_eff,
                     "spearman_vs_ensemble": rho,
-                    "spearman_ci_lower": pct(sp_b, 2.5),
-                    "spearman_ci_upper": pct(sp_b, 97.5),
+                    "spearman_ci_lower": pct(sp_b, CI_LOW_PCT),
+                    "spearman_ci_upper": pct(sp_b, CI_HIGH_PCT),
                     "kendall_vs_ensemble": tau,
-                    "kendall_ci_lower": pct(kd_b, 2.5),
-                    "kendall_ci_upper": pct(kd_b, 97.5),
+                    "kendall_ci_lower": pct(kd_b, CI_LOW_PCT),
+                    "kendall_ci_upper": pct(kd_b, CI_HIGH_PCT),
                 }
             )
     return pd.DataFrame(rows)
@@ -665,7 +694,11 @@ def bootstrap_config_change(
         dd.append(dbad - db)
 
     def ci(x):
-        return (float(np.percentile(x, 2.5)), float(np.percentile(x, 97.5))) if x else (np.nan, np.nan)
+        return (
+            (float(np.percentile(x, CI_LOW_PCT)), float(np.percentile(x, CI_HIGH_PCT)))
+            if x
+            else (np.nan, np.nan)
+        )
 
     return {
         "delta_baseline": (pt_base, *ci(ba)),
@@ -685,17 +718,12 @@ def build_config_change(
             & (robustness["status_rule"] == "Robust")
         ]["model"]
     )
-    drop_map = {
-        "anthropic": ("drop_claude", "claude-4.5-sonnet"),
-        "openai": ("drop_gpt", "gpt-5.1"),
-        "google": ("drop_gemini", "gemini-2.5-pro"),
-    }
     rows = []
     for model in robust_models:
         fam = model_family(model)
-        if fam not in drop_map:
+        if fam not in DROP_MAP:
             continue
-        drop_cfg, judge = drop_map[fam]
+        drop_cfg, judge = DROP_MAP[fam]
         res = bootstrap_config_change(
             long, model, JUDGES, CONFIGS[drop_cfg], n_bootstrap, seed
         )
@@ -896,6 +924,18 @@ def write_markdown(
         ]["model"]
     )
 
+    # Facts about the own-judge-drop changes, computed once from the data so both
+    # §5 and the paste-ready summary stay consistent with the table (never hardcoded).
+    _cc_ci_cols = ["delta_humane_bad_ci_lower", "delta_humane_bad_ci_upper"]
+    if config_change.empty:
+        cc_worst, cc_all_positive, cc_within_band = float("nan"), False, False
+    else:
+        cc_worst = float(config_change["delta_humane_bad"].abs().max())
+        cc_all_positive = bool((config_change["delta_humane_bad"] > 0).all())
+        cc_within_band = bool(
+            (config_change[["delta_humane_bad"] + _cc_ci_cols].abs() < 0.1).all().all()
+        )
+
     md: list[str] = []
     md.append("# Judge self-preference analysis")
     md.append("")
@@ -1019,14 +1059,25 @@ def write_markdown(
         md.append("**Result (computed from the data):** " + "; ".join(parts) + ".")
         md.append("")
         if preferring:
-            # Report the Holm-adjusted significance of the self-preferring case(s).
+            # Significance of the self-preferring case(s), gated on the ACTUAL
+            # Holm-adjusted p (not on the raw CI), with the real family size.
+            m_holm = sum(1 for v in holm.values() if not np.isnan(v))
             holm_bits = ", ".join(
                 f"{j} Holm-adj p={holm.get(f'rel_ownfamily::{j}', float('nan')):.2g}"
                 for j in preferring
             )
+            all_survive = all(
+                holm.get(f"rel_ownfamily::{j}", np.nan) <= 0.05 for j in preferring
+            )
+            survive_word = (
+                "survives Holm-Bonferroni correction"
+                if all_survive
+                else "is significant before correction but does NOT survive "
+                "Holm-Bonferroni correction"
+            )
             md.append(
                 "So self-preference is **mixed, not absent**. The self-preferring "
-                f"case survives Holm-Bonferroni across the 6 raw self-preference "
+                f"case {survive_word} across the {m_holm} raw self-preference "
                 f"tests ({holm_bits}). Crucially it is also immaterial: the "
                 "self-preferring judge's lift does not change the ranking or the "
                 "Robust set (Sections 4–5)."
@@ -1174,38 +1225,59 @@ def write_markdown(
             dd = f"{_fmt(r['delta_bad_delta'])} {_fmt_ci(r['delta_bad_delta_ci_lower'], r['delta_bad_delta_ci_upper'])}"
             md.append(f"| `{r['model']}` | {r['dropped_judge']} | {dh} | {dd} |")
         md.append("")
-        worst = float(config_change["delta_humane_bad"].abs().max())
-        all_positive = bool((config_change["delta_humane_bad"] > 0).all())
+        # Name the actually-self-critical in-family judges from the verdicts, so
+        # the prose can't contradict the Section-2 table on regenerated data.
+        crit_judges = [
+            j for j in JUDGES
+            if fam_verdicts.get(j) == "self-critical"
+            and any(model_family(m) == JUDGE_FAMILY[j] for m in config_change["model"])
+        ]
         direction_note = (
             " Every shift is **positive** — dropping a model's own judge *raises* "
-            "its score (the in-family judges Claude and GPT are self-critical, "
-            "Section 2), the direction that can only *strengthen* Robust status, "
-            "never weaken it."
-            if all_positive
+            f"its score (the in-family judge(s) {', '.join(crit_judges)} are "
+            "self-critical, Section 2), the direction that can only *strengthen* "
+            "Robust status, never weaken it."
+            if cc_all_positive and crit_judges
             else ""
         )
+        band_clause = (
+            "inside the 0.1 Robust band, and all CIs stay within it"
+            if cc_within_band
+            else f"the largest CI bound reaches "
+            f"{config_change[_cc_ci_cols].abs().max().max():.3f}; check it against "
+            f"the 0.1 Robust band"
+        )
         md.append(
-            f"Largest absolute shift: **{worst:.3f}** HumaneScore points — inside "
-            f"the 0.1 Robust band, and all CIs stay within it.{direction_note} So "
-            f"no Robust model can be pushed out of Robust by removing its own judge."
+            f"Largest absolute shift: **{cc_worst:.3f}** HumaneScore points — "
+            f"{band_clause}.{direction_note} "
+            + (
+                "So no Robust model can be pushed out of Robust by removing its "
+                "own judge."
+                if cc_within_band and cc_all_positive
+                else "See the table for any model whose change approaches the band."
+            )
         )
         md.append("")
 
     # --- Statistical methods note ---
     md.append("## Statistical methods")
     md.append("")
+    m_holm = sum(1 for v in holm.values() if not np.isnan(v))
     md.append(
         "All uncertainty is **scenario-cluster percentile bootstrap** (resample "
-        "`sample_id`, stratified by principle; seed 20260407; 1000 replicates; "
-        "2.5/97.5 percentiles), matching `humanebench/bootstrap.py` and the main "
-        "findings. Self-preference effects (§1–2) report bootstrap CIs and a "
-        "two-sided bootstrap p, **Holm-Bonferroni-corrected** across the 6 raw "
-        "self-preference tests. Ranking stability (§4) reports **Kendall's τ** "
-        "(primary) and Spearman ρ with bootstrap CIs from shared scenario draws. "
-        "Invariance (§5) reports the bootstrap CI on the per-model score change "
-        "from dropping a judge, read against the 0.1 Robust band — the consensus "
-        "\"high stability + CI + per-model deltas\" approach rather than a formal "
-        "equivalence (TOST) test."
+        "the scenario `sample_id`; seed 20260407; 1000 replicates; 2.5/97.5 "
+        "percentiles), matching `humanebench/bootstrap.py` and the main findings. "
+        "The §1–2 self-preference effects use a *global* scenario-cluster "
+        "resample (pooled across principles); the §4 ranking and §5 change CIs "
+        "additionally *stratify the resample by principle*, mirroring "
+        "`bootstrap.py`. Self-preference effects also report a two-sided bootstrap "
+        f"p, **Holm-Bonferroni-corrected** across the {m_holm} raw self-preference "
+        "tests. Ranking stability (§4) reports **Kendall's τ** (primary) and "
+        "Spearman ρ with bootstrap CIs from shared scenario draws. Invariance (§5) "
+        "reports the bootstrap CI on the per-model score change from dropping a "
+        "judge, read against the 0.1 Robust band — the consensus \"high stability "
+        "+ CI + per-model deltas\" approach rather than a formal equivalence "
+        "(TOST) test."
     )
     md.append("")
 
@@ -1215,13 +1287,10 @@ def write_markdown(
     # Invariance verdict, computed from the robustness table.
     survives = True
     for model in robust_ensemble:
-        drop_cfg = {
-            "anthropic": "drop_claude",
-            "openai": "drop_gpt",
-            "google": "drop_gemini",
-        }.get(model_family(model))
-        if drop_cfg is None:
+        drop = DROP_MAP.get(model_family(model))
+        if drop is None:
             continue
+        drop_cfg = drop[0]
         row = robustness[
             (robustness["config"] == drop_cfg) & (robustness["model"] == model)
         ]
@@ -1258,25 +1327,36 @@ def write_markdown(
         )
 
     # Worst-case ranking stability (lowest Kendall tau across LOO/single-judge
-    # configs) and the largest score shift, pulled from the computed tables.
+    # configs), pulled from the computed table.
     loo_tau = ranking_corr[ranking_corr["config"] != "ensemble3"]["kendall_vs_ensemble"]
     tau_lo = float(loo_tau.min()) if len(loo_tau) else float("nan")
-    max_shift = (
-        float(config_change["delta_humane_bad"].abs().max())
-        if not config_change.empty
-        else float("nan")
-    )
+    # Change clause gated on the computed config-change facts (never hardcoded).
+    if config_change.empty:
+        change_clause = ""
+    else:
+        band = (
+            "within the 0.1 Robust band"
+            if cc_within_band
+            else "approaching the 0.1 Robust band (see Section 5)"
+        )
+        direction = (
+            " and in the direction that strengthens (never weakens) Robust status"
+            if cc_all_positive
+            else ""
+        )
+        change_clause = (
+            f"; the bad-persona HumaneScore moves by at most {cc_worst:.3f} when a "
+            f"model's own judge is removed (Section 5), {band}{direction}"
+        )
     md.append(
         "- **The conclusions do not depend on any single judge.** Dropping any one "
         "judge — including a judge that is itself an evaluated model — preserves "
         f"the model ranking (Kendall τ ≥ {tau_lo:.2f} across all single-judge and "
         "leave-one-out configurations, bootstrap CIs in Section 4), and "
         + invariance
-        + f"; the bad-persona HumaneScore moves by at most {max_shift:.3f} when a "
-        "model's own judge is removed (Section 5), within the 0.1 Robust band and "
-        "in the direction that strengthens (never weakens) Robust status. This is "
-        "the structural control the reviewer asks for, and it needs no assumption "
-        "about self-preference."
+        + change_clause
+        + ". This is the structural control the reviewer asks for, and it needs "
+        "no assumption about self-preference."
     )
     md.append(
         "- **Direct self-preference is small and mixed, not absent.** Measured as "
@@ -1438,7 +1518,8 @@ def main() -> None:
 
     # --- Components 2 + 3 ---
     print("\nComponents 2-3: single-judge / LOO HumaneScores ...")
-    config_results = compute_config_scores(long, args.n_bootstrap)
+    config_aggs = build_config_aggs(long)  # aggregate once, reuse below
+    config_results = compute_config_scores(config_aggs, args.n_bootstrap)
 
     max_diff, n_unmatched, cmp = sanity_check_against_table1(config_results, tables_dir)
     gate = _sanity_gate(max_diff, n_unmatched)
@@ -1450,7 +1531,7 @@ def main() -> None:
 
     single_scores = build_single_judge_scores(config_results)
     print("  bootstrapping ranking-correlation CIs ...")
-    ranking_corr = bootstrap_ranking_correlations(long, args.n_bootstrap, BOOTSTRAP_SEED)
+    ranking_corr = bootstrap_ranking_correlations(config_aggs, args.n_bootstrap, BOOTSTRAP_SEED)
     robustness = build_robustness_invariance(config_results)
     print("  bootstrapping own-judge-drop score-change CIs ...")
     config_change = build_config_change(long, robustness, args.n_bootstrap, BOOTSTRAP_SEED)

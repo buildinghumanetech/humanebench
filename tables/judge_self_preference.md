@@ -32,7 +32,7 @@ The standard self-preference test: on the *same* response, is a judge's own seve
 
 **Result (computed from the data):** 2/3 judges (claude-4.5-sonnet, gpt-5.1) score their own family *below* peers (self-critical) [-0.096, -0.040]; 1/3 judges (gemini-2.5-pro) scores its own family *above* peers (mild self-preference, CI excludes 0) [+0.064].
 
-So self-preference is **mixed, not absent**. The self-preferring case survives Holm-Bonferroni across the 6 raw self-preference tests (gemini-2.5-pro Holm-adj p=0.006). Crucially it is also immaterial: the self-preferring judge's lift does not change the ranking or the Robust set (Sections 4–5).
+So self-preference is **mixed, not absent**. The self-preferring case survives Holm-Bonferroni correction across the 6 raw self-preference tests (gemini-2.5-pro Holm-adj p=0.006). Crucially it is also immaterial: the self-preferring judge's lift does not change the ranking or the Robust set (Sections 4–5).
 
 ## 3. Leniency-adjusted view (difference-in-differences)
 
@@ -100,11 +100,11 @@ For each in-family Robust model, the bootstrap 95% CI on the change in its **bad
 | `gpt-5` | gpt-5.1 | +0.031 [+0.022, +0.038] | -0.000 [-0.010, +0.008] |
 | `gpt-5.1` | gpt-5.1 | +0.015 [+0.007, +0.023] | -0.006 [-0.015, +0.003] |
 
-Largest absolute shift: **0.073** HumaneScore points — inside the 0.1 Robust band, and all CIs stay within it. Every shift is **positive** — dropping a model's own judge *raises* its score (the in-family judges Claude and GPT are self-critical, Section 2), the direction that can only *strengthen* Robust status, never weaken it. So no Robust model can be pushed out of Robust by removing its own judge.
+Largest absolute shift: **0.073** HumaneScore points — inside the 0.1 Robust band, and all CIs stay within it. Every shift is **positive** — dropping a model's own judge *raises* its score (the in-family judge(s) claude-4.5-sonnet, gpt-5.1 are self-critical, Section 2), the direction that can only *strengthen* Robust status, never weaken it. So no Robust model can be pushed out of Robust by removing its own judge.
 
 ## Statistical methods
 
-All uncertainty is **scenario-cluster percentile bootstrap** (resample `sample_id`, stratified by principle; seed 20260407; 1000 replicates; 2.5/97.5 percentiles), matching `humanebench/bootstrap.py` and the main findings. Self-preference effects (§1–2) report bootstrap CIs and a two-sided bootstrap p, **Holm-Bonferroni-corrected** across the 6 raw self-preference tests. Ranking stability (§4) reports **Kendall's τ** (primary) and Spearman ρ with bootstrap CIs from shared scenario draws. Invariance (§5) reports the bootstrap CI on the per-model score change from dropping a judge, read against the 0.1 Robust band — the consensus "high stability + CI + per-model deltas" approach rather than a formal equivalence (TOST) test.
+All uncertainty is **scenario-cluster percentile bootstrap** (resample the scenario `sample_id`; seed 20260407; 1000 replicates; 2.5/97.5 percentiles), matching `humanebench/bootstrap.py` and the main findings. The §1–2 self-preference effects use a *global* scenario-cluster resample (pooled across principles); the §4 ranking and §5 change CIs additionally *stratify the resample by principle*, mirroring `bootstrap.py`. Self-preference effects also report a two-sided bootstrap p, **Holm-Bonferroni-corrected** across the 6 raw self-preference tests. Ranking stability (§4) reports **Kendall's τ** (primary) and Spearman ρ with bootstrap CIs from shared scenario draws. Invariance (§5) reports the bootstrap CI on the per-model score change from dropping a judge, read against the 0.1 Robust band — the consensus "high stability + CI + per-model deltas" approach rather than a formal equivalence (TOST) test.
 
 ## Paste-ready summary
 
