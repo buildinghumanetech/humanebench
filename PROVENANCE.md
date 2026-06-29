@@ -30,7 +30,7 @@ supplementary metadata only.
 | `scripts/build_provenance.py` | Regenerates the manifest from the logs + repo. |
 | `provenance/MANIFEST.json` / `MANIFEST.md` | Per-run record: file SHA-256, `eval.created`, `eval.revision.commit`, embedded prompt hash, and the result of each binding check. |
 | `scripts/verify_provenance.py` | Independent verifier. Recomputes every claim from disk and exits non-zero on any mismatch. No network needed. |
-| Zenodo deposit (DOI: _pending_) | Archived copy of the raw `.eval` logs + this manifest + the finalized dataset, so the logs can be downloaded and re-verified. |
+| Zenodo deposit ([10.5281/zenodo.21046964](https://doi.org/10.5281/zenodo.21046964)) | Archived copy of the raw `.eval` logs + this manifest + the finalized dataset, so the logs can be downloaded and re-verified. |
 
 The raw logs (~0.5 GB) are not committed to git (`logs/` is gitignored); they live in the
 Zenodo deposit, while the repo carries the hashes and the verifier.
