@@ -234,6 +234,28 @@ To generate additional scenarios, see [data_generation/README.md](data_generatio
 - Validates scenario quality and principle alignment
 - Prevents semantic duplicates using sentence transformers
 
+## Provenance & Reproducibility
+
+The reported numbers come from scoring the **finalized** dataset — not from tuning prompts
+against results. This is independently checkable by **content-binding**: every reported
+`.eval` log embeds the exact `(id, input, target)` it scored, and those hash to the frozen
+prompt set (`e1af241d…`), identical to `data/humane_bench.jsonl` today. The prompt content
+froze at commit `9dc15bd` (2025-11-16); all 45 reported runs executed 2025-11-17→23; every
+later dataset edit is metadata/exclusion-only and preserves the prompt hash.
+
+```bash
+# Rebuild the manifest from logs + repo
+python scripts/build_provenance.py
+
+# Independently verify (exits non-zero on any mismatch)
+python scripts/verify_provenance.py
+```
+
+The full chain of custody, the honest list of limitations (e.g. judge models are not
+version-pinned), and the Zenodo DOI for the archived raw logs are in
+[PROVENANCE.md](PROVENANCE.md). The per-run record lives in
+[`provenance/MANIFEST.json`](provenance/MANIFEST.json).
+
 ## Testing
 
 HumaneBench includes a comprehensive test suite with unit, integration, and end-to-end tests.
