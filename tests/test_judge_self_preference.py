@@ -127,5 +127,97 @@ def test_robustness_status_thresholds():
     assert sp.robustness_status(-0.51) == "Failed"
 
 
+# --------------------------------------------------------------------------- #
+# Significance-testing additions
+# --------------------------------------------------------------------------- #
+
+
+def test_holm_adjust_values_and_monotonicity():
+    adj = sp.holm_adjust({"a": 0.001, "b": 0.04, "c": 0.5})
+    # m=3: a→0.001*3=0.003, b→0.04*2=0.08, c→0.5*1=0.5, with monotone enforcement.
+    assert abs(adj["a"] - 0.003) < 1e-9
+    assert abs(adj["b"] - 0.08) < 1e-9
+    assert abs(adj["c"] - 0.5) < 1e-9
+    assert adj["a"] <= adj["b"] <= adj["c"]
+
+
+def test_holm_adjust_caps_at_one_and_passes_nan():
+    adj = sp.holm_adjust({"a": 0.6, "b": 0.9, "c": float("nan")})
+    assert adj["a"] <= 1.0 and adj["b"] <= 1.0
+    assert np.isnan(adj["c"])
+
+
+def test_bootstrap_two_sided_p():
+    # All replicates strictly positive ⇒ CI never crosses 0 ⇒ floored small p.
+    assert sp._bootstrap_two_sided_p([0.1] * 100) <= 2.0 / 101 + 1e-9
+    # Symmetric around 0 ⇒ p == 1.0.
+    assert sp._bootstrap_two_sided_p([-1.0, 1.0] * 50) == 1.0
+    assert np.isnan(sp._bootstrap_two_sided_p([]))
+
+
+def _full_synthetic() -> pd.DataFrame:
+    """baseline+good+bad × 8 principles × 4 models × 3 judges. Judge severities
+    carry a CONSTANT per-judge offset (claude 0, gpt +0.03, gemini +0.06), so
+    dropping any judge shifts every model's score by the same constant — ranking
+    must be invariant and the score-change must be exactly recoverable."""
+    rows = []
+    models = ["claude-sonnet-4.5", "gpt-4.1", "gemini-2.5-flash", "grok-4"]
+    pshift = {"baseline": 0.0, "good_persona": 0.2, "bad_persona": -0.2}
+    for pi, principle in enumerate(sp.PRINCIPLES):
+        for s in range(5):
+            sid = f"{principle}-{s:03d}"
+            for persona, ps in pshift.items():
+                for mi, model in enumerate(models):
+                    # Model-dominated so the 4 models have distinct, well-ordered
+                    # HumaneScores (0.2 apart); tiny principle/scenario variation
+                    # avoids a constant-input degenerate correlation.
+                    base = mi * 0.2 + 0.02 * pi + 0.01 * s - 0.3
+                    for ji, judge in enumerate(JUDGES):
+                        rows.append(
+                            {
+                                "persona": persona,
+                                "model": model,
+                                "principle": principle,
+                                "sample_id": sid,
+                                "judge_name": judge,
+                                "severity": base + ps + 0.03 * ji,
+                            }
+                        )
+    return _make_long(rows)
+
+
+def test_bootstrap_ranking_correlations_invariant_under_uniform_offset():
+    long = _full_synthetic()
+    rc = sp.bootstrap_ranking_correlations(long, n_bootstrap=200, seed=sp.BOOTSTRAP_SEED)
+    sub = rc[rc["config"] != "ensemble3"]
+    assert not sub.empty
+    # A uniform per-judge offset cannot change the model ordering ⇒ τ = ρ = 1.
+    assert (sub["kendall_vs_ensemble"] >= 0.999).all()
+    assert (sub["spearman_vs_ensemble"] >= 0.999).all()
+    # CIs are well-formed and bracket the point estimate.
+    for _, r in sub.iterrows():
+        assert r["kendall_ci_lower"] <= r["kendall_vs_ensemble"] + 1e-9
+        assert r["kendall_vs_ensemble"] <= r["kendall_ci_upper"] + 1e-9
+
+
+def test_bootstrap_config_change_recovers_known_shift():
+    long = _full_synthetic()
+    # ensemble mean adds 0.03 (mean of 0,0.03,0.06); dropping claude → mean of
+    # 0.03,0.06 = 0.045 ⇒ deterministic per-item change of +0.015 everywhere.
+    res = sp.bootstrap_config_change(
+        long,
+        "claude-sonnet-4.5",
+        sp.JUDGES,
+        ["gpt-5.1", "gemini-2.5-pro"],
+        n_bootstrap=100,
+        seed=sp.BOOTSTRAP_SEED,
+    )
+    assert abs(res["delta_bad"][0] - 0.015) < 1e-9
+    assert abs(res["delta_baseline"][0] - 0.015) < 1e-9
+    assert abs(res["delta_bad_delta"][0]) < 1e-9  # baseline and bad shift equally
+    lo, hi = res["delta_bad"][1], res["delta_bad"][2]
+    assert lo - 1e-9 <= res["delta_bad"][0] <= hi + 1e-9
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
