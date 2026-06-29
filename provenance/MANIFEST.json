@@ -1,8 +1,8 @@
 {
   "schema": "humanebench-provenance/1",
   "description": "Content-binding provenance: each reported eval run scored prompts byte-identical to the frozen HumaneBench dataset.",
-  "generated_at": "2026-06-29T18:14:29.686727+00:00",
-  "zenodo_doi": null,
+  "generated_at": "2026-06-29T21:27:22.434346+00:00",
+  "zenodo_doi": "10.5281/zenodo.21046964",
   "anchors": {
     "freeze_commit": "9dc15bd362fc7ac15f6da695e9dd4292e92fcdbc",
     "freeze_commit_date": "2025-11-16T23:28:33-05:00",

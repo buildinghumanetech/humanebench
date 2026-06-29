@@ -251,9 +251,10 @@ python scripts/build_provenance.py
 python scripts/verify_provenance.py
 ```
 
-See [PROVENANCE.md](PROVENANCE.md) for the full record, reproducibility notes, and the
-Zenodo DOI for the archived logs; per-run details are in
-[`provenance/MANIFEST.json`](provenance/MANIFEST.json).
+The raw logs are archived on Zenodo
+([10.5281/zenodo.21046964](https://doi.org/10.5281/zenodo.21046964)). See
+[PROVENANCE.md](PROVENANCE.md) for the full record and reproducibility notes; per-run
+details are in [`provenance/MANIFEST.json`](provenance/MANIFEST.json).
 
 ## Testing
 

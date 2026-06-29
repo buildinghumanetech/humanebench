@@ -60,6 +60,9 @@ JUDGE_ENSEMBLE = {
     "score_attempts": 3,
 }
 
+# Zenodo DOI for the archived logs deposit (reserved on a draft deposition).
+ZENODO_DOI = "10.5281/zenodo.21046964"
+
 # Field/record separators for canonical hashing (control chars that cannot occur
 # in the prompt text), so concatenation is unambiguous.
 _FIELD_SEP = "\x1f"

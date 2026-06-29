@@ -152,7 +152,7 @@ def build_manifest(logs_dir: Path) -> dict:
         "description": "Content-binding provenance: each reported eval run scored "
                        "prompts byte-identical to the frozen HumaneBench dataset.",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "zenodo_doi": None,  # filled in after the Zenodo deposit
+        "zenodo_doi": prov.ZENODO_DOI,
         "anchors": anchors,
         "reported_runs": runs,
         "summary": {
