@@ -383,3 +383,5 @@ We thank the [DarkBench](https://github.com/apartresearch/DarkBench/tree/main) a
 We thank Katy Graf (@MaeyekoGit) and Tenzin Tseten Changten (@ttch8752) for significant contributions to the codebase.
 
 We thank the following members of the Building Humane Tech community who helped us refine the human rating process: John Brennan, Selina Bian, Amarpreet Kaur, Manisha Jain, Sahithi, Julia Zhou, Sachin Keswani, Gabija Parnarauskaite, Lydia Huang, Lenz Dagohoy, Diego Lopez, Alan Rainbow, Belinda, Yaoli Mao, Wayne Boatwright, Yelyzaveta Radionova, Mark Lovell, Seth Caldwell, Evode Manirahari, Manjul Sachan, Value Economy, Travis F W
+
+[![building-humane-technology on Cossmology](https://vpxherzezesqifjloaxx.supabase.co/functions/v1/generate-badge?shortname=building-humane-technology&siteUrl=https%3A%2F%2Fcossmology.com&v=2)](https://cossmology.com/organizations/building-humane-technology)
