@@ -1,0 +1,6 @@
+# Claude-only default needs just the Anthropic SDK:
+anthropic>=0.40
+
+# --ensemble additionally needs the OpenAI and Google Gemini SDKs:
+openai>=1.40
+google-genai>=0.3
