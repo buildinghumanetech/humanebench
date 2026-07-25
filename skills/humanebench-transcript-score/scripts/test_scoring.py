@@ -173,6 +173,16 @@ class TestAggregation(unittest.TestCase):
         self.assertEqual(hb._judge_spread(agg), 2.0)
         self.assertEqual(len(hb._sign_flips(agg)), 8)  # every principle flips sign
 
+    def test_temperature_pinned_defaults_true(self):
+        agg = hb.aggregate({"A": self._judge(0.5)})
+        self.assertTrue(agg["per_judge"]["A"]["temperature_pinned"])
+
+    def test_temperature_pinned_carried_through(self):
+        r = self._judge(0.5)
+        r["temperature_pinned"] = False
+        agg = hb.aggregate({"A": r})
+        self.assertFalse(agg["per_judge"]["A"]["temperature_pinned"])
+
 
 class TestReport(unittest.TestCase):
     def _agg(self, single=True):
@@ -216,8 +226,26 @@ class TestReport(unittest.TestCase):
         report = hb.render_report(agg, meta)
         self.assertIn("Partial (2 of 3)", report)
         self.assertIn("PARTIALLY mitigated", report)
-        self.assertNotIn("HumaneScore (ensemble)", report)
+        self.assertNotIn("HumaneScore (ensemble)", report)          # no bare "ensemble" heading
+        self.assertNotIn("(partial (2 of 3))", report.lower())      # no nested parens
         self.assertNotIn("This is the published HumaneBench methodology", report)
+
+    def test_single_judge_report_omits_determinism(self):
+        report = hb.render_report(self._agg(single=True), {"name": "t", "turns": 4})
+        self.assertNotIn("Determinism", report)   # Claude judge is always pinned
+
+    def test_ensemble_report_has_determinism(self):
+        report = hb.render_report(self._agg(single=False), {"name": "t", "turns": 4})
+        self.assertIn("Determinism", report)
+
+    def test_unpinned_judge_surfaced_in_report(self):
+        j = hb.parse_judge_json(_full_payload({k: 0.5 for k in hb.PRINCIPLE_KEYS}))
+        j2 = hb.parse_judge_json(_full_payload({k: -0.5 for k in hb.PRINCIPLE_KEYS}))
+        j2["temperature_pinned"] = False   # this judge fell back to default temperature
+        agg = hb.aggregate({"Claude Sonnet 4.5": j, "GPT-5.1": j2})
+        report = hb.render_report(agg, {"name": "t", "turns": 4})
+        self.assertIn("Not pinned this run", report)
+        self.assertIn("GPT-5.1", report)
 
     def test_band_labels(self):
         self.assertEqual(hb.band_label(0.6), "net humane")
@@ -233,6 +261,55 @@ class TestJudgePrompt(unittest.TestCase):
         self.assertIn("Assistant: hello", p)
         for k in hb.PRINCIPLE_KEYS:
             self.assertIn(k, p)
+
+
+class _FakeSDKError(Exception):
+    """Stand-in for a provider SDK exception with optional status_code/code attrs."""
+    def __init__(self, msg, status_code=None, code=None):
+        super().__init__(msg)
+        if status_code is not None:
+            self.status_code = status_code
+        if code is not None:
+            self.code = code
+
+
+class TestIsTemperature400(unittest.TestCase):
+    def test_status_400_and_temperature(self):
+        self.assertTrue(hb._is_temperature_400(
+            _FakeSDKError("temperature must be default", status_code=400)))
+
+    def test_code_400_and_temperature(self):
+        self.assertTrue(hb._is_temperature_400(
+            _FakeSDKError("Unsupported value: temperature", code=400)))
+
+    def test_400_in_message_and_temperature(self):
+        self.assertTrue(hb._is_temperature_400(
+            _FakeSDKError("Error code: 400 - 'temperature' is not supported")))
+
+    def test_temperature_but_wrong_status(self):
+        # A 500 that mentions temperature must NOT trigger a paid retry.
+        self.assertFalse(hb._is_temperature_400(
+            _FakeSDKError("temperature service error", status_code=500)))
+
+    def test_400_but_not_temperature(self):
+        self.assertFalse(hb._is_temperature_400(
+            _FakeSDKError("max_tokens too large", status_code=400)))
+
+    def test_temperature_but_no_400_signal(self):
+        # temperature mentioned but no status attr and no "400" in text -> propagate (skip).
+        self.assertFalse(hb._is_temperature_400(_FakeSDKError("temperature rejected")))
+
+
+class TestInstallHint(unittest.TestCase):
+    def test_default_is_base_only(self):
+        h = hb._install_hint(False)
+        self.assertIn("requirements.txt", h)
+        self.assertNotIn("requirements-ensemble.txt", h)
+
+    def test_ensemble_includes_both(self):
+        h = hb._install_hint(True)
+        self.assertIn("requirements.txt", h)
+        self.assertIn("requirements-ensemble.txt", h)
 
 
 if __name__ == "__main__":

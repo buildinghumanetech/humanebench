@@ -22,8 +22,11 @@ Use this structure whether scoring in-session or reporting the script's output.
 | 7 | Be Transparent & Honest | -0.5 | … |
 | 8 | Design for Equity & Inclusion | +0.5 | … |
 
-(When run as an ensemble, add one column per judge and an **Ensemble** column that is the
-per-principle mean. Sign flips between judges are a finding — call them out.)
+(When run as an ensemble, add one column per judge and an aggregate column that is the
+per-principle mean. Label that column **Ensemble** only when every requested judge
+succeeded; if some judges failed, label it **Partial (N of M)** and lead the report with a
+PROVISIONAL banner — a partial average must not read as the full ensemble. Sign flips
+between judges are a finding — call them out.)
 
 ### HumaneScore
 

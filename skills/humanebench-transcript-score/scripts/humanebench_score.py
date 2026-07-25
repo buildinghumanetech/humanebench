@@ -210,6 +210,7 @@ def aggregate(judge_results: dict) -> dict:
             "principles": result["principles"],
             "humane_score": humane_score(result["principles"]),
             "overall_note": result.get("overall_note", ""),
+            "temperature_pinned": result.get("temperature_pinned", True),
         }
     ensemble_principles = {}
     for key in PRINCIPLE_KEYS:
@@ -282,7 +283,7 @@ def render_report(agg: dict, meta: dict) -> str:
     # HumaneScores
     if ensemble:
         hs = agg["ensemble"]["humane_score"]
-        lines.append(f"### HumaneScore ({agg_col.lower()}): **{_fmt(hs)}** — {band_label(hs)}")
+        lines.append(f"### HumaneScore [{agg_col}]: **{_fmt(hs)}** — {band_label(hs)}")
         lines.append("")
         lines.append("Per-judge HumaneScores (divergence is a finding, not noise):")
         for j in judges:
@@ -348,6 +349,12 @@ def render_report(agg: dict, meta: dict) -> str:
                      "reproducibility. If a judge model only accepts its default temperature "
                      "(some reasoning models do), it runs at that default and prints a NOTE "
                      "to stderr, so re-runs can vary by a small amount on that judge.")
+    unpinned = [j for j in judges if not agg["per_judge"][j].get("temperature_pinned", True)]
+    if unpinned:
+        lines.append(f"- **Not pinned this run:** {', '.join(unpinned)} ran at the model's "
+                     f"default temperature (it rejected temperature 0), so that judge's score "
+                     f"is not reproducible. This is recorded per judge as `temperature_pinned` "
+                     f"in the JSON output, not just here.")
     lines.append("- **Multi-turn adaptation.** rubric v3 targets single-turn responses; a full "
                  "transcript is scored holistically across turns — an extension of the "
                  "published methodology.")
@@ -410,6 +417,13 @@ Rules you MUST follow:
 # ========================================================================================
 
 @dataclass
+class JudgeCall:
+    """One judge's raw model output plus whether it actually ran at temperature 0."""
+    text: str
+    temperature_pinned: bool = True
+
+
+@dataclass
 class JudgeOutcome:
     name: str
     ok: bool
@@ -417,32 +431,71 @@ class JudgeOutcome:
     error: str | None = None
 
 
-def _run_judge(name: str, caller: Callable[[str], str], prompt: str) -> JudgeOutcome:
+def _is_temperature_400(e: Exception) -> bool:
+    """True if an SDK exception looks like a 400 that specifically rejects temperature.
+
+    Pure and provider-agnostic: requires BOTH a temperature-specific message AND a 400
+    signal (an SDK ``status_code``/``code`` attribute, or ``400`` in the message text), so
+    an unrelated failure can never trigger a paid retry. Errors without any 400 signal
+    (e.g. a gateway/wrapper error with no status) return False and propagate as a skip.
+    """
+    msg = str(e).lower()
+    if "temperature" not in msg:
+        return False
+    status = getattr(e, "status_code", None)
+    if status is None:
+        status = getattr(e, "code", None)
+    return status == 400 or "400" in msg
+
+
+def _try_temperature_0(pinned_call: Callable[[], object],
+                       default_call: Callable[[], object],
+                       model_name: str) -> tuple[object, bool]:
+    """Run ``pinned_call`` (temperature=0); on a 400-temperature rejection, fall back to
+    ``default_call`` and report it. Returns ``(response, temperature_pinned)``.
+
+    Any error that isn't an unambiguous temperature-400 propagates (the judge is skipped)
+    rather than silently costing a second request.
+    """
     try:
-        raw = caller(prompt)
+        return pinned_call(), True
+    except Exception as e:  # noqa: BLE001
+        if not _is_temperature_400(e):
+            raise
+        print(f"NOTE: {model_name} rejected temperature=0; retrying at its default "
+              f"temperature (this judge's result is not pinned/deterministic).",
+              file=sys.stderr)
+        return default_call(), False
+
+
+def _run_judge(name: str, caller: Callable[[str], "JudgeCall"], prompt: str) -> JudgeOutcome:
+    try:
+        call = caller(prompt)
     except Exception as e:  # noqa: BLE001 — surface any provider error as a skip
         return JudgeOutcome(name=name, ok=False, error=f"{type(e).__name__}: {e}")
     try:
-        parsed = parse_judge_json(extract_json(raw))
+        parsed = parse_judge_json(extract_json(call.text))
     except Exception as e:  # noqa: BLE001
         return JudgeOutcome(name=name, ok=False, error=f"unparseable response: {e}")
+    parsed["temperature_pinned"] = call.temperature_pinned
     return JudgeOutcome(name=name, ok=True, result=parsed)
 
 
-def claude_judge(prompt: str) -> str:
+def claude_judge(prompt: str) -> JudgeCall:
     from anthropic import Anthropic  # official Anthropic SDK
 
     client = Anthropic()  # resolves ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN) from env
     resp = client.messages.create(
         model=CLAUDE_JUDGE_MODEL,
         max_tokens=4000,
-        temperature=0,
+        temperature=0,  # Claude accepts temperature=0, so this judge is always pinned.
         messages=[{"role": "user", "content": prompt}],
     )
-    return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+    text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+    return JudgeCall(text, temperature_pinned=True)
 
 
-def openai_judge(prompt: str) -> str:
+def openai_judge(prompt: str) -> JudgeCall:
     from openai import OpenAI  # official OpenAI SDK
 
     client = OpenAI()  # resolves OPENAI_API_KEY
@@ -451,35 +504,32 @@ def openai_judge(prompt: str) -> str:
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
     )
-    # Pin temperature=0 for reproducibility (like the Claude judge). Some reasoning
-    # models (e.g. the GPT-5.x family) only accept their default temperature and reject
-    # an explicit value with a 400 — fall back to the default rather than dropping the
-    # judge entirely. Require BOTH a 400 status AND a temperature-specific message so an
-    # unrelated error can't trigger a silent duplicate (paid) request.
-    try:
-        resp = client.chat.completions.create(temperature=0, **kwargs)
-    except Exception as e:  # noqa: BLE001
-        is_temp_400 = getattr(e, "status_code", None) == 400 and "temperature" in str(e).lower()
-        if not is_temp_400:
-            raise
-        print(f"NOTE: {OPENAI_JUDGE_MODEL} rejected temperature=0; retrying at its default "
-              f"temperature (this judge's result is not pinned/deterministic).",
-              file=sys.stderr)
-        resp = client.chat.completions.create(**kwargs)
-    return resp.choices[0].message.content or ""
+    # Pin temperature=0 like the Claude judge; some reasoning models (e.g. GPT-5.x) reject
+    # an explicit temperature with a 400 — fall back to their default rather than drop them.
+    resp, pinned = _try_temperature_0(
+        lambda: client.chat.completions.create(temperature=0, **kwargs),
+        lambda: client.chat.completions.create(**kwargs),
+        OPENAI_JUDGE_MODEL,
+    )
+    return JudgeCall(resp.choices[0].message.content or "", temperature_pinned=pinned)
 
 
-def gemini_judge(prompt: str) -> str:
+def gemini_judge(prompt: str) -> JudgeCall:
     from google import genai  # official google-genai SDK
 
     client = genai.Client()  # resolves GEMINI_API_KEY / GOOGLE_API_KEY
-    resp = client.models.generate_content(
-        model=GEMINI_JUDGE_MODEL,
-        contents=prompt,
-        # temperature=0 for reproducibility, matching the Claude judge.
-        config={"response_mime_type": "application/json", "temperature": 0},
+    base_cfg = {"response_mime_type": "application/json"}
+    # Same temperature-0 pin + graceful fallback as the OpenAI judge (not an unconditional
+    # pin that would drop the judge if the model rejected temperature=0).
+    resp, pinned = _try_temperature_0(
+        lambda: client.models.generate_content(
+            model=GEMINI_JUDGE_MODEL, contents=prompt,
+            config={**base_cfg, "temperature": 0}),
+        lambda: client.models.generate_content(
+            model=GEMINI_JUDGE_MODEL, contents=prompt, config=base_cfg),
+        GEMINI_JUDGE_MODEL,
     )
-    return resp.text or ""
+    return JudgeCall(resp.text or "", temperature_pinned=pinned)
 
 
 JUDGES = {
@@ -498,6 +548,12 @@ def _read_input(path: str) -> tuple[str, str]:
         return sys.stdin.read(), "stdin"
     p = Path(path)
     return p.read_text(encoding="utf-8"), p.name
+
+
+def _install_hint(ensemble: bool) -> str:
+    """The pip command that installs the SDKs a given run needs (ensemble needs both files)."""
+    base = "pip install -r scripts/requirements.txt"
+    return f"{base} -r scripts/requirements-ensemble.txt" if ensemble else base
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -542,11 +598,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  ! {jn} skipped: {outcome.error}", file=sys.stderr)
 
     if not results:
-        pkg_hint = ("pip install -r scripts/requirements.txt "
-                    "-r scripts/requirements-ensemble.txt" if args.ensemble
-                    else "pip install -r scripts/requirements.txt")
         print(f"error: no judge produced a usable score. Check API keys and packages "
-              f"({pkg_hint}).", file=sys.stderr)
+              f"({_install_hint(args.ensemble)}).", file=sys.stderr)
         return 1
     if args.ensemble and len(results) < len(judge_names):
         print(f"WARNING: only {len(results)}/{len(judge_names)} judges succeeded — this is "
@@ -555,6 +608,11 @@ def main(argv: list[str] | None = None) -> int:
 
     agg = aggregate(results)
     succeeded = list(results.keys())
+    # Mark the aggregate itself (not just a sibling flag) so a scraped `aggregate.ensemble`
+    # number can't be mistaken for the full cross-family ensemble when it isn't one.
+    agg["ensemble"]["is_full_ensemble"] = len(succeeded) == len(judge_names) and len(judge_names) > 1
+    agg["ensemble"]["judges_used"] = len(succeeded)
+    agg["ensemble"]["judges_attempted"] = len(judge_names)
     meta = {"name": name, "turns": turns, "judges_attempted": judge_names}
     report = render_report(agg, meta)
     payload = {
