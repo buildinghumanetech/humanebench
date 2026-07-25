@@ -207,6 +207,18 @@ class TestReport(unittest.TestCase):
         self.assertIn("PARTIALLY mitigated", report)
         self.assertNotIn("This is the published HumaneBench methodology", report)
 
+    def test_degraded_two_of_three_labels_partial_not_ensemble(self):
+        # 2 of 3 judges succeeded: the aggregate column/heading must read "Partial (2 of 3)",
+        # never bare "Ensemble", so a copied headline number can't pose as the full ensemble.
+        agg = self._agg(single=False)   # two judges
+        meta = {"name": "t", "turns": 4,
+                "judges_attempted": ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]}
+        report = hb.render_report(agg, meta)
+        self.assertIn("Partial (2 of 3)", report)
+        self.assertIn("PARTIALLY mitigated", report)
+        self.assertNotIn("HumaneScore (ensemble)", report)
+        self.assertNotIn("This is the published HumaneBench methodology", report)
+
     def test_band_labels(self):
         self.assertEqual(hb.band_label(0.6), "net humane")
         self.assertEqual(hb.band_label(0.13), "mildly humane / mixed")
