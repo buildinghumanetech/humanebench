@@ -203,13 +203,13 @@ class TestAggregation(unittest.TestCase):
 
 
 class TestReport(unittest.TestCase):
-    def _agg(self, single=True):
+    def _agg(self, single=True, attempted=None):
         j = hb.parse_judge_json(_full_payload({k: 0.5 for k in hb.PRINCIPLE_KEYS}))
         judges = {"Claude Sonnet 4.5": j} if single else {
             "Claude Sonnet 4.5": j,
             "GPT-5.1": hb.parse_judge_json(_full_payload({k: -0.5 for k in hb.PRINCIPLE_KEYS})),
         }
-        return hb.aggregate(judges)
+        return hb.aggregate(judges, judges_attempted=attempted)
 
     def test_single_judge_report_has_tilt_warning(self):
         report = hb.render_report(self._agg(single=True), {"name": "t", "turns": 4})
@@ -223,13 +223,15 @@ class TestReport(unittest.TestCase):
         self.assertIn("GPT-5.1", report)
         self.assertIn("mitigated", report.lower())
 
+    _THREE = ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]
+
     def test_degraded_ensemble_report_is_provisional(self):
-        # Ensemble requested (3 judges) but only 1 produced a score -> provisional, and
+        # Ensemble requested (3 judges) but only 1 produced a score. The aggregate itself
+        # records the degradation (single source of truth), so the report is provisional and
         # the "published methodology / mitigated" claim must NOT appear.
-        agg = self._agg(single=True)
-        meta = {"name": "t", "turns": 4,
-                "judges_attempted": ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]}
-        report = hb.render_report(agg, meta)
+        agg = self._agg(single=True, attempted=self._THREE)
+        self.assertFalse(agg["ensemble"]["is_full_ensemble"])
+        report = hb.render_report(agg, {"name": "t", "turns": 4, "judges_attempted": self._THREE})
         self.assertIn("PARTIAL ENSEMBLE", report)
         self.assertIn("provisional", report.lower())
         self.assertIn("PARTIALLY mitigated", report)
@@ -238,10 +240,9 @@ class TestReport(unittest.TestCase):
     def test_degraded_two_of_three_labels_partial_not_ensemble(self):
         # 2 of 3 judges succeeded: the aggregate column/heading must read "Partial (2 of 3)",
         # never bare "Ensemble", so a copied headline number can't pose as the full ensemble.
-        agg = self._agg(single=False)   # two judges
-        meta = {"name": "t", "turns": 4,
-                "judges_attempted": ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]}
-        report = hb.render_report(agg, meta)
+        agg = self._agg(single=False, attempted=self._THREE)   # two of three
+        self.assertFalse(agg["ensemble"]["is_full_ensemble"])  # aggregate agrees it's partial
+        report = hb.render_report(agg, {"name": "t", "turns": 4, "judges_attempted": self._THREE})
         self.assertIn("Partial (2 of 3)", report)
         self.assertIn("PARTIALLY mitigated", report)
         self.assertNotIn("[Ensemble]", report)                      # must NOT claim full ensemble
@@ -315,17 +316,18 @@ class TestIsTemperature400(unittest.TestCase):
 
     def test_status_authoritative_over_400_substring(self):
         # A 500 whose text happens to contain "400" (request id) AND temperature must NOT
-        # be treated as a temperature rejection — the status attribute is decisive.
+        # be treated as a temperature rejection — a numeric status attribute is decisive.
         self.assertFalse(hb._is_temperature_400(
             _FakeSDKError("temperature echoed; req 8400a failed", status_code=500)))
 
-    def test_no_status_uses_standalone_400_token(self):
-        # No status attr: a standalone "400" token + temperature qualifies...
-        self.assertTrue(hb._is_temperature_400(
-            _FakeSDKError("Error code: 400 - temperature not supported")))
+    def test_non_numeric_code_falls_through_to_message(self):
+        # OpenAI's APIError.code is a string slug, not an HTTP status. It must NOT be treated
+        # as authoritative; a genuine 400-in-text temperature error still qualifies.
+        self.assertTrue(hb._is_temperature_400(_FakeSDKError(
+            "Error code: 400 - 'temperature' does not support 0", code="unsupported_value")))
 
     def test_no_status_embedded_400_does_not_match(self):
-        # ...but "4001"/"8400"/"24000" embedded digits do not.
+        # No numeric status, and "4001"/"8400"/"24000" embedded digits are not a 400 token.
         self.assertFalse(hb._is_temperature_400(
             _FakeSDKError("temperature limit 24000 tokens")))
 

@@ -223,13 +223,20 @@ def aggregate(judge_results: dict, judges_attempted: list | None = None) -> dict
         ensemble_principles[key] = round(sum(scores) / len(scores), 4)
     ensemble_hs = round(sum(ensemble_principles.values()) / len(ensemble_principles), 4)
     n_used = len(per_judge)
-    n_attempted = len(judges_attempted) if judges_attempted is not None else n_used
+    if judges_attempted is None:
+        # Attempted set unknown -> don't make the confident "full ensemble" claim; a
+        # scraper can distinguish this None from a verified True/False.
+        n_attempted = n_used
+        is_full = None
+    else:
+        n_attempted = len(judges_attempted)
+        is_full = n_used == n_attempted and n_attempted > 1
     return {
         "per_judge": per_judge,
         "ensemble": {
             "principles": ensemble_principles,
             "humane_score": ensemble_hs,
-            "is_full_ensemble": n_used == n_attempted and n_attempted > 1,
+            "is_full_ensemble": is_full,
             "n_judges_used": n_used,
             "n_judges_attempted": n_attempted,
         },
@@ -254,15 +261,20 @@ def render_report(agg: dict, meta: dict) -> str:
     """Render a markdown report from an aggregate result."""
     judges = list(agg["per_judge"].keys())
     ensemble = len(judges) > 1
-    # What was *asked for* (may exceed what succeeded). Defaults to the judges that
-    # produced results, so callers that don't pass it get the non-degraded behavior.
-    attempted = meta.get("judges_attempted", judges)
-    ensemble_attempted = len(attempted) > 1
-    degraded = len(judges) < len(attempted)
+    ens = agg.get("ensemble", {})
+    # Single source of truth for "how many were attempted": the aggregate's own marker
+    # (set by aggregate() from judges_attempted). meta only supplies the display *names*
+    # for the banner. Fall back to meta/judges for callers that don't populate the marker.
+    attempted_names = meta.get("judges_attempted", judges)
+    n_attempted = ens.get("n_judges_attempted")
+    if n_attempted is None:
+        n_attempted = len(attempted_names)
+    ensemble_attempted = n_attempted > 1
+    degraded = len(judges) < n_attempted
     # A multi-judge average is a true "Ensemble" only when nothing was dropped; a partial
     # run is labelled "Partial (N of M)" so a copied headline number can't masquerade as
     # the full ensemble.
-    agg_col = f"Partial ({len(judges)} of {len(attempted)})" if degraded else "Ensemble"
+    agg_col = f"Partial ({len(judges)} of {n_attempted})" if degraded else "Ensemble"
     lines = []
     lines.append("## HumaneBench v3.0 — Transcript Evaluation")
     lines.append("")
@@ -272,9 +284,9 @@ def render_report(agg: dict, meta: dict) -> str:
     if degraded:
         lines.append("")
         lines.append(f"> ⚠️ **PARTIAL ENSEMBLE — PROVISIONAL.** Only {len(judges)} of "
-                     f"{len(attempted)} requested judges "
-                     f"({', '.join(attempted)}) produced a score. This is **not** the full "
-                     f"cross-family ensemble and is **not** comparable to the published "
+                     f"{n_attempted} requested judges "
+                     f"({', '.join(attempted_names)}) produced a score. This is **not** the "
+                     f"full cross-family ensemble and is **not** comparable to the published "
                      f"leaderboard. Re-run once all judges are reachable.")
     lines.append("")
 
@@ -343,7 +355,7 @@ def render_report(agg: dict, meta: dict) -> str:
                      "same-family tilt. This is the published HumaneBench methodology.")
     elif ensemble_attempted and degraded:
         lines.append(f"- **Judge bias — only PARTIALLY mitigated.** The cross-family ensemble "
-                     f"was requested but only {len(judges)} of {len(attempted)} judges "
+                     f"was requested but only {len(judges)} of {n_attempted} judges "
                      f"succeeded, so this is a **provisional** score, **not** the published "
                      f"methodology and **not** leaderboard-comparable. Whatever judges ran "
                      f"still carry their own temperament (and same-family tilt if any share "
@@ -450,11 +462,13 @@ def _is_temperature_400(e: Exception) -> bool:
     Pure and provider-agnostic, and deliberately strict so an unrelated error can never
     trigger a paid retry:
     - The message must mention ``temperature``.
-    - If the SDK exposes a status (``status_code``/``code``), it is AUTHORITATIVE — only an
-      exact 400 qualifies; a 429/500 whose text merely contains "400" (a request id, an
-      echoed ``max_tokens: 4000``, a token quota) does NOT.
-    - Only when no status attribute exists do we fall back to a standalone ``400`` token in
-      the message (``\\b400\\b``, so ``4001``/``8400``/``24000`` don't match).
+    - A NUMERIC status (``status_code``/``code``, or a digit string like ``"400"``) is
+      AUTHORITATIVE — only an exact 400 qualifies; a 429/500 whose text merely contains
+      "400" (a request id, an echoed ``max_tokens: 4000``, a token quota) does NOT.
+    - A non-numeric ``code`` (e.g. OpenAI's string slug ``"unsupported_value"``) is NOT a
+      status, so we ignore it and fall through to the message check below.
+    - When no numeric status is available we look for a standalone ``400`` token in the
+      message (``\\b400\\b``, so ``4001``/``8400``/``24000`` don't match).
     """
     msg = str(e).lower()
     if "temperature" not in msg:
@@ -463,7 +477,10 @@ def _is_temperature_400(e: Exception) -> bool:
     if status is None:
         status = getattr(e, "code", None)
     if status is not None:
-        return status == 400
+        try:
+            return int(status) == 400   # numeric status (int or digit string) is decisive
+        except (TypeError, ValueError):
+            pass                        # non-numeric slug -> fall through to message check
     return bool(re.search(r"\b400\b", msg))
 
 
@@ -632,11 +649,15 @@ def main(argv: list[str] | None = None) -> int:
     agg = aggregate(results, judges_attempted=judge_names)
     meta = {"name": name, "turns": turns, "judges_attempted": judge_names}
     report = render_report(agg, meta)
+    # Canonical fields for the degraded/full question live in aggregate.ensemble
+    # (is_full_ensemble / n_judges_used / n_judges_attempted). The top-level keys here are
+    # the human-readable judge *name* lists; `degraded` is derived from the aggregate so the
+    # two never contradict.
     payload = {
         "meta": meta,
-        "judges": succeeded,                 # judges that actually produced a score
-        "judges_attempted": judge_names,      # judges we tried to run
-        "degraded": len(succeeded) < len(judge_names),
+        "judges": succeeded,                 # names that actually produced a score
+        "judges_attempted": judge_names,      # names we tried to run
+        "degraded": agg["ensemble"]["n_judges_used"] < agg["ensemble"]["n_judges_attempted"],
         "aggregate": agg,
     }
 
