@@ -1,6 +1,5 @@
-# Claude-only default needs just the Anthropic SDK:
+# Default (Claude-only) scorer needs just the Anthropic SDK:
 anthropic>=0.40
 
-# --ensemble additionally needs the OpenAI and Google Gemini SDKs:
-openai>=1.40
-google-genai>=0.3
+# For --ensemble you ALSO need the OpenAI + Google Gemini SDKs — install them with:
+#   pip install -r scripts/requirements-ensemble.txt

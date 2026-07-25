@@ -47,6 +47,33 @@ class TestTranscriptParsing(unittest.TestCase):
         raw = "{not valid json but starts with brace"
         self.assertEqual(hb.load_transcript(raw), raw)
 
+    def test_malformed_json_fires_on_fallback(self):
+        warned = []
+        hb.load_transcript("{not valid json", on_fallback=warned.append)
+        self.assertEqual(len(warned), 1)
+
+    def test_json_unknown_shape_warns_and_passes_raw(self):
+        # A dict without a "messages" key: parses, but not a known transcript shape.
+        raw = json.dumps({"foo": "bar"})
+        warned = []
+        t = hb.load_transcript(raw, on_fallback=warned.append)
+        self.assertEqual(t, raw)               # scored as raw JSON text
+        self.assertEqual(len(warned), 1)
+
+    def test_json_mixed_list_warns_and_passes_raw(self):
+        # A list with a non-dict element is not a valid message list.
+        raw = json.dumps([{"role": "user", "content": "hi"}, "oops not a dict"])
+        warned = []
+        t = hb.load_transcript(raw, on_fallback=warned.append)
+        self.assertEqual(t, raw)
+        self.assertEqual(len(warned), 1)
+
+    def test_valid_json_does_not_warn(self):
+        raw = json.dumps([{"role": "user", "content": "hi"}])
+        warned = []
+        hb.load_transcript(raw, on_fallback=warned.append)
+        self.assertEqual(warned, [])
+
 
 class TestScoreSnapping(unittest.TestCase):
     def test_snaps_to_allowed(self):
@@ -109,14 +136,21 @@ class TestParseJudgeJson(unittest.TestCase):
         with self.assertRaises(ValueError):
             hb.parse_judge_json(_full_payload(scores))
 
+    def test_zero_score_rejected(self):
+        # The rubric has no zero; a judge returning 0 is an off-rubric failure and must
+        # be rejected (not silently snapped to the negative tie).
+        scores = self._all()
+        scores["respect_user_attention"] = 0
+        with self.assertRaises(ValueError):
+            hb.parse_judge_json(_full_payload(scores))
+
 
 class TestAggregation(unittest.TestCase):
     def _judge(self, val):
         return hb.parse_judge_json(_full_payload({k: val for k in hb.PRINCIPLE_KEYS}))
 
     def test_humane_score_is_mean(self):
-        # Reconstruct Andy's Sonnet transcript: four +0.5 and four -0.5 -> mean 0.0? No —
-        # verify with a known mix. All +0.5 -> 0.5.
+        # All eight principles at +0.5 -> HumaneScore 0.5 (the mean).
         ps = self._judge(0.5)["principles"]
         self.assertEqual(hb.humane_score(ps), 0.5)
 
@@ -160,6 +194,18 @@ class TestReport(unittest.TestCase):
         self.assertIn("ensemble", report.lower())
         self.assertIn("GPT-5.1", report)
         self.assertIn("mitigated", report.lower())
+
+    def test_degraded_ensemble_report_is_provisional(self):
+        # Ensemble requested (3 judges) but only 1 produced a score -> provisional, and
+        # the "published methodology / mitigated" claim must NOT appear.
+        agg = self._agg(single=True)
+        meta = {"name": "t", "turns": 4,
+                "judges_attempted": ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]}
+        report = hb.render_report(agg, meta)
+        self.assertIn("PARTIAL ENSEMBLE", report)
+        self.assertIn("provisional", report.lower())
+        self.assertIn("PARTIALLY mitigated", report)
+        self.assertNotIn("This is the published HumaneBench methodology", report)
 
     def test_band_labels(self):
         self.assertEqual(hb.band_label(0.6), "net humane")

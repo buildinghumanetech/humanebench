@@ -1,0 +1,4 @@
+# Extra SDKs needed only for the cross-family ensemble (--ensemble).
+# Install these in addition to requirements.txt.
+openai>=1.40
+google-genai>=0.3

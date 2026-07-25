@@ -25,8 +25,9 @@ model family's outputs**. On the same transcript, two single judges disagreed by
   transcript, not a product grade.
 - **Recommended for any real result — the cross-family ensemble** (`--ensemble`): three
   judges from different families (Claude Sonnet 4.5 + GPT-5.1 + Gemini 2.5 Pro), scores
-  averaged per principle. This is the published methodology (it matched human consensus
-  95.8% of the time) and is what a number should rest on before it goes in a deck.
+  averaged per principle. This is the published methodology (on the curated 24-item human
+  set it matched human score *direction* 95.8% of the time — 23/24) and is what a number
+  should rest on before it goes in a deck.
 
 ## How to run it
 

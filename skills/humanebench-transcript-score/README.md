@@ -21,8 +21,10 @@ family's outputs**. On one real transcript, two single judges disagreed by 0.37 
 | **`--ensemble`** (recommended) | Claude Sonnet 4.5 + GPT-5.1 + Gemini 2.5 Pro | 3 keys | any number you'd put in a deck |
 
 Every result ships with the same-family-tilt warning and an "N=1, one transcript" note.
-The default judge is **Sonnet 4.5 on purpose** — it matches the judge in the published
-leaderboard, so single-judge scores stay comparable to it.
+The default judge is **Sonnet 4.5 on purpose** — it's one of the three judges in the
+published ensemble, so single-judge scores stay on the same scale (the published
+*methodology* is the full cross-family ensemble, not any single judge; use `--ensemble`
+for a number that rests on it).
 
 ## Install
 
@@ -43,7 +45,9 @@ rubric and harness — this copy is self-contained (the rubric is embedded) so i
 ## Run the scorer directly
 
 ```bash
-pip install -r scripts/requirements.txt      # anthropic; +openai +google-genai for --ensemble
+pip install -r scripts/requirements.txt              # Claude-only: just anthropic
+# for --ensemble, also:
+pip install -r scripts/requirements-ensemble.txt     # adds openai + google-genai
 
 # Claude-only (default)
 python scripts/humanebench_score.py examples/sample_transcript.txt
@@ -59,7 +63,7 @@ python scripts/humanebench_score.py transcript.json --ensemble --out report.md
 
 | Judge | Env var | SDK |
 |-------|---------|-----|
-| Claude Sonnet 4.5 | `ANTHROPIC_API_KEY` (or `ant auth login`) | `anthropic` |
+| Claude Sonnet 4.5 | `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`) | `anthropic` |
 | GPT-5.1 | `OPENAI_API_KEY` | `openai` |
 | Gemini 2.5 Pro | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | `google-genai` |
 
@@ -87,7 +91,8 @@ references/
 scripts/
   humanebench_score.py         # the scorer (Claude-only default; --ensemble)
   test_scoring.py              # unit tests for the pure logic (no network)
-  requirements.txt
+  requirements.txt             # Claude-only deps (anthropic)
+  requirements-ensemble.txt    # extra deps for --ensemble (openai, google-genai)
 examples/
   sample_transcript.txt        # a synthetic transcript to try it on
 ```
