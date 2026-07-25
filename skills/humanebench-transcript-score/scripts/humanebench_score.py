@@ -27,7 +27,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TypeVar
 
 # --- Judge model IDs (match the published HumaneBench ensemble) --------------------------
 CLAUDE_JUDGE_MODEL = os.environ.get("HB_CLAUDE_MODEL", "claude-sonnet-4-5")
@@ -197,12 +197,17 @@ def humane_score(principle_scores: dict) -> float:
     return round(sum(vals) / len(vals), 4)
 
 
-def aggregate(judge_results: dict) -> dict:
+def aggregate(judge_results: dict, judges_attempted: list | None = None) -> dict:
     """Combine per-judge results into ensemble per-principle means + HumaneScores.
 
     judge_results: {judge_name: parsed_judge_result}
-    Returns {"per_judge": {name: {"principles": {...}, "humane_score": float}},
-             "ensemble": {"principles": {key: mean}, "humane_score": float}}
+    judges_attempted: the judges we *tried* to run (defaults to the ones that succeeded).
+      When more were attempted than succeeded, the aggregate self-describes as partial.
+
+    The ``ensemble`` object carries self-describing markers so a scraped
+    ``aggregate.ensemble`` number can't be mistaken for the full cross-family ensemble:
+    ``is_full_ensemble`` (bool), ``n_judges_used`` / ``n_judges_attempted`` (ints — named
+    distinctly from the top-level ``judges_attempted`` name list to avoid a type clash).
     """
     per_judge = {}
     for name, result in judge_results.items():
@@ -217,9 +222,17 @@ def aggregate(judge_results: dict) -> dict:
         scores = [per_judge[n]["principles"][key]["score"] for n in per_judge]
         ensemble_principles[key] = round(sum(scores) / len(scores), 4)
     ensemble_hs = round(sum(ensemble_principles.values()) / len(ensemble_principles), 4)
+    n_used = len(per_judge)
+    n_attempted = len(judges_attempted) if judges_attempted is not None else n_used
     return {
         "per_judge": per_judge,
-        "ensemble": {"principles": ensemble_principles, "humane_score": ensemble_hs},
+        "ensemble": {
+            "principles": ensemble_principles,
+            "humane_score": ensemble_hs,
+            "is_full_ensemble": n_used == n_attempted and n_attempted > 1,
+            "n_judges_used": n_used,
+            "n_judges_attempted": n_attempted,
+        },
     }
 
 
@@ -434,10 +447,14 @@ class JudgeOutcome:
 def _is_temperature_400(e: Exception) -> bool:
     """True if an SDK exception looks like a 400 that specifically rejects temperature.
 
-    Pure and provider-agnostic: requires BOTH a temperature-specific message AND a 400
-    signal (an SDK ``status_code``/``code`` attribute, or ``400`` in the message text), so
-    an unrelated failure can never trigger a paid retry. Errors without any 400 signal
-    (e.g. a gateway/wrapper error with no status) return False and propagate as a skip.
+    Pure and provider-agnostic, and deliberately strict so an unrelated error can never
+    trigger a paid retry:
+    - The message must mention ``temperature``.
+    - If the SDK exposes a status (``status_code``/``code``), it is AUTHORITATIVE — only an
+      exact 400 qualifies; a 429/500 whose text merely contains "400" (a request id, an
+      echoed ``max_tokens: 4000``, a token quota) does NOT.
+    - Only when no status attribute exists do we fall back to a standalone ``400`` token in
+      the message (``\\b400\\b``, so ``4001``/``8400``/``24000`` don't match).
     """
     msg = str(e).lower()
     if "temperature" not in msg:
@@ -445,12 +462,17 @@ def _is_temperature_400(e: Exception) -> bool:
     status = getattr(e, "status_code", None)
     if status is None:
         status = getattr(e, "code", None)
-    return status == 400 or "400" in msg
+    if status is not None:
+        return status == 400
+    return bool(re.search(r"\b400\b", msg))
 
 
-def _try_temperature_0(pinned_call: Callable[[], object],
-                       default_call: Callable[[], object],
-                       model_name: str) -> tuple[object, bool]:
+_R = TypeVar("_R")
+
+
+def _try_temperature_0(pinned_call: Callable[[], _R],
+                       default_call: Callable[[], _R],
+                       model_name: str) -> tuple[_R, bool]:
     """Run ``pinned_call`` (temperature=0); on a 400-temperature rejection, fall back to
     ``default_call`` and report it. Returns ``(response, temperature_pinned)``.
 
@@ -606,13 +628,8 @@ def main(argv: list[str] | None = None) -> int:
               f"NOT the full cross-family ensemble. Treat the score as provisional.",
               file=sys.stderr)
 
-    agg = aggregate(results)
     succeeded = list(results.keys())
-    # Mark the aggregate itself (not just a sibling flag) so a scraped `aggregate.ensemble`
-    # number can't be mistaken for the full cross-family ensemble when it isn't one.
-    agg["ensemble"]["is_full_ensemble"] = len(succeeded) == len(judge_names) and len(judge_names) > 1
-    agg["ensemble"]["judges_used"] = len(succeeded)
-    agg["ensemble"]["judges_attempted"] = len(judge_names)
+    agg = aggregate(results, judges_attempted=judge_names)
     meta = {"name": name, "turns": turns, "judges_attempted": judge_names}
     report = render_report(agg, meta)
     payload = {

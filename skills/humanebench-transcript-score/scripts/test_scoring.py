@@ -183,6 +183,24 @@ class TestAggregation(unittest.TestCase):
         agg = hb.aggregate({"A": r})
         self.assertFalse(agg["per_judge"]["A"]["temperature_pinned"])
 
+    def test_is_full_ensemble_true_when_all_attempted_succeed(self):
+        agg = hb.aggregate({"A": self._judge(0.5), "B": self._judge(0.5), "C": self._judge(0.5)},
+                           judges_attempted=["A", "B", "C"])
+        self.assertTrue(agg["ensemble"]["is_full_ensemble"])
+        self.assertEqual(agg["ensemble"]["n_judges_used"], 3)
+        self.assertEqual(agg["ensemble"]["n_judges_attempted"], 3)
+
+    def test_is_full_ensemble_false_when_degraded(self):
+        agg = hb.aggregate({"A": self._judge(0.5), "B": self._judge(0.5)},
+                           judges_attempted=["A", "B", "C"])
+        self.assertFalse(agg["ensemble"]["is_full_ensemble"])
+        self.assertEqual(agg["ensemble"]["n_judges_used"], 2)
+        self.assertEqual(agg["ensemble"]["n_judges_attempted"], 3)
+
+    def test_is_full_ensemble_false_for_single_judge(self):
+        agg = hb.aggregate({"A": self._judge(0.5)}, judges_attempted=["A"])
+        self.assertFalse(agg["ensemble"]["is_full_ensemble"])   # one judge is not an ensemble
+
 
 class TestReport(unittest.TestCase):
     def _agg(self, single=True):
@@ -201,7 +219,7 @@ class TestReport(unittest.TestCase):
 
     def test_ensemble_report_shows_per_judge_and_mitigation(self):
         report = hb.render_report(self._agg(single=False), {"name": "t", "turns": 4})
-        self.assertIn("ensemble", report.lower())
+        self.assertIn("[Ensemble]", report)          # full-ensemble heading label
         self.assertIn("GPT-5.1", report)
         self.assertIn("mitigated", report.lower())
 
@@ -226,7 +244,7 @@ class TestReport(unittest.TestCase):
         report = hb.render_report(agg, meta)
         self.assertIn("Partial (2 of 3)", report)
         self.assertIn("PARTIALLY mitigated", report)
-        self.assertNotIn("HumaneScore (ensemble)", report)          # no bare "ensemble" heading
+        self.assertNotIn("[Ensemble]", report)                      # must NOT claim full ensemble
         self.assertNotIn("(partial (2 of 3))", report.lower())      # no nested parens
         self.assertNotIn("This is the published HumaneBench methodology", report)
 
@@ -294,6 +312,22 @@ class TestIsTemperature400(unittest.TestCase):
     def test_400_but_not_temperature(self):
         self.assertFalse(hb._is_temperature_400(
             _FakeSDKError("max_tokens too large", status_code=400)))
+
+    def test_status_authoritative_over_400_substring(self):
+        # A 500 whose text happens to contain "400" (request id) AND temperature must NOT
+        # be treated as a temperature rejection — the status attribute is decisive.
+        self.assertFalse(hb._is_temperature_400(
+            _FakeSDKError("temperature echoed; req 8400a failed", status_code=500)))
+
+    def test_no_status_uses_standalone_400_token(self):
+        # No status attr: a standalone "400" token + temperature qualifies...
+        self.assertTrue(hb._is_temperature_400(
+            _FakeSDKError("Error code: 400 - temperature not supported")))
+
+    def test_no_status_embedded_400_does_not_match(self):
+        # ...but "4001"/"8400"/"24000" embedded digits do not.
+        self.assertFalse(hb._is_temperature_400(
+            _FakeSDKError("temperature limit 24000 tokens")))
 
     def test_temperature_but_no_400_signal(self):
         # temperature mentioned but no status attr and no "400" in text -> propagate (skip).

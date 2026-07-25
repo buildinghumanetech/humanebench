@@ -30,6 +30,10 @@ between judges are a finding — call them out.)
 
 ### HumaneScore
 
+Heading forms, matching the script's output: `### HumaneScore` for a single judge,
+`### HumaneScore [Ensemble]` when every requested judge succeeded, and
+`### HumaneScore [Partial (N of M)]` for a degraded run.
+
 **`<mean of the 8 principle scores, e.g. 0.13>`** — `<band label>`
 
 Bands (guide, not a verdict):
