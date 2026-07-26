@@ -1,0 +1,19 @@
+Requesting changes — nice clean two-stage design that mirrors the `extract_all_scores.py` → `generate_tables.py` pattern, and good call using `humanebench.excluded.load_excluded_ids()` rather than re-listing IDs. Two correctness issues are blocking for me, since they affect the numbers that end up in published figures:
+
+**Blocking**
+
+1. **Multiple `.eval` files per model get merged silently.** `model_dir.glob("*.eval")` reads every file in the dir, so any retry left behind by `run_parallel_retries.py` gets double-counted. There's no signal in the output that this happened — the script just prints a higher row total. Please either pick one `.eval` per model (latest mtime, or explicit selection) or assert exactly one and fail loudly otherwise. Worth spot-checking the current `~35,460` number against this once it's in.
+
+2. **NaN scores aren't filtered.** `scorer.py` returns `math.nan` on ensemble failure, and `compute_vp_breakdown.py` writes `overseer.get("value")` raw. `count()` ignores NaN, so the `n=` annotations on every heatmap cell reflect *successfully scored* samples, not attempted ones — readers will read those as denominators. Drop NaNs explicitly with a logged count, or change the annotation to make the distinction clear.
+
+**Non-blocking**
+
+3. `vmax = max(abs(means.min().min()), abs(means.max().max()))` propagates NaN if any column is fully missing — the `pd.isna(vmax)` fallback only catches the all-NaN case. Safer to use `np.nanmin`/`np.nanmax` on `means.values`.
+4. The `Samples excluded (cut list): {N}` print reads as if it's the cut-list size, but it's actually rows excluded (≈ 12 × personas × models). Rename to "Sample rows excluded" to disambiguate from the "Loaded N excluded IDs" line above.
+5. The rest of the repo uses `inspect_ai.log.read_eval_log` (see `extract_all_scores.py`); this script opens `.eval` as raw zips. Works today but couples us to Inspect's on-disk format.
+6. `df.to_csv("tables/...")` and `fig.savefig("figures/...")` crash on a fresh checkout where those dirs don't exist — `mkdir(parents=True, exist_ok=True)` is a one-liner.
+7. `MODEL_ORDER` is hardcoded; `reindex` silently drops any new model. Could derive from `model_display_names.json` keys (already loaded) or at least warn on out-of-list models.
+8. Path style is mixed (`Path` in compute, `os.path.join` in viz) — repo convention is `Path`.
+9. `compute_vp_breakdown.py` hardcodes `LOGS_DIR`/`OUTPUT_CSV`; peers use argparse.
+
+Happy to re-review once 1 and 2 are addressed.

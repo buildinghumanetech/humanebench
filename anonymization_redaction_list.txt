@@ -1,0 +1,58 @@
+# Redaction terms for anonymous.4open.science mirror
+# Substring matches — listing a fragment (e.g. "buildinghumanetech") covers
+# every URL, email, and identifier that contains it.
+
+# --- Organization ---
+buildinghumanetech
+Building Humane Tech
+humanetech.com
+
+# --- Author / contributor names ---
+Samandari
+Andalib
+Erika Anderson
+Jack Senechal
+Juan Ocampo
+Tenzin
+Changten
+Katy Graf
+John Brennan
+Selina Bian
+Amarpreet Kaur
+Manisha Jain
+Sahithi
+Julia Zhou
+Sachin Keswani
+Gabija Parnarauskaite
+Lydia Huang
+Lenz Dagohoy
+Diego Lopez
+Alan Rainbow
+Belinda
+Yaoli Mao
+Wayne Boatwright
+Yelyzaveta Radionova
+Mark Lovell
+Seth Caldwell
+Evode Manirahari
+Manjul Sachan
+Value Economy
+Travis F W
+
+# --- Handles / username fragments ---
+asamandari1
+andalibmalit
+ErikaOnFire
+MaeyekoGit
+G_Katy
+juanocampo400
+ttch8752
+ttsetench01
+jacksenechal
+
+# --- Institutional affiliations (commit-email domains) ---
+gsu.edu
+ost.ch
+
+# --- Local path leak (better to edit out before mirroring) ---
+/Users/asamandari1
