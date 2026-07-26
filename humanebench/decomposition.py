@@ -27,17 +27,32 @@ SRC_DIR = REPO_ROOT / "src"
 LOGS_DIR = REPO_ROOT / "logs"
 
 SUBSET_DIR = REPO_ROOT / "data" / "decomposition"
-SUBSET_IDS_PATH = SUBSET_DIR / "subsample_200_ids.txt"
-SUBSET_DATASET_PATH = SUBSET_DIR / "humane_bench_subsample_200.jsonl"
-SUBSET_SUMMARY_PATH = SUBSET_DIR / "subsample_200_summary.json"
 
-SUBSET_IDS_REL = "data/decomposition/subsample_200_ids.txt"
-SUBSET_DATASET_REL = "data/decomposition/humane_bench_subsample_200.jsonl"
+# Two nested subsamples. The 400 is drawn from the 788 analysis set; the 200 is
+# drawn FROM the 400, not independently. Independent draws at different sizes do
+# not nest -- numpy's choice returns a different selection per size rather than a
+# prefix -- so an independently drawn 200 would share only ~50% of its ids with
+# the 400 and every E-vs-C/D comparison would be unpaired.
+SUBSET_400_IDS_PATH = SUBSET_DIR / "subsample_400_ids.txt"
+SUBSET_400_DATASET_PATH = SUBSET_DIR / "humane_bench_subsample_400.jsonl"
+SUBSET_400_SUMMARY_PATH = SUBSET_DIR / "subsample_400_summary.json"
+SUBSET_400_IDS_REL = "data/decomposition/subsample_400_ids.txt"
+SUBSET_400_DATASET_REL = "data/decomposition/humane_bench_subsample_400.jsonl"
+SUBSET_400_PROMPT_HASH = "276327e0977a65f360af06bf8b466bb72ae0e9616f3478087590bbdd94007043"
 
-# Canonical prompt hash of the frozen 200-scenario subsample, pinned from
-# data/decomposition/subsample_200_summary.json. Subset runs must hash to this;
-# full-scale runs must hash to provenance.FROZEN_PROMPT_HASH.
-SUBSET_PROMPT_HASH = "2992cc80b404e34b05b8b0cf7299084b0a2136b81dc356f8dd2172539a2404d0"
+SUBSET_200_IDS_PATH = SUBSET_DIR / "subsample_200_ids.txt"
+SUBSET_200_DATASET_PATH = SUBSET_DIR / "humane_bench_subsample_200.jsonl"
+SUBSET_200_SUMMARY_PATH = SUBSET_DIR / "subsample_200_summary.json"
+SUBSET_200_IDS_REL = "data/decomposition/subsample_200_ids.txt"
+SUBSET_200_DATASET_REL = "data/decomposition/humane_bench_subsample_200.jsonl"
+SUBSET_200_PROMPT_HASH = "2aefec58864c9538357a8c292696ef95716ab62d819cab4999e2d01e87123257"
+
+# Back-compat aliases (the 400 is the primary subsample).
+SUBSET_IDS_PATH = SUBSET_400_IDS_PATH
+SUBSET_DATASET_PATH = SUBSET_400_DATASET_PATH
+SUBSET_SUMMARY_PATH = SUBSET_400_SUMMARY_PATH
+SUBSET_IDS_REL = SUBSET_400_IDS_REL
+SUBSET_DATASET_REL = SUBSET_400_DATASET_REL
 
 # Empirical anchor from scripts/run_parallel_retries.py: $29.44 per 800-sample
 # evaluation (generation + 3 judge calls per sample).
@@ -188,8 +203,8 @@ CONDITIONS: tuple[Condition, ...] = (
         task_type="decomp_c_prose",
         label="C",
         prompt_const="DECOMP_C_SYSTEM_PROMPT",
-        dataset_rel=SUBSET_DATASET_REL,
-        expected_samples=200,
+        dataset_rel=SUBSET_400_DATASET_REL,
+        expected_samples=400,
         scale="subset",
         rationale="Short naturalistic prose; ecological validity over format matching.",
     ),
@@ -197,8 +212,8 @@ CONDITIONS: tuple[Condition, ...] = (
         task_type="decomp_d_okr",
         label="D",
         prompt_const="DECOMP_D_SYSTEM_PROMPT",
-        dataset_rel=SUBSET_DATASET_REL,
-        expected_samples=200,
+        dataset_rel=SUBSET_400_DATASET_REL,
+        expected_samples=400,
         scale="subset",
         rationale="Growth-team OKR framing; objective arrives as a quarterly target.",
         deviations=(
@@ -211,7 +226,7 @@ CONDITIONS: tuple[Condition, ...] = (
         task_type="decomp_e_abtest",
         label="E",
         prompt_const="DECOMP_E_SYSTEM_PROMPT",
-        dataset_rel=SUBSET_DATASET_REL,
+        dataset_rel=SUBSET_200_DATASET_REL,
         expected_samples=200,
         scale="subset",
         rationale=(
@@ -319,4 +334,8 @@ def expected_prompt_hash(condition: Condition) -> str:
     """The canonical prompt hash a completed run of ``condition`` must produce."""
     from humanebench.provenance import FROZEN_PROMPT_HASH
 
-    return FROZEN_PROMPT_HASH if condition.scale == "full" else SUBSET_PROMPT_HASH
+    if condition.scale == "full":
+        return FROZEN_PROMPT_HASH
+    if condition.expected_samples == 400:
+        return SUBSET_400_PROMPT_HASH
+    return SUBSET_200_PROMPT_HASH

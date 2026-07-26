@@ -157,13 +157,31 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=BOOTSTRAP_SEED)
     ap.add_argument("--per-principle", type=int, default=PER_PRINCIPLE)
     ap.add_argument(
+        "--from-ids",
+        type=Path,
+        default=None,
+        help="restrict the draw to the ids in this file, producing a set nested "
+             "inside it. Independent draws at different sizes do NOT nest -- "
+             "np.random.choice returns a different selection per size, not a "
+             "prefix -- so a smaller arm must be drawn FROM the larger one for "
+             "any comparison between them to stay paired.",
+    )
+    ap.add_argument("--name", default=None,
+                    help="output basename stem (default: subsample_<n>)")
+    ap.add_argument(
         "--force",
         action="store_true",
         help="overwrite an existing frozen subsample (it is meant to be drawn once)",
     )
     args = ap.parse_args()
 
-    existing = [p for p in (IDS_PATH, JSONL_PATH, SUMMARY_PATH) if p.exists()]
+    n_total = args.per_principle * 8
+    stem = args.name or f"subsample_{n_total}"
+    ids_path = OUT_DIR / f"{stem}_ids.txt"
+    jsonl_path = OUT_DIR / f"humane_bench_{stem}.jsonl"
+    summary_path = OUT_DIR / f"{stem}_summary.json"
+
+    existing = [p for p in (ids_path, jsonl_path, summary_path) if p.exists()]
     if existing and not args.force:
         print("Frozen subsample already exists; refusing to redraw:")
         for p in existing:
@@ -173,7 +191,15 @@ def main() -> int:
 
     rows = load_rows(DATASET_PATH)
     excluded = load_excluded_ids(DATASET_PATH)
-    print(f"dataset rows: {len(rows)}   excluded: {len(excluded)}   eligible: {len(rows) - len(excluded)}")
+
+    parent_ids: set[str] | None = None
+    if args.from_ids:
+        args.from_ids = Path(args.from_ids).resolve()
+        parent_ids = {ln.strip() for ln in args.from_ids.read_text().splitlines() if ln.strip()}
+        rows = [(raw, row) for raw, row in rows if row["id"] in parent_ids]
+        print(f"restricted to parent set {args.from_ids.name}: {len(rows)} rows")
+    n_elig=len([r for _x, r in rows if r["id"] not in excluded])
+    print(f"pool rows: {len(rows)}   eligible after exclusions: {n_elig}")
 
     ids, composition = stratified_subsample(
         rows, excluded, per_principle=args.per_principle, seed=args.seed
@@ -184,9 +210,9 @@ def main() -> int:
     parsed_by_id = {row["id"]: row for _raw, row in rows}
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    IDS_PATH.write_text("\n".join(ids) + "\n")
+    ids_path.write_text("\n".join(ids) + "\n")
     # Raw lines, in dataset order, byte-identical to the source.
-    JSONL_PATH.write_text(
+    jsonl_path.write_text(
         "".join(f"{raw}\n" for raw, row in rows if row["id"] in id_set)
     )
 
@@ -209,17 +235,21 @@ def main() -> int:
         "n_excluded_in_source": len(excluded),
         "subset_prompt_hash": subset_hash,
         "n_prompts_hashed": n_hashed,
-        "ids_file": "data/decomposition/subsample_200_ids.txt",
-        "ids_file_sha256": file_sha256(IDS_PATH),
-        "jsonl_file": "data/decomposition/humane_bench_subsample_200.jsonl",
-        "jsonl_file_sha256": file_sha256(JSONL_PATH),
+        "ids_file": str(ids_path.relative_to(REPO_ROOT)),
+        "parent_ids_file": (str(args.from_ids.relative_to(REPO_ROOT))
+                            if args.from_ids else None),
+        "parent_ids_sha256": (file_sha256(args.from_ids) if args.from_ids else None),
+        "nested_in_parent": bool(parent_ids),
+        "ids_file_sha256": file_sha256(ids_path),
+        "jsonl_file": str(jsonl_path.relative_to(REPO_ROOT)),
+        "jsonl_file_sha256": file_sha256(jsonl_path),
         "composition": composition,
     }
-    SUMMARY_PATH.write_text(json.dumps(summary, indent=2) + "\n")
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n")
 
-    print(f"\nwrote {len(ids)} ids -> {IDS_PATH.relative_to(REPO_ROOT)}")
-    print(f"wrote dataset    -> {JSONL_PATH.relative_to(REPO_ROOT)}")
-    print(f"wrote summary    -> {SUMMARY_PATH.relative_to(REPO_ROOT)}")
+    print(f"\nwrote {len(ids)} ids -> {ids_path.relative_to(REPO_ROOT)}")
+    print(f"wrote dataset    -> {jsonl_path.relative_to(REPO_ROOT)}")
+    print(f"wrote summary    -> {summary_path.relative_to(REPO_ROOT)}")
     print(f"\nDECOMP_SUBSET_PROMPT_HASH = {subset_hash!r}")
     print("\ncomposition (principle -> domain -> n):")
     for principle in PRINCIPLES:
