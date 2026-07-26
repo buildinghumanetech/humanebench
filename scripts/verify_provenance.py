@@ -263,10 +263,17 @@ def verify_decomposition(r: Report, manifest: dict, logs_dir: Path) -> None:
         r.check(bool(created) and prov.created_after_freeze(created),
                 f"{condition}/{model}: created {created} postdates freeze")
 
-    missing = sorted(set(by_path) - disk_paths)
-    r.check(not missing,
-            f"all {len(by_path)} manifest decomposition runs present on disk"
-            + (f" (missing: {missing})" if missing else ""))
+    # Mirror the reported-run guard: only assert the manifest set is on disk
+    # when a decomposition log dir is actually present. Verifying a published
+    # download that ships only the reported runs must not fail here.
+    if disk_runs:
+        missing = sorted(set(by_path) - disk_paths)
+        r.check(not missing,
+                f"all {len(by_path)} manifest decomposition runs present on disk"
+                + (f" (missing: {missing})" if missing else ""))
+    elif by_path:
+        r.skip(f"{len(by_path)} decomposition runs in manifest, none on disk "
+               "(expected when verifying a reported-runs-only download)")
 
 
 def manifest_rel(path: Path) -> str:

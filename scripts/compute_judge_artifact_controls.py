@@ -246,7 +246,7 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--logs-dir", type=Path, default=REPO_ROOT / "logs")
     ap.add_argument("--raw-csv", type=Path,
-                    default=REPO_ROOT / "tables" / "inter_judge_raw.csv")
+                    default=REPO_ROOT / "tables" / "inter_judge_raw_regenerated.csv")
     ap.add_argument("--output-dir", type=Path, default=REPO_ROOT / "tables")
     ap.add_argument("--prompts-per-principle", type=int, default=2,
                     help="judge prompts to blinding-check per principle per run")
@@ -316,8 +316,11 @@ def main() -> None:
     else:
         L.append(f"- Only {n_conditions} condition inspected, so scaffold "
                  "invariance across conditions is **not tested here**.\n")
-    L.append(f"- Judge prompts hashed per sample: all "
-             f"{blind_df.judge_index.max() + 1} ensemble judges.\n")
+    n_judges = blind_df["judge_model"].replace("", pd.NA).nunique()
+    L.append(f"- Distinct ensemble judges whose prompts were hashed: "
+             f"**{n_judges}**. (Counting judge *events* would overstate this: a "
+             "judge whose response fails to parse is retried, and each retry is "
+             "another event.)\n")
     L.append(f"- Judge system message, over every prompt inspected: `{sys_msgs}`.\n")
     L.append(f"- Message roles sent to the judge: `{roles}` — the evaluated "
              "model's **system message is never included**.\n")

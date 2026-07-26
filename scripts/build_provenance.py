@@ -221,8 +221,21 @@ def build_manifest(logs_dir: Path) -> dict:
             "before building provenance."
         )
     if on_disk:
+        from humanebench import decomposition as dc
+
         triples = prov.frozen_triples()
         for condition, model, path in on_disk:
+            # The manifest is a record of FINISHED artifacts. An in-progress run
+            # cannot reproduce its expected prompt hash -- it has scored only
+            # part of the set -- so recording it would enter a permanent, and
+            # meaningless, failure into the manifest for the duration of every
+            # run. It is picked up on the next build once complete.
+            spec = dc.CONDITIONS_BY_TASK_TYPE.get(condition)
+            n_have = sum(1 for _ in prov.iter_eval_samples(path))
+            if spec is not None and n_have < spec.expected_samples:
+                print(f"  skipping {condition}/{model}: in progress "
+                      f"({n_have}/{spec.expected_samples})", flush=True)
+                continue
             print(f"  hashing {condition}/{model} ...", flush=True)
             decomp_runs.append(build_decomposition_entry(condition, model, path, triples))
 
@@ -242,11 +255,14 @@ def build_manifest(logs_dir: Path) -> dict:
         and anchors.get("frozen_prompt_hash_selfcheck_ok") in (True, None)
     )
 
+    # Deliberately NOT folded into all_pass. That flag is the reported-run
+    # provenance claim -- the one the paper rests on -- and it must not go red
+    # because a robustness analysis is mid-flight or incomplete. The
+    # decomposition gets its own flag.
     decomp_ok = all(
         r["prompt_hash_matches_expected"] and r["triples_byte_identical_to_frozen"]
         for r in decomp_runs
     )
-    all_pass = all_pass and decomp_ok
 
     manifest = {
         # Schema 2 adds the decomposition blocks. The `reported_runs` entries are
@@ -276,6 +292,7 @@ def build_manifest(logs_dir: Path) -> dict:
         manifest["summary"]["decomposition_runs_triples_byte_identical"] = sum(
             1 for r in decomp_runs if r["triples_byte_identical_to_frozen"]
         )
+        manifest["summary"]["decomposition_all_pass"] = decomp_ok
         manifest["summary"]["decomposition_note"] = (
             "The Zenodo deposit covers the reported runs only; decomposition logs "
             "are repo-local until the deposit is updated."

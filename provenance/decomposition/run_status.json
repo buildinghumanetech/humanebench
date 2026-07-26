@@ -1,0 +1,47 @@
+{
+  "schema": "humanebench-decomposition-status/1",
+  "conditions": {
+    "decomp_b_xml_objective": {
+      "status": "skipped_insufficient_credit",
+      "credit_usd": 10.0,
+      "needed_usd": 388.608
+    }
+  },
+  "events": [
+    {
+      "at": "2026-07-26T20:46:57.281690+00:00",
+      "event": "launch",
+      "conditions": [
+        "decomp_b_xml_objective",
+        "decomp_c_prose",
+        "decomp_d_okr",
+        "decomp_e_abtest"
+      ],
+      "n_models": 11,
+      "est_cost_usd": 566.72
+    },
+    {
+      "at": "2026-07-26T20:46:57.368003+00:00",
+      "event": "credit_abort",
+      "condition": "decomp_b_xml_objective",
+      "detail": "insufficient credit: $10.00 available, $388.61 needed (1.2x est)"
+    },
+    {
+      "at": "2026-07-26T20:50:39.544651+00:00",
+      "event": "launch",
+      "conditions": [
+        "decomp_b_xml_objective",
+        "decomp_c_prose",
+        "decomp_d_okr",
+        "decomp_e_abtest"
+      ],
+      "n_models": 11,
+      "est_cost_usd": 566.72,
+      "usage_baseline_usd": 0.0,
+      "max_spend_usd": 800.0
+    }
+  ],
+  "updated_at": "2026-07-26T20:50:39.544710+00:00",
+  "usage_baseline_usd": 0.0,
+  "max_spend_usd": 800.0
+}

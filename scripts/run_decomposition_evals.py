@@ -249,6 +249,7 @@ def gate_condition(cond: dc.Condition, models: list[str], threshold: float) -> d
         "models": {},
     }
     worst = 1.0
+    wrong_frame: list[str] = []
     for model in models:
         model_dir = cond.log_dir / model.split("/")[-1]
         path = best_eval(model_dir, exclude) if model_dir.is_dir() else None
@@ -258,15 +259,25 @@ def gate_condition(cond: dc.Condition, models: list[str], threshold: float) -> d
             continue
         census = score_census(path, exclude=exclude)
         frac = census["n_fully_scored"] / denom if denom else 0.0
+        # Two-sided. A one-sided `frac >= threshold` attests a run that scored
+        # MORE than the expected frame as complete -- which is exactly what a
+        # wrong-dataset run looks like, and the wrong frame is silent in every
+        # downstream table.
+        over = census["n_samples"] > cond.expected_samples
+        status = ("ok" if (frac >= threshold and not over)
+                  else "wrong_frame" if over else "degraded")
         report["models"][model] = {
-            "status": "ok" if frac >= threshold else "degraded",
+            "status": status,
             "eval_file": str(path.relative_to(REPO_ROOT)),
             "fraction_scored": round(frac, 5),
             **census,
         }
         worst = min(worst, frac)
+        if over:
+            wrong_frame.append(model)
     report["worst_fraction_scored"] = round(worst, 5)
-    report["passed"] = worst >= threshold
+    report["wrong_frame_models"] = wrong_frame
+    report["passed"] = worst >= threshold and not wrong_frame
     report["serving_providers"] = provider_census(cond, models)
     return report
 
@@ -724,7 +735,12 @@ def run_condition(
         print(f"  archived {len(moved)} superseded .eval file(s) to attic/")
 
     return {
-        "status": "aborted_midway_insufficient_credit" if aborted_midway else "ran",
+        # Still "ran": the condition produced data and must be gated and
+        # censused like any other. Returning a non-"ran" status made main()
+        # break before gate_condition, so a mid-condition abort left the
+        # partial run unassessed.
+        "status": "ran",
+        "aborted_midway": aborted_midway,
         "started_at": started,
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "n_subprocess_failures": n_failed,

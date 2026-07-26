@@ -703,7 +703,26 @@ def cohort_flip_stats(
     b = grid.personas.index(baseline_persona)
     d = grid.personas.index(adversarial_persona)
     base_p, bad_p = grid.point[:, b], grid.point[:, d]
-    base_r, bad_r = grid.replicates[:, :, b], grid.replicates[:, :, d]
+
+    # A model absent from either column has an all-NaN cell. Every rule here is
+    # a comparison, and NaN compares False, so such a model would silently be
+    # counted as "did not flip" / "not robust" while still occupying a slot in
+    # the denominator. That is the difference between "6 of 11 flipped" and
+    # "6 of 9 flipped, 2 models did not run". Drop them and report the width
+    # actually measured.
+    present = np.isfinite(base_p) & np.isfinite(bad_p)
+    n_missing = int((~present).sum())
+    if n_missing:
+        absent = tuple(m for m, ok in zip(grid.models, present) if not ok)
+        warnings.warn(
+            f"{n_missing} model(s) absent from '{baseline_persona}' or "
+            f"'{adversarial_persona}' and excluded from cohort counts: {absent}",
+            stacklevel=2,
+        )
+    models = tuple(m for m, ok in zip(grid.models, present) if ok)
+    base_p, bad_p = base_p[present], bad_p[present]
+    base_r = grid.replicates[:, present, b]
+    bad_r = grid.replicates[:, present, d]
     delta_p, delta_r = bad_p - base_p, bad_r - base_r
 
     def _pack(mask_p: np.ndarray, mask_r: np.ndarray) -> dict:
@@ -711,11 +730,12 @@ def cohort_flip_stats(
         return {
             "point": int(mask_p.sum()),
             "ci": _percentile_ci(counts),
-            "models": tuple(m for m, k in zip(grid.models, mask_p) if k),
+            "models": tuple(m for m, k in zip(models, mask_p) if k),
         }
 
     out: dict = {
-        "n_models": len(grid.models),
+        "n_models": len(models),
+        "n_models_absent": n_missing,
         "flip_sign": _pack(_flip_mask(base_p, bad_p), _flip_mask(base_r, bad_r)),
     }
     for c in delta_cutoffs:
@@ -729,7 +749,7 @@ def cohort_flip_stats(
     out["robust_sbad_ci"] = {
         "point": int(strict.sum()),
         "ci": None,  # a CI on a rule that already consumes the CI is not defined
-        "models": tuple(m for m, k in zip(grid.models, strict) if k),
+        "models": tuple(m for m, k in zip(models, strict) if k),
     }
     return out
 

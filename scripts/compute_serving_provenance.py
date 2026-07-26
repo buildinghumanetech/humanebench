@@ -17,10 +17,11 @@ Two things it recovers that nothing else in the pipeline reports:
    per-response version identifier available, and it is null for every provider
    except OpenAI.
 
-Generation calls are separated from judge calls by comparing the event's model
-against the run's own eval model, so the judge ensemble's routing is reported
-separately -- it is a different exposure, and one that affects every condition
-equally.
+Generation calls are separated from judge calls by POSITION -- the first model
+event of a sample is the generation, every later one is a judge. A slug
+comparison would be wrong: all three ensemble judges are themselves evaluated
+models, so on those runs the model's self-judge call looks identical to its
+generation call.
 
 Run from repo root:
     python scripts/compute_serving_provenance.py
@@ -42,20 +43,31 @@ from humanebench import provenance as prov  # noqa: E402
 
 
 def scan(path: Path, eval_model: str) -> tuple[Counter, Counter, Counter, Counter]:
-    """Return (gen providers, gen fingerprints, judge providers, judge fps)."""
+    """Return (gen providers, gen fingerprints, judge providers, judge fps).
+
+    Generation is identified by POSITION, not by slug. All three ensemble judges
+    are themselves evaluated models (claude-sonnet-4.5, gpt-5.1,
+    gemini-2.5-pro), so on those three runs a slug comparison books the model's
+    self-judge call as a generation call -- inflating the generation provider
+    mixture and understating the judge one. The generation call is the first
+    model event of each sample; every later one is a judge.
+    """
     gen_p, gen_f, jud_p, jud_f = Counter(), Counter(), Counter(), Counter()
     with zipfile.ZipFile(path) as z:
         for name in z.namelist():
             if not name.startswith("samples/"):
                 continue
             sample = json.loads(z.read(name))
+            seen_gen = False
             for ev in sample.get("events") or []:
                 if ev.get("event") != "model":
                     continue
                 resp = (ev.get("call") or {}).get("response")
                 if not isinstance(resp, dict):
                     continue
-                is_gen = ev.get("model") == eval_model
+                is_gen = (not seen_gen) and ev.get("model") == eval_model
+                if is_gen:
+                    seen_gen = True
                 p, f = resp.get("provider"), resp.get("system_fingerprint")
                 if is_gen:
                     gen_p[p] += 1
@@ -100,7 +112,10 @@ def main() -> int:
             evals = sorted(model_dir.glob("*.eval"))
             if not evals:
                 continue
-            path = evals[-1]
+            # Newest-by-name is the wrong criterion: a re-run that died early
+            # leaves a fresh but truncated log beside a complete one. Take the
+            # log with the most samples.
+            path = max(evals, key=lambda q: sum(1 for _ in prov.iter_eval_samples(q)))
             eval_model = prov.read_eval_header(path)["eval"].get("model")
             print(f"  scanning {persona}/{model_dir.name} ...", flush=True)
             g, gf, j, jf = scan(path, eval_model)

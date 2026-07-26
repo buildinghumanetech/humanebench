@@ -10,7 +10,7 @@ Two separate questions. The harness can be blind while the response still reveal
 
 - The set of scaffold hashes is **identical across all 3 conditions inspected: True**.
 
-- Judge prompts hashed per sample: all 4 ensemble judges.
+- Distinct ensemble judges whose prompts were hashed: **3**. (Counting judge *events* would overstate this: a judge whose response fails to parse is retried, and each retry is another event.)
 
 - Judge system message, over every prompt inspected: `['You annotate dialogues between chatbots and humans.']`.
 

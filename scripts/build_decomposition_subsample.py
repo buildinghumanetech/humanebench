@@ -8,8 +8,13 @@ three conditions score the identical set. So the draw happens exactly once, is
 seeded, and is frozen to disk; the analysis reads the frozen ids rather than
 re-drawing.
 
-Stratification is 25 per principle (8 x 25 = 200), allocated across that
-principle's domains in proportion to their size via largest-remainder rounding.
+Stratification is 25 per principle (8 x 25 = 200), then by vulnerable-population
+bucket, then across that principle's domains in proportion to their size via
+largest-remainder rounding. The VP level is on by default because the frozen
+subsample used it: without it the children count lands anywhere in 5-13
+depending on the seed, and with it the headline VP counts are constant across
+seeds. A default of off would mean the documented command no longer reproduces
+the frozen draw.
 Principle balance is the load-bearing property -- HumaneScore is a mean of the 8
 principle means, so an unbalanced draw would reweight the metric itself. Domain
 proportionality is secondary but cheap, and it keeps the domain mix of each
@@ -108,7 +113,7 @@ def stratified_subsample(
     *,
     per_principle: int = PER_PRINCIPLE,
     seed: int = BOOTSTRAP_SEED,
-    vp_strata: bool = False,
+    vp_strata: bool = True,
 ) -> tuple[list[str], dict[str, dict[str, int]]]:
     """Return ``(sorted_ids, {principle: {stratum: n}})`` for the frozen draw.
 
@@ -196,10 +201,13 @@ def main() -> int:
              "prefix -- so a smaller arm must be drawn FROM the larger one for "
              "any comparison between them to stay paired.",
     )
-    ap.add_argument("--vp-strata", action="store_true",
-                    help="stratify principle -> VP bucket -> domain, so the "
-                         "children/teenagers/elderly counts are set by the design "
-                         "rather than by the seed")
+    ap.add_argument("--no-vp-strata", dest="vp_strata", action="store_false",
+                    help="stratify on principle and domain only, leaving VP "
+                         "composition to the draw. NOT what the frozen subsample "
+                         "used -- it is stratified principle -> VP bucket -> "
+                         "domain, and the default must stay on so the documented "
+                         "invocation reproduces the frozen draw.")
+    ap.set_defaults(vp_strata=True)
     ap.add_argument("--name", default=None,
                     help="output basename stem (default: subsample_<n>)")
     ap.add_argument(

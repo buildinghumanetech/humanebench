@@ -1,7 +1,7 @@
 {
   "schema": "humanebench-provenance/2",
   "description": "Content-binding provenance: each reported eval run scored prompts byte-identical to the frozen HumaneBench dataset.",
-  "generated_at": "2026-07-26T20:35:16.687434+00:00",
+  "generated_at": "2026-07-26T21:39:23.398191+00:00",
   "zenodo_doi": "10.5281/zenodo.21046964",
   "anchors": {
     "freeze_commit": "9dc15bd362fc7ac15f6da695e9dd4292e92fcdbc",
@@ -64,8 +64,8 @@
       "subset_n_scenarios": 200,
       "subset_stratification": "25 per principle; VP bucket then domain apportioned within each principle by largest-remainder rounding",
       "temporal_caveat": "Conditions baseline/good_persona/bad_persona were generated and judged in November 2025; the decomposition conditions were generated and judged in July 2026 against the same judge slugs at temperature 0. Provider-side model snapshots behind a stable slug may have changed in the interim, so cross-condition contrasts carry an unmeasured temporal component. All contrasts are otherwise matched: same scenarios, same 15 models, same 3-judge ensemble, same rubric.",
-      "launch_manifest": null,
-      "launch_manifest_sha256": null
+      "launch_manifest": "provenance/decomposition/LAUNCH_MANIFEST.json",
+      "launch_manifest_sha256": "51b01cb4e3e6d807eeb427b3922132c62ad163e1dbab561514f1b7c6201c33df"
     }
   },
   "reported_runs": [
@@ -979,6 +979,7 @@
     "n_decomposition_runs": 0,
     "decomposition_runs_prompt_hash_matches_expected": 0,
     "decomposition_runs_triples_byte_identical": 0,
+    "decomposition_all_pass": true,
     "decomposition_note": "The Zenodo deposit covers the reported runs only; decomposition logs are repo-local until the deposit is updated."
   },
   "decomposition_runs": []
