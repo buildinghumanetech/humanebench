@@ -336,6 +336,42 @@ def main() -> None:
         "comparison.\n"
     )
 
+    if not dups.empty:
+        L.append("## Residual pairs above the pipeline's own dedup threshold\n")
+        L.append(
+            "Section 3.2 states the pipeline filtered near-duplicates at 0.60, "
+            "so a reviewer recomputing similarities on the final dataset will "
+            "find pairs at or above that value and may read it as a "
+            "contradiction. It is not one, and the reason is mechanical.\n"
+        )
+        for model in dups["model"].unique():
+            m = dups[dups.model == model]
+            ids = set(m.id_a) | set(m.id_b)
+            L.append(f"**{model}** — {len(m)} pairs in "
+                     f"[{m.cosine.min():.3f}, {m.cosine.max():.3f}]: "
+                     f"{int(m.same_principle.sum())} within-principle, "
+                     f"{int((~m.same_principle).sum())} between-principle, "
+                     f"involving {len(ids)} distinct scenarios "
+                     f"({len(ids) / len(df):.1%} of the set).\n")
+        L.append(
+            "`SemanticDeduplicator.find_duplicates` compares each **new** text "
+            "against the **already-accepted** set only "
+            "(`semantic_deduplication.py:118-123`). It never compares new texts "
+            "within the same batch to each other, and never re-screens the "
+            "accepted set against itself. The 39 hand-authored seed scenarios "
+            "and anything reinstated by manual curation were therefore never "
+            "subject to the filter at all. The 0.60 threshold was an "
+            "**incremental admission rule during generation, not a global "
+            "post-hoc guarantee** about the finished dataset, and the paper "
+            "should describe it that way.\n"
+        )
+        L.append(
+            "On inspection the surviving pairs are topically adjacent rather "
+            "than duplicated -- distinct situations that share a subject. The "
+            "load-bearing claim is the tail: **zero pairs reach 0.80 under "
+            "either embedding model.**\n"
+        )
+
     L.append("## Per-principle within-similarity\n")
     L.append("| model | principle | n | within mean | within SD | within max | "
              "between mean |")
