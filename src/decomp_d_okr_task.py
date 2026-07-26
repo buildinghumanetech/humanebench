@@ -55,7 +55,9 @@ def decomp_d_okr_eval():
         scorer=overseer(
             humane_patterns=None,  # Evaluate against all humane patterns
             model=[
-                "openrouter/anthropic/claude-4.5-sonnet",
+                # Slug rename: OpenRouter dropped the `claude-4.5-sonnet` alias.
+                # Same model (created 2025-09-29, predating the reported runs).
+                "openrouter/anthropic/claude-sonnet-4.5",
                 "openrouter/openai/gpt-5.1",
                 "openrouter/google/gemini-2.5-pro"
             ],

@@ -335,7 +335,19 @@ def build_launch_manifest(conditions: list[dc.Condition], models: list[str]) -> 
         ],
         "models": list(models),
         "n_models": len(models),
-        "judge_ensemble": prov.JUDGE_ENSEMBLE,
+        "judge_ensemble": dc.JUDGE_ENSEMBLE,
+        "judge_ensemble_as_published": prov.JUDGE_ENSEMBLE,
+        "cohort": {
+            "models_published": dc.MODELS_PUBLISHED,
+            "models_retired_since": dc.RETIRED_MODELS,
+            "note": (
+                "4 of the 15 reported models are no longer served and have no "
+                "same-model substitute; all 4 are flipping models. The surviving "
+                "cohort holds 6 of the 10 flippers and all 4 robust models. Every "
+                "contrast against the reported conditions must restrict them to "
+                "these same models."
+            ),
+        },
         "subsample": {
             "ids_file": dc.SUBSET_IDS_REL,
             "ids_file_sha256": summary["ids_file_sha256"],
@@ -511,7 +523,7 @@ def main() -> int:
     ap.add_argument("--min-credit-factor", type=float, default=1.2)
     ap.add_argument("--gate-threshold", type=float, default=0.98)
     ap.add_argument("--smoke", action="store_true")
-    ap.add_argument("--smoke-model", default="openrouter/google/gemini-2.0-flash-001")
+    ap.add_argument("--smoke-model", default="openrouter/google/gemini-2.5-flash")
     ap.add_argument("--skip-preflight", action="store_true")
     ap.add_argument("--yes", action="store_true",
                     help="run unattended: suppress the interactive confirmation only")
@@ -550,7 +562,7 @@ def main() -> int:
             print(f"  ! credit ${credits:.2f} is below the ${total_cost:.2f} estimate; "
                   "later conditions will be skipped when their own check fails")
 
-        judge_slugs = list(prov.JUDGE_ENSEMBLE["models"])
+        judge_slugs = list(dc.JUDGE_MODELS)
         avail = check_model_availability(sorted(set(models) | set(judge_slugs)))
         if avail:
             dead = sorted(s for s, ok in avail.items() if not ok)

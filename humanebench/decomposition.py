@@ -45,7 +45,7 @@ COST_PER_800_SAMPLES_USD = 29.44
 
 # The 15 models of the reported cohort, exactly as recorded in
 # provenance/MANIFEST.json `eval_model`.
-MODELS = [
+MODELS_PUBLISHED = [
     "openrouter/anthropic/claude-opus-4.1",
     "openrouter/anthropic/claude-sonnet-4",
     "openrouter/anthropic/claude-sonnet-4.5",
@@ -62,6 +62,54 @@ MODELS = [
     "openrouter/openai/gpt-5.1",
     "openrouter/x-ai/grok-4",
 ]
+
+# Retired from OpenRouter between the reported runs (Nov 2025) and the
+# decomposition runs (Jul 2026). Checked against /api/v1/models on 2026-07-26.
+#
+# No substitution is made for any of these. The nearest live slugs are different
+# models (gemini-3.1-pro for gemini-3-pro, llama-3.1-70b for the 405b,
+# grok-4.20 for grok-4), and swapping a different model into a cell would make
+# the condition contrast measure the model change rather than the prompt change.
+# The decomposition therefore runs on the 11 survivors, and every contrast
+# against the reported conditions must restrict those to the same 11.
+#
+# All four happen to be flipping models, so the surviving cohort holds 6 of the
+# 10 flippers and all 4 robust models. State this in the paper; do not quietly
+# compare a decomposition flip count against the published 10/15.
+RETIRED_MODELS = {
+    "openrouter/google/gemini-2.0-flash-001": "no Gemini 2.0 Flash served; flipper",
+    "openrouter/google/gemini-3-pro-preview": "preview retired; only 3-pro-image / 3.1-pro remain; flipper",
+    "openrouter/meta-llama/llama-3.1-405b-instruct": "405B no longer served (70B/8B only); flipper",
+    "openrouter/x-ai/grok-4": "superseded by grok-4.20/4.3/4.5; flipper",
+}
+
+# Default run cohort: the reported models still served.
+MODELS = [m for m in MODELS_PUBLISHED if m not in RETIRED_MODELS]
+
+# The judge ensemble for the decomposition runs.
+#
+# provenance.JUDGE_ENSEMBLE records what the *reported* runs used and must not
+# change -- it is a historical record. The Anthropic judge was pinned there as
+# `anthropic/claude-4.5-sonnet`, an alias OpenRouter has since dropped. The
+# surviving `anthropic/claude-sonnet-4.5` is the same model: it is the slug the
+# reported runs already used for Claude Sonnet 4.5 *as an evaluated model*, and
+# OpenRouter lists it as created 2025-09-29, predating those runs. So this is a
+# slug rename, not a model change -- but it is a substitution, so it is recorded
+# in the launch manifest rather than left implicit.
+JUDGE_MODELS = [
+    "openrouter/anthropic/claude-sonnet-4.5",
+    "openrouter/openai/gpt-5.1",
+    "openrouter/google/gemini-2.5-pro",
+]
+JUDGE_SLUG_SUBSTITUTIONS = {
+    "openrouter/anthropic/claude-4.5-sonnet": "openrouter/anthropic/claude-sonnet-4.5",
+}
+JUDGE_ENSEMBLE = {
+    "models": JUDGE_MODELS,
+    "temperature": 0.0,
+    "score_attempts": 3,
+    "substitutions": JUDGE_SLUG_SUBSTITUTIONS,
+}
 
 
 @dataclass(frozen=True)
