@@ -222,7 +222,20 @@ def verify_decomposition(r: Report, manifest: dict, logs_dir: Path) -> None:
         disk_paths.add(rel)
         entry = by_path.get(rel)
         if entry is None:
-            r.fail(f"{condition}/{model}: present on disk but missing from manifest")
+            # A run that is still generating is absent from the manifest by
+            # construction -- the manifest is rebuilt after runs finish. Calling
+            # that a provenance failure would leave the verifier red for the
+            # whole of every run, which is the fastest way to teach people to
+            # ignore it. Only a COMPLETE run missing from the manifest is a real
+            # failure: that one means the manifest needs rebuilding.
+            spec = dc.CONDITIONS_BY_TASK_TYPE.get(condition)
+            n_have = sum(1 for _ in prov.iter_eval_samples(path))
+            if spec is not None and n_have < spec.expected_samples:
+                r.skip(f"{condition}/{model}: in progress "
+                       f"({n_have}/{spec.expected_samples} samples), not yet in manifest")
+            else:
+                r.fail(f"{condition}/{model}: complete but missing from manifest "
+                       f"-- rerun scripts/build_provenance.py")
             continue
 
         spec = dc.CONDITIONS_BY_TASK_TYPE[condition]
