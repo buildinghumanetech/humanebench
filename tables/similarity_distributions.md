@@ -32,6 +32,18 @@ Both checks pass, so the cached embeddings map to current rows **including row o
 
 0.60 is the threshold the construction pipeline deduplicated at (`data_generation/semantic_deduplication.py`), and it was set on MiniLM. A near-duplicate count is only interpretable as "did the dedup step work" against that model; the same threshold on text-embedding-3-large is a different scale and is reported only for comparison.
 
+## Residual pairs above the pipeline's own dedup threshold
+
+Section 3.2 states the pipeline filtered near-duplicates at 0.60, so a reviewer recomputing similarities on the final dataset will find pairs at or above that value and may read it as a contradiction. It is not one, and the reason is mechanical.
+
+**all-MiniLM-L6-v2** — 66 pairs in [0.601, 0.747]: 44 within-principle, 22 between-principle, involving 102 distinct scenarios (12.8% of the set).
+
+**text-embedding-3-large** — 165 pairs in [0.601, 0.782]: 99 within-principle, 66 between-principle, involving 181 distinct scenarios (22.6% of the set).
+
+`SemanticDeduplicator.find_duplicates` compares each **new** text against the **already-accepted** set only (`semantic_deduplication.py:118-123`). It never compares new texts within the same batch to each other, and never re-screens the accepted set against itself. The 39 hand-authored seed scenarios and anything reinstated by manual curation were therefore never subject to the filter at all. The 0.60 threshold was an **incremental admission rule during generation, not a global post-hoc guarantee** about the finished dataset, and the paper should describe it that way.
+
+On inspection the surviving pairs are topically adjacent rather than duplicated -- distinct situations that share a subject. The load-bearing claim is the tail: **zero pairs reach 0.80 under either embedding model.**
+
 ## Per-principle within-similarity
 
 | model | principle | n | within mean | within SD | within max | between mean |
