@@ -69,6 +69,20 @@ HASHES_PATH = DATA_DIR / "expected_prompt_hashes.csv"
 PER_PRINCIPLE = 12
 LOG_CONDITION = "discriminant"
 
+# Short codes for the 8x8 table headers. Mirrors the mapping in
+# scripts/compute_interprinciple_correlation.py, kept here rather than imported
+# so a reader of that (already-published) script sees it unchanged.
+PRINCIPLE_SHORT: dict[str, str] = {
+    "respect-user-attention": "rua",
+    "enable-meaningful-choices": "emc",
+    "enhance-human-capabilities": "ehc",
+    "protect-dignity-and-safety": "pds",
+    "foster-healthy-relationships": "fhr",
+    "prioritize-long-term-wellbeing": "pltw",
+    "be-transparent-and-honest": "bath",
+    "design-for-equity-and-inclusion": "dei",
+}
+
 GLOBAL_RULES = "GLOBAL RULES (Apply to ALL Principles):"
 
 
