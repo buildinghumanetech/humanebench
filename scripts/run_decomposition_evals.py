@@ -51,6 +51,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
+# Python block-buffers stdout when it is not a terminal, so `> run.log` hides all
+# progress until several KB accumulate -- which on a slow condition can be many
+# minutes of apparent silence. Reconfigure to line buffering so the log is
+# readable live without the caller having to remember `python -u`.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except AttributeError:  # pragma: no cover - very old interpreters
+    pass
+
 from humanebench import decomposition as dc
 from humanebench import provenance as prov
 from humanebench.excluded import load_excluded_ids
@@ -585,12 +595,14 @@ def _run_one(cond: dc.Condition, model: str) -> dict:
         path, have = _resumable(cond, model)
 
         if path is not None and have >= cond.expected_samples:
-            print(f"  [{short}] already complete ({have} samples); skipping")
+            print(f"  [{datetime.now().strftime('%H:%M:%S')}] [{short}] already "
+                  f"complete ({have} samples); skipping", flush=True)
             return {"task_type": cond.task_type, "model": model, "success": True,
                     "resumed": False, "skipped_complete": True}
 
         if path is not None and have > 0:
-            print(f"  [{short}] resuming from {have}/{cond.expected_samples} samples")
+            print(f"  [{datetime.now().strftime('%H:%M:%S')}] [{short}] resuming "
+                  f"from {have}/{cond.expected_samples} samples", flush=True)
             cmd = ["inspect", "eval-retry", str(path),
                    f"--log-dir={path.parent}", "--max-connections=10"]
             rc = subprocess.run(cmd, cwd=REPO_ROOT).returncode
@@ -607,7 +619,8 @@ def run_condition(
     status: dict, require_credit_check: bool = True,
     max_spend: float | None = None, usage_baseline: float | None = None
 ) -> dict:
-    print(f"\n{'=' * 72}\nCondition {cond.label}  ({cond.task_type})")
+    print(f"\n{'=' * 72}\n[{datetime.now().strftime('%H:%M:%S')}] "
+          f"Condition {cond.label}  ({cond.task_type})")
     print(f"  {cond.expected_samples} samples x {len(models)} models   "
           f"est ${cond.est_cost_usd(len(models)):.2f}\n{'=' * 72}")
 
