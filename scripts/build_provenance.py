@@ -166,6 +166,11 @@ def build_decomposition_entry(condition: str, model: str, path: Path,
     return entry
 
 
+def dc_summary_rel() -> str:
+    from humanebench import decomposition as dc
+    return str(dc.SUBSET_SUMMARY_PATH.relative_to(prov.REPO_ROOT))
+
+
 def build_decomposition_anchors() -> dict | None:
     """Anchor block for the frozen subsample and the launch manifest."""
     from humanebench import decomposition as dc
@@ -203,9 +208,21 @@ def build_manifest(logs_dir: Path) -> dict:
 
     decomp_runs = []
     decomp_anchors = build_decomposition_anchors()
-    if decomp_anchors is not None:
+    # The run walk is NOT gated on the anchors. Gating it meant a missing or
+    # renamed subsample summary silently dropped completed runs from the
+    # manifest, and verify_provenance would then pass on a manifest that
+    # documents none of them.
+    on_disk = prov.decomposition_runs(logs_dir)
+    if on_disk and decomp_anchors is None:
+        raise SystemExit(
+            f"{len(on_disk)} decomposition run(s) are on disk but "
+            f"{dc_summary_rel()} is missing, so their subset hash cannot be "
+            "verified. Restore it (or re-run build_decomposition_subsample.py) "
+            "before building provenance."
+        )
+    if on_disk:
         triples = prov.frozen_triples()
-        for condition, model, path in prov.decomposition_runs(logs_dir):
+        for condition, model, path in on_disk:
             print(f"  hashing {condition}/{model} ...", flush=True)
             decomp_runs.append(build_decomposition_entry(condition, model, path, triples))
 

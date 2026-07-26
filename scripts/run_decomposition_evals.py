@@ -404,8 +404,26 @@ def record_event(status: dict, kind: str, **fields) -> None:
 
 
 # --- run ---------------------------------------------------------------------
+def _run_one(cond: dc.Condition, model: str) -> dict:
+    """Launch one model's eval with the task path resolved against the repo.
+
+    run_evaluation builds a relative "src/<task>_task.py" and does not pin cwd,
+    so running this script from anywhere but the repo root would fail every
+    model in the condition. The smoke and retry paths already pin it; this is
+    the expensive path, so it should not be the one that does not.
+    """
+    prev = os.getcwd()
+    try:
+        os.chdir(REPO_ROOT)
+        return run_evaluation(cond.task_type, model,
+                              cond.log_dir / model.split("/")[-1])
+    finally:
+        os.chdir(prev)
+
+
 def run_condition(
-    cond: dc.Condition, models: list[str], max_workers: int, credit_factor: float, status: dict
+    cond: dc.Condition, models: list[str], max_workers: int, credit_factor: float,
+    status: dict, require_credit_check: bool = True
 ) -> dict:
     print(f"\n{'=' * 72}\nCondition {cond.label}  ({cond.task_type})")
     print(f"  {cond.expected_samples} samples x {len(models)} models   "
@@ -414,7 +432,15 @@ def run_condition(
     credits = get_openrouter_credits()
     needed = cond.est_cost_usd(len(models)) * credit_factor
     if credits is None:
-        print("  ! could not read OpenRouter credit; proceeding (set OPENROUTER_API_KEY to enable)")
+        if require_credit_check:
+            msg = ("credit balance unreadable and --require-credit-check is set "
+                   "(default); refusing to spend blind")
+            print(f"  ABORT: {msg}")
+            record_event(status, "credit_unknown_abort", condition=cond.task_type,
+                         detail=msg)
+            return {"status": "skipped_credit_unreadable"}
+        print("  ! could not read OpenRouter credit; proceeding anyway "
+              "(--no-require-credit-check)")
     elif credits < needed:
         msg = (f"insufficient credit: ${credits:.2f} available, "
                f"${needed:.2f} needed ({credit_factor}x est)")
@@ -430,24 +456,27 @@ def run_condition(
     aborted_midway = False
     per_model_cost = cond.est_cost_usd(len(models)) / max(len(models), 1)
 
+    # Submit in waves. Submitting every model up front means all of them have
+    # already started by the time the 5th finishes, and cancel() on a running
+    # future is a no-op -- so the mid-condition abort would cancel nothing.
+    wave = max(max_workers, 1)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
         futures = {
-            ex.submit(
-                run_evaluation, cond.task_type, model, cond.log_dir / model.split("/")[-1]
-            ): model
-            for model in models
+            ex.submit(_run_one, cond, m): m for m in models[:wave]
         }
-        pending = set(futures)
-        for i, fut in enumerate(concurrent.futures.as_completed(futures), start=1):
-            pending.discard(fut)
+        queued = list(models[wave:])
+        while futures:
+            fut = next(concurrent.futures.as_completed(list(futures)))
+            model_name = futures.pop(fut)
+            i = len(results) + 1
             try:
                 results.append(fut.result())
             except Exception as exc:  # never lose the run's status to one model
-                model = futures[fut]
-                print(f"  ! {model} raised: {exc}")
-                results.append({"model": model, "success": False, "error": repr(exc)})
+                print(f"  ! {model_name} raised: {exc}")
+                results.append({"model": model_name, "success": False,
+                                "error": repr(exc)})
                 record_event(status, "model_exception", condition=cond.task_type,
-                             model=model, error=repr(exc))
+                             model=model_name, error=repr(exc))
 
             # Mid-condition credit check on the expensive arm, so a drain is
             # caught while there are still un-started models to protect.
@@ -462,15 +491,20 @@ def run_condition(
                           f"${remaining_need:.2f} still needed")
                     if mid < remaining_need:
                         aborted_midway = True
-                        n_cancelled = sum(1 for f in pending if f.cancel())
-                        print(f"  ABORT mid-condition: cancelled {n_cancelled} "
-                              "queued model(s); in-flight runs will finish")
+                        n_withheld = len(queued)
+                        queued.clear()
+                        print(f"  ABORT mid-condition: withheld {n_withheld} "
+                              "un-started model(s); in-flight runs will finish")
                         record_event(status, "credit_abort_midway",
                                      condition=cond.task_type,
                                      credit_usd=_json_safe(mid),
                                      needed_usd=round(remaining_need, 2),
-                                     cancelled=n_cancelled)
+                                     withheld=n_withheld)
                 save_status(status)
+
+            if queued and not aborted_midway:
+                nxt = queued.pop(0)
+                futures[ex.submit(_run_one, cond, nxt)] = nxt
 
     n_failed = sum(1 for r in results if not r.get("success"))
     print(f"  subprocesses: {len(results) - n_failed} ok, {n_failed} failed")
@@ -530,6 +564,10 @@ def main() -> int:
     ap.add_argument("--allow-missing-slugs", action="store_true",
                     help="proceed even if an evaluated model's slug is not live on "
                          "OpenRouter. A missing *judge* slug always aborts.")
+    ap.add_argument("--no-require-credit-check", action="store_true",
+                    help="proceed even when the OpenRouter balance cannot be read "
+                         "(by default an unreadable balance aborts rather than "
+                         "spending blind)")
     ap.add_argument("--force", action="store_true",
                     help="re-run conditions already recorded complete in run_status.json")
     args = ap.parse_args()
@@ -583,7 +621,13 @@ def main() -> int:
                       "from --models.")
                 return 3
         else:
-            print("  slugs: availability check unavailable")
+            msg = ("OpenRouter /models returned nothing, so judge-slug "
+                   "availability could not be checked")
+            if not args.allow_missing_slugs:
+                print(f"  ABORT: {msg}. A retired judge slug fails every sample. "
+                      "Re-run with --allow-missing-slugs to proceed unchecked.")
+                return 3
+            print(f"  ! {msg}; proceeding (--allow-missing-slugs)")
 
     if not args.yes:
         try:
@@ -622,7 +666,9 @@ def main() -> int:
                   "skipping. Use --force to re-run.")
             continue
 
-        outcome = run_condition(cond, models, args.max_workers, args.min_credit_factor, status)
+        outcome = run_condition(cond, models, args.max_workers,
+                                args.min_credit_factor, status,
+                                require_credit_check=not args.no_require_credit_check)
         if outcome["status"] != "ran":
             status["conditions"][cond.task_type] = outcome
             save_status(status)
