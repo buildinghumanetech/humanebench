@@ -29,7 +29,7 @@ import math
 import zipfile
 from collections import Counter
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import krippendorff
 import numpy as np
@@ -91,10 +91,17 @@ def _load_exclude_ids(path: Path | None) -> set[str]:
 def collect_long_table(
     logs_dir: Path,
     exclude_ids: set[str] | None = None,
+    personas: Sequence[str] = PERSONAS,
 ) -> tuple[pd.DataFrame, dict]:
     """Walk logs/ and build a long-format DataFrame of per-judge scores.
 
     Returns the DataFrame and a stats dict tracking inclusion/exclusion counts.
+
+    ``personas`` names the top-level log directories to walk. It defaults to the
+    three reported conditions, so the reported agreement figures are unaffected;
+    the decomposition scripts pass their own condition list to build a separate
+    table. Agreement statistics must not be pooled across the two sets -- the
+    published alpha and design effects are conditioned on the reported three.
     """
     exclude = exclude_ids or set()
     rows = []
@@ -107,7 +114,7 @@ def collect_long_table(
         "files_scanned": 0,
     }
 
-    for persona in PERSONAS:
+    for persona in personas:
         persona_dir = logs_dir / persona
         if not persona_dir.is_dir():
             print(f"[warn] missing persona dir: {persona_dir}")

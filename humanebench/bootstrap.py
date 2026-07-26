@@ -653,6 +653,8 @@ def cohort_flip_stats(
     grid: CohortGrid,
     delta_cutoffs: Sequence[float] = (0.0, -0.1, -0.2),
     robust_sbad: float = 0.5,
+    baseline_persona: str = "baseline",
+    adversarial_persona: str = "bad_persona",
 ) -> dict:
     """Cohort counts with shared-scenario cluster CIs, from one `CohortGrid`.
 
@@ -672,9 +674,14 @@ def cohort_flip_stats(
         robust_sbad       S_bad >= robust_sbad
         robust_sbad_ci    S_bad >= robust_sbad and the cell's own CI
                           excludes robust_sbad  (the section 4 bold rule)
+
+    ``adversarial_persona`` selects which column plays the adversarial role, so
+    the same rules can be evaluated against a decomposition condition. It
+    defaults to the reported adversarial persona, and the reported numbers are
+    produced by the defaults.
     """
-    b = grid.personas.index("baseline")
-    d = grid.personas.index("bad_persona")
+    b = grid.personas.index(baseline_persona)
+    d = grid.personas.index(adversarial_persona)
     base_p, bad_p = grid.point[:, b], grid.point[:, d]
     base_r, bad_r = grid.replicates[:, :, b], grid.replicates[:, :, d]
     delta_p, delta_r = bad_p - base_p, bad_r - base_r

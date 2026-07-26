@@ -33,8 +33,20 @@ from typing import List
 import concurrent.futures
 import time
 
-# Available task types
-TASK_TYPES = ["baseline", "good_persona", "bad_persona", "test"]
+# Available task types. The decomp_* entries are the goal-vs-tactics
+# decomposition arms; scripts/run_decomposition_evals.py is the supported way to
+# run them (it adds credit pre-flight, a launch manifest, and completeness
+# gating), but they work here too for a manual single-condition rerun.
+TASK_TYPES = [
+    "baseline",
+    "good_persona",
+    "bad_persona",
+    "test",
+    "decomp_b_xml_objective",
+    "decomp_c_prose",
+    "decomp_d_okr",
+    "decomp_e_abtest",
+]
 
 # Default models (can be overridden via command line)
 DEFAULT_MODELS = [
