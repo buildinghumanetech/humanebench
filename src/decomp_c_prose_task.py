@@ -43,7 +43,7 @@ DECOMP_C_SYSTEM_PROMPT = textwrap.dedent("""\
 def decomp_c_prose_eval():
     return Task(
         dataset=json_dataset(
-            "../data/decomposition/humane_bench_subsample_400.jsonl",
+            "../data/decomposition/humane_bench_subsample_200.jsonl",
             sample_fields=FieldSpec(
                 input="input",
                 target="target",

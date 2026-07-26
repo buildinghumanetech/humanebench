@@ -320,6 +320,57 @@ def prompt_for(condition: Condition) -> str:
     return read_prompt_constant(condition.task_file, condition.prompt_const)
 
 
+def task_file_dataset(task_file: Path) -> str | None:
+    """The dataset path literal inside a task file's ``json_dataset(...)`` call.
+
+    Read by AST rather than by importing, for the same reason as the prompt.
+    """
+    tree = ast.parse(task_file.read_text())
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call)
+                and (getattr(node.func, "id", None) == "json_dataset"
+                     or getattr(node.func, "attr", None) == "json_dataset")
+                and node.args
+                and isinstance(node.args[0], ast.Constant)):
+            return str(node.args[0].value)
+    return None
+
+
+def check_dataset_consistency(conditions: "tuple[Condition, ...] | None" = None) -> list[str]:
+    """Verify each condition's declared dataset matches what its task file loads.
+
+    These are two independent declarations of the same fact -- ``dataset_rel``
+    here, and the literal inside ``json_dataset(...)`` there -- and nothing
+    forces them to agree. A divergence is silent and expensive: the runner
+    reports the size it *expects*, the gate divides by that number, and the eval
+    reads a different file (or none). This actually happened: the subsample was
+    resized 200 -> 400 -> 200, the task files were updated on the way up and not
+    on the way back down, and C and D were left pointing at a deleted file.
+
+    Returns a list of human-readable problems; empty means consistent.
+    """
+    problems: list[str] = []
+    for c in (conditions or CONDITIONS):
+        if not c.task_file.exists():
+            problems.append(f"{c.label}: task file missing: {c.task_file_rel}")
+            continue
+        declared = c.dataset_rel
+        in_task = task_file_dataset(c.task_file)
+        if in_task is None:
+            problems.append(f"{c.label}: no json_dataset(...) literal in {c.task_file_rel}")
+            continue
+        # Task files use a path relative to src/; the Condition stores repo-relative.
+        resolved = (SRC_DIR / in_task).resolve()
+        if resolved != (REPO_ROOT / declared).resolve():
+            problems.append(
+                f"{c.label}: task file loads {in_task!r} -> {resolved}, but the "
+                f"condition declares {declared!r}"
+            )
+        elif not resolved.exists():
+            problems.append(f"{c.label}: dataset does not exist on disk: {resolved}")
+    return problems
+
+
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 

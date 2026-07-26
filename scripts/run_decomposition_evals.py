@@ -726,6 +726,17 @@ def main() -> int:
         print("ERROR: frozen subsample missing. Run scripts/build_decomposition_subsample.py")
         return 2
 
+    # A condition declares its dataset twice -- here and inside its task file --
+    # and nothing forces those to agree. A mismatch is silent: this runner would
+    # report the size it expects and gate on that number while the eval read a
+    # different file, or none. Checked before anything is spent.
+    problems = dc.check_dataset_consistency(tuple(selected))
+    if problems:
+        print("ERROR: task file / condition dataset mismatch:")
+        for pr in problems:
+            print(f"  - {pr}")
+        return 2
+
     total_cost = sum(c.est_cost_usd(len(models)) for c in selected)
     print("Goal-vs-tactics decomposition launch")
     print(f"  conditions : {', '.join(f'{c.label}={c.task_type}' for c in selected)}")
