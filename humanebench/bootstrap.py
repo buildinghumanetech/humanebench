@@ -605,6 +605,26 @@ def bootstrap_cohort_grid(
 
     n_missing = np.isnan(mat).sum(axis=1).reshape(n_m, n_p)
 
+    # A cell missing most of the frame is almost always a mixed-scale mistake:
+    # comparing a persona scored on all 788 scenarios against one scored on a
+    # 200-scenario subsample silently produces an *unpaired* contrast, which
+    # biases the point estimate and narrows the CI. Ragged cells of a few
+    # scenarios (judge-failure cascades) are normal and stay silent.
+    frac_missing = n_missing / max(n_s, 1)
+    bad = np.argwhere(frac_missing > 0.25)
+    if bad.size:
+        worst = ", ".join(
+            f"{models[i]}/{personas[j]} missing {n_missing[i, j]}/{n_s}"
+            for i, j in bad[:4]
+        )
+        warnings.warn(
+            f"{len(bad)} cell(s) are missing >25% of the {n_s}-scenario frame "
+            f"({worst}). If you are mixing full-scale and subsample conditions, "
+            "pass scenario_ids= the shared scenario set so the contrast stays "
+            "paired.",
+            stacklevel=2,
+        )
+
     # Column blocks, one per principle present in the frame.
     principle_cols: list[np.ndarray] = []
     for principle in PRINCIPLES:

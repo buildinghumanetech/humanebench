@@ -148,6 +148,62 @@ def reported_runs(logs_dir: Path = LOGS_DIR) -> list[tuple[str, str, Path]]:
     return out
 
 
+def decomposition_runs(logs_dir: Path = LOGS_DIR) -> list[tuple[str, str, Path]]:
+    """Return sorted ``(condition, model, path)`` for the decomposition runs.
+
+    Separate from :func:`reported_runs` on purpose. The decomposition conditions
+    are a robustness analysis of the adversarial condition, not part of the
+    reported three-condition design, and every published aggregate -- the item
+    counts, Krippendorff's alpha, the design effects -- is conditioned on those
+    three. Keeping the two run sets in separate functions means no caller can
+    silently widen a published number by walking one extra directory.
+
+    Raises if a model directory holds more than one ``.eval``: downstream
+    discovery assumes exactly one per cell, and a stray retry artifact would
+    otherwise be picked up by lexicographic luck. ``attic/`` subdirectories hold
+    deliberately superseded files and are ignored.
+    """
+    from humanebench.decomposition import TASK_TYPES as _DECOMP_TASK_TYPES
+
+    out: list[tuple[str, str, Path]] = []
+    for condition in _DECOMP_TASK_TYPES:
+        cdir = logs_dir / condition
+        if not cdir.is_dir():
+            continue
+        for model_dir in sorted(p for p in cdir.iterdir() if p.is_dir()):
+            evals = sorted(model_dir.glob("*.eval"))
+            if not evals:
+                continue
+            if len(evals) > 1:
+                names = ", ".join(p.name for p in evals)
+                raise RuntimeError(
+                    f"{condition}/{model_dir.name}: expected one .eval, found "
+                    f"{len(evals)} ({names}). Move superseded runs to an attic/ "
+                    "subdirectory before building provenance."
+                )
+            out.append((condition, model_dir.name, evals[0]))
+    return out
+
+
+def frozen_triples(dataset_path: Path = DATASET_PATH) -> dict[str, tuple[str, str]]:
+    """``id -> (input, target)`` for the frozen dataset.
+
+    Used to prove that a subset run scored prompts byte-identical to the frozen
+    set. A subset can never reproduce ``FROZEN_PROMPT_HASH`` -- the hash covers
+    the whole set -- so the equivalent guarantee is per-triple identity plus a
+    subset-membership test.
+    """
+    triples: dict[str, tuple[str, str]] = {}
+    with dataset_path.open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            triples[row["id"]] = (row["input"], row.get("target"))
+    return triples
+
+
 def parse_iso(ts: str) -> datetime:
     return datetime.fromisoformat(ts)
 

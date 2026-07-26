@@ -52,6 +52,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from humanebench import decomposition as dc
 from humanebench import provenance as prov
+from humanebench.excluded import load_excluded_ids
 from run_parallel_evals import run_evaluation
 
 OUT_DIR = REPO_ROOT / "provenance" / "decomposition"
@@ -80,7 +81,13 @@ def _openrouter_get(path: str, timeout: float = 20.0) -> dict | None:
 
 
 def get_openrouter_credits() -> float | None:
-    """Remaining credit in USD, or None if it cannot be determined."""
+    """Remaining credit in USD, or None if it cannot be determined.
+
+    An uncapped key reports ``limit: null``. That is returned as None
+    (*unknown*), never as infinity: an infinite balance would make every
+    ``credits < needed`` comparison false and silently disable the spend guard
+    for the whole night, which is the opposite of what the guard is for.
+    """
     payload = _openrouter_get("/credits")
     if payload and isinstance(payload.get("data"), dict):
         d = payload["data"]
@@ -92,11 +99,16 @@ def get_openrouter_credits() -> float | None:
     if payload and isinstance(payload.get("data"), dict):
         d = payload["data"]
         limit, usage = d.get("limit"), d.get("usage")
-        if limit is None:
-            return math.inf  # unlimited key
-        if usage is not None:
+        if limit is not None and usage is not None:
             return float(limit) - float(usage)
     return None
+
+
+def _json_safe(value):
+    """NaN/inf are not valid JSON; keep run_status.json machine-readable."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
 
 
 def check_model_availability(slugs: list[str]) -> dict[str, bool]:
@@ -110,8 +122,25 @@ def check_model_availability(slugs: list[str]) -> dict[str, bool]:
 
 # --- eval log inspection -----------------------------------------------------
 def latest_eval(model_dir: Path) -> Path | None:
+    """Newest .eval by filename (Inspect prefixes an ISO timestamp)."""
     evals = sorted(p for p in model_dir.glob("*.eval") if p.is_file())
     return evals[-1] if evals else None
+
+
+def best_eval(model_dir: Path, exclude: set[str] | None = None) -> Path | None:
+    """The .eval holding the most usable data, tie-broken by newest.
+
+    "Newest" is the wrong criterion on its own: a re-run that dies early leaves
+    a fresh but truncated file next to a complete one from a previous night.
+    Selecting on scored-sample count keeps the run that actually has the data,
+    which is what the gate and the analysis need.
+    """
+    evals = sorted(p for p in model_dir.glob("*.eval") if p.is_file())
+    if not evals:
+        return None
+    if len(evals) == 1:
+        return evals[0]
+    return max(evals, key=lambda p: (score_census(p, exclude)["n_fully_scored"], p.name))
 
 
 def score_census(eval_path: Path, exclude: set[str] | None = None) -> dict:
@@ -173,8 +202,6 @@ def score_census(eval_path: Path, exclude: set[str] | None = None) -> dict:
 
 def gate_condition(cond: dc.Condition, models: list[str], threshold: float) -> dict:
     """Per-model completeness census for a finished condition."""
-    from humanebench.excluded import load_excluded_ids
-
     exclude = load_excluded_ids(cond.dataset_path)
     denom = cond.expected_analysis_samples()
     report: dict = {
@@ -186,7 +213,7 @@ def gate_condition(cond: dc.Condition, models: list[str], threshold: float) -> d
     worst = 1.0
     for model in models:
         model_dir = cond.log_dir / model.split("/")[-1]
-        path = latest_eval(model_dir) if model_dir.is_dir() else None
+        path = best_eval(model_dir, exclude) if model_dir.is_dir() else None
         if path is None:
             report["models"][model] = {"status": "missing", "fraction_scored": 0.0}
             worst = 0.0
@@ -205,7 +232,8 @@ def gate_condition(cond: dc.Condition, models: list[str], threshold: float) -> d
     return report
 
 
-def archive_superseded(cond: dc.Condition, models: list[str]) -> list[str]:
+def archive_superseded(cond: dc.Condition, models: list[str],
+                       exclude: set[str] | None = None) -> list[str]:
     """Keep exactly one .eval per model dir; retries leave extras behind.
 
     Every discovery path downstream (provenance, the analysis scripts) assumes
@@ -219,9 +247,12 @@ def archive_superseded(cond: dc.Condition, models: list[str]) -> list[str]:
         evals = sorted(p for p in model_dir.glob("*.eval") if p.is_file())
         if len(evals) <= 1:
             continue
+        keep = best_eval(model_dir, exclude)
         attic = model_dir / "attic"
         attic.mkdir(exist_ok=True)
-        for path in evals[:-1]:
+        for path in evals:
+            if path == keep:
+                continue
             shutil.move(str(path), str(attic / path.name))
             moved.append(str(path.relative_to(REPO_ROOT)))
     return moved
@@ -234,7 +265,7 @@ def retry_incomplete(cond: dc.Condition, models: list[str], max_workers: int) ->
         model_dir = cond.log_dir / model.split("/")[-1]
         if not model_dir.is_dir():
             continue
-        path = latest_eval(model_dir)
+        path = best_eval(model_dir)
         if path is None:
             continue
         census = score_census(path)
@@ -245,8 +276,16 @@ def retry_incomplete(cond: dc.Condition, models: list[str], max_workers: int) ->
     print(f"  retrying {len(targets)} incomplete run(s) for {cond.task_type}")
 
     def _retry(path: Path) -> None:
+        # --log-dir is mandatory here: the CLI defaults it to ./logs, so without
+        # it a recovered run lands in the logs/ root instead of the model's
+        # directory. The retry would spend money, succeed, and then be invisible
+        # to the gate, the archiver, and every analysis path.
         subprocess.run(
-            ["inspect", "eval-retry", str(path), "--max-connections=10"],
+            [
+                "inspect", "eval-retry", str(path),
+                f"--log-dir={path.parent}",
+                "--max-connections=10",
+            ],
             cwd=REPO_ROOT,
             check=False,
         )
@@ -376,6 +415,8 @@ def run_condition(
     started = datetime.now(timezone.utc).isoformat()
     results: list[dict] = []
     halfway_checked = False
+    aborted_midway = False
+    per_model_cost = cond.est_cost_usd(len(models)) / max(len(models), 1)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
         futures = {
@@ -384,33 +425,58 @@ def run_condition(
             ): model
             for model in models
         }
+        pending = set(futures)
         for i, fut in enumerate(concurrent.futures.as_completed(futures), start=1):
-            results.append(fut.result())
-            # Mid-condition credit check on the expensive arm: catches a drain
-            # while there are still models left to protect.
+            pending.discard(fut)
+            try:
+                results.append(fut.result())
+            except Exception as exc:  # never lose the run's status to one model
+                model = futures[fut]
+                print(f"  ! {model} raised: {exc}")
+                results.append({"model": model, "success": False, "error": repr(exc)})
+                record_event(status, "model_exception", condition=cond.task_type,
+                             model=model, error=repr(exc))
+
+            # Mid-condition credit check on the expensive arm, so a drain is
+            # caught while there are still un-started models to protect.
             if not halfway_checked and cond.scale == "full" and i >= 5:
                 halfway_checked = True
                 mid = get_openrouter_credits()
+                record_event(status, "credit_check", condition=cond.task_type,
+                             after_models=i, credit_usd=_json_safe(mid))
                 if mid is not None:
-                    print(f"  [mid-condition] credit remaining: ${mid:.2f}")
-                    record_event(status, "credit_check", condition=cond.task_type,
-                                 after_models=i, credit_usd=mid)
+                    remaining_need = (len(models) - i) * per_model_cost * credit_factor
+                    print(f"  [mid-condition] credit ${mid:.2f}, "
+                          f"${remaining_need:.2f} still needed")
+                    if mid < remaining_need:
+                        aborted_midway = True
+                        n_cancelled = sum(1 for f in pending if f.cancel())
+                        print(f"  ABORT mid-condition: cancelled {n_cancelled} "
+                              "queued model(s); in-flight runs will finish")
+                        record_event(status, "credit_abort_midway",
+                                     condition=cond.task_type,
+                                     credit_usd=_json_safe(mid),
+                                     needed_usd=round(remaining_need, 2),
+                                     cancelled=n_cancelled)
+                save_status(status)
 
     n_failed = sum(1 for r in results if not r.get("success"))
     print(f"  subprocesses: {len(results) - n_failed} ok, {n_failed} failed")
 
-    retry_incomplete(cond, models, max_workers)
-    moved = archive_superseded(cond, models)
+    exclude = load_excluded_ids(cond.dataset_path)
+    if not aborted_midway:
+        retry_incomplete(cond, models, max_workers)
+    moved = archive_superseded(cond, models, exclude)
     if moved:
         print(f"  archived {len(moved)} superseded .eval file(s) to attic/")
 
     return {
-        "status": "ran",
+        "status": "aborted_midway_insufficient_credit" if aborted_midway else "ran",
         "started_at": started,
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "n_subprocess_failures": n_failed,
         "archived": moved,
-        "credit_before_usd": credits,
+        "credit_before_usd": _json_safe(credits),
     }
 
 
@@ -447,7 +513,13 @@ def main() -> int:
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--smoke-model", default="openrouter/google/gemini-2.0-flash-001")
     ap.add_argument("--skip-preflight", action="store_true")
-    ap.add_argument("--yes", action="store_true", help="run unattended, no confirmation")
+    ap.add_argument("--yes", action="store_true",
+                    help="run unattended: suppress the interactive confirmation only")
+    ap.add_argument("--allow-missing-slugs", action="store_true",
+                    help="proceed even if an evaluated model's slug is not live on "
+                         "OpenRouter. A missing *judge* slug always aborts.")
+    ap.add_argument("--force", action="store_true",
+                    help="re-run conditions already recorded complete in run_status.json")
     args = ap.parse_args()
 
     selected = [c for c in dc.CONDITIONS if c.task_type in set(args.conditions)]
@@ -474,17 +546,30 @@ def main() -> int:
         print("\nPre-flight")
         credits = get_openrouter_credits()
         print(f"  credit: {'unknown' if credits is None else f'${credits:.2f}'}")
-        slugs = models + list(prov.JUDGE_ENSEMBLE["models"])
-        avail = check_model_availability(slugs)
+        if credits is not None and credits < total_cost:
+            print(f"  ! credit ${credits:.2f} is below the ${total_cost:.2f} estimate; "
+                  "later conditions will be skipped when their own check fails")
+
+        judge_slugs = list(prov.JUDGE_ENSEMBLE["models"])
+        avail = check_model_availability(sorted(set(models) | set(judge_slugs)))
         if avail:
-            dead = [s for s, ok in avail.items() if not ok]
-            print(f"  slugs: {len(slugs) - len(dead)}/{len(slugs)} live on OpenRouter")
+            dead = sorted(s for s, ok in avail.items() if not ok)
+            print(f"  slugs: {len(avail) - len(dead)}/{len(avail)} live on OpenRouter")
             if dead:
                 print("  ! NOT FOUND: " + ", ".join(dead))
-                if not args.yes:
-                    print("  (8 months on from the reported runs, slug rot is expected; "
-                          "re-run with --yes to proceed anyway)")
-                    return 3
+            # A dead judge slug is never survivable: every sample it scores
+            # fails, the ensemble returns NaN, and the condition burns its full
+            # cost producing nothing usable. This aborts regardless of --yes.
+            dead_judges = [s for s in dead if s in judge_slugs]
+            if dead_judges:
+                print(f"  ABORT: judge slug(s) unavailable: {', '.join(dead_judges)}. "
+                      "Every sample would fail to score.")
+                return 3
+            if dead and not args.allow_missing_slugs:
+                print("  ABORT: evaluated-model slug(s) unavailable. Re-run with "
+                      "--allow-missing-slugs to proceed without them, or drop them "
+                      "from --models.")
+                return 3
         else:
             print("  slugs: availability check unavailable")
 
@@ -515,6 +600,16 @@ def main() -> int:
 
     t0 = time.time()
     for cond in selected:  # dc.CONDITIONS order == priority order
+        # Resume: a condition already recorded complete is never re-run, so
+        # restarting after a partial night costs nothing and cannot overwrite
+        # good data with a fresh truncated run.
+        prior = status["conditions"].get(cond.task_type) or {}
+        if prior.get("completeness") == "complete" and not args.force:
+            print(f"\nCondition {cond.label} ({cond.task_type}) already complete "
+                  f"(gate {prior.get('gate', {}).get('worst_fraction_scored')}); "
+                  "skipping. Use --force to re-run.")
+            continue
+
         outcome = run_condition(cond, models, args.max_workers, args.min_credit_factor, status)
         if outcome["status"] != "ran":
             status["conditions"][cond.task_type] = outcome
