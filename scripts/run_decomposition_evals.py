@@ -503,19 +503,90 @@ def record_event(status: dict, kind: str, **fields) -> None:
 
 
 # --- run ---------------------------------------------------------------------
-def _run_one(cond: dc.Condition, model: str) -> dict:
-    """Launch one model's eval with the task path resolved against the repo.
+def _log_matches_current_config(cond: dc.Condition, model: str, path: Path) -> str | None:
+    """Return None if ``path`` was produced by the current config, else a reason.
 
-    run_evaluation builds a relative "src/<task>_task.py" and does not pin cwd,
-    so running this script from anywhere but the repo root would fail every
-    model in the condition. The smoke and retry paths already pin it; this is
-    the expensive path, so it should not be the one that does not.
+    This gates resumption, and it has to be strict. ``inspect eval-retry``
+    replays the task configuration recorded *in the log*, not the one on disk
+    today -- so retrying a log written under a stale config silently perpetuates
+    that config no matter what the task file now says. A log is only resumable
+    if the things that define the experiment still match.
     """
+    try:
+        header = prov.read_eval_header(path)
+    except Exception as exc:
+        return f"unreadable header ({exc})"
+
+    ev = header.get("eval") or {}
+    if ev.get("model") != model:
+        return f"logged model {ev.get('model')!r} != {model!r}"
+
+    logged_ds = (ev.get("dataset") or {}).get("location") or ""
+    if Path(logged_ds).name != cond.dataset_path.name:
+        return (f"logged dataset {Path(logged_ds).name!r} != "
+                f"{cond.dataset_path.name!r}")
+
+    expected_prompt = dc.prompt_for(cond)
+    for sample in prov.iter_eval_samples(path):
+        sysmsg = next((m.get("content") for m in (sample.get("messages") or [])
+                       if m.get("role") == "system"), None)
+        if sysmsg != expected_prompt:
+            return "logged system message differs from the current prompt"
+        break
+    else:
+        return "log holds no samples"
+    return None
+
+
+def _resumable(cond: dc.Condition, model: str) -> tuple[Path | None, int]:
+    """Find a resumable log for this cell and how many samples it already has."""
+    model_dir = cond.log_dir / model.split("/")[-1]
+    if not model_dir.is_dir():
+        return None, 0
+    best, best_n = None, -1
+    for path in sorted(model_dir.glob("*.eval")):
+        reason = _log_matches_current_config(cond, model, path)
+        if reason is not None:
+            print(f"  [{model.split('/')[-1]}] not resumable: {reason}")
+            continue
+        n = sum(1 for _ in prov.iter_eval_samples(path))
+        if n > best_n:
+            best, best_n = path, n
+    return best, max(best_n, 0)
+
+
+def _run_one(cond: dc.Condition, model: str) -> dict:
+    """Run one model, resuming an existing partial log where possible.
+
+    Without this, a run killed partway is unrecoverable in practice: the
+    orchestrator resumes per *condition*, so re-running relaunches every model
+    and re-pays for the ones that already finished. Resuming per *model* makes
+    a kill cost only the samples that had not been generated yet.
+
+    Paths are resolved against the repo root because run_evaluation builds a
+    relative "src/<task>_task.py" and does not pin cwd itself.
+    """
+    short = model.split("/")[-1]
+    log_dir = cond.log_dir / short
     prev = os.getcwd()
     try:
         os.chdir(REPO_ROOT)
-        return run_evaluation(cond.task_type, model,
-                              cond.log_dir / model.split("/")[-1])
+        path, have = _resumable(cond, model)
+
+        if path is not None and have >= cond.expected_samples:
+            print(f"  [{short}] already complete ({have} samples); skipping")
+            return {"task_type": cond.task_type, "model": model, "success": True,
+                    "resumed": False, "skipped_complete": True}
+
+        if path is not None and have > 0:
+            print(f"  [{short}] resuming from {have}/{cond.expected_samples} samples")
+            cmd = ["inspect", "eval-retry", str(path),
+                   f"--log-dir={path.parent}", "--max-connections=10"]
+            rc = subprocess.run(cmd, cwd=REPO_ROOT).returncode
+            return {"task_type": cond.task_type, "model": model,
+                    "success": rc == 0, "resumed": True, "resumed_from": have}
+
+        return run_evaluation(cond.task_type, model, log_dir)
     finally:
         os.chdir(prev)
 
@@ -599,15 +670,18 @@ def run_condition(
                 record_event(status, "model_exception", condition=cond.task_type,
                              model=model_name, error=repr(exc))
 
-            # Mid-condition credit check on the expensive arm, so a drain is
-            # caught while there are still un-started models to protect.
-            if not halfway_checked and cond.scale == "full" and i >= 5:
-                halfway_checked = True
+            # Checked on EVERY completion, not once partway. The pool tops up
+            # after each completion, so a single check at i>=5 fired when only
+            # one model was still un-started -- it withheld ~1 model's cost
+            # rather than the several it was meant to protect.
+            if queued:
                 mid = get_openrouter_credits()
                 mid_spent = _spend_so_far(usage_baseline)
-                record_event(status, "credit_check", condition=cond.task_type,
-                             after_models=i, credit_usd=_json_safe(mid),
-                             spent_usd=_json_safe(mid_spent))
+                if not halfway_checked:
+                    halfway_checked = True
+                    record_event(status, "credit_check", condition=cond.task_type,
+                                 after_models=i, credit_usd=_json_safe(mid),
+                                 spent_usd=_json_safe(mid_spent))
                 if (max_spend is not None and mid_spent is not None
                         and mid_spent >= max_spend):
                     aborted_midway = True
@@ -698,6 +772,11 @@ def main() -> int:
     ap.add_argument("--gate-threshold", type=float, default=0.98)
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--smoke-model", default="openrouter/google/gemini-2.5-flash")
+    ap.add_argument("--preflight-only", action="store_true",
+                    help="run every pre-launch check and exit WITHOUT spending. "
+                         "Preflight and launch were previously the same command "
+                         "distinguished only by the y/N answer, which made an "
+                         "accidental launch a single keystroke away.")
     ap.add_argument("--skip-preflight", action="store_true")
     ap.add_argument("--yes", action="store_true",
                     help="run unattended: suppress the interactive confirmation only")
@@ -787,9 +866,13 @@ def main() -> int:
                 return 3
             print(f"  ! {msg}; proceeding (--allow-missing-slugs)")
 
+    if args.preflight_only:
+        print("\n--preflight-only: all checks passed, exiting without spending.")
+        return 0
+
     if not args.yes:
         try:
-            if input("\nProceed? [y/N] ").strip().lower() not in {"y", "yes"}:
+            if input("\nLAUNCH and spend? [y/N] ").strip().lower() not in {"y", "yes"}:
                 print("aborted")
                 return 1
         except EOFError:
