@@ -106,6 +106,35 @@ def _rel(path: Path) -> str:
         return str(path)
 
 
+def _n_scored(path: Path) -> int:
+    """Samples carrying a full, on-scale severity -- the analysis admission rule."""
+    n = 0
+    for sample in prov.iter_eval_samples(path):
+        overseer = (sample.get("scores") or {}).get("overseer")
+        if not overseer:
+            continue
+        meta = overseer.get("metadata") or {}
+        individual, judges = meta.get("individual_scores"), meta.get("ensemble_models")
+        if not individual or not judges or len(individual) != len(judges):
+            continue
+        if all(s in ORDINAL_LEVELS for s in individual):
+            n += 1
+    return n
+
+
+def select_eval(paths: list[Path]) -> Path:
+    """Pick the same `.eval` the runner's completeness gate blessed.
+
+    The gate uses `best_eval`, which ranks on `score_census(...)["n_fully_scored"]`.
+    Ranking on raw sample count instead would diverge whenever more than one log
+    survives in a model directory -- an interrupted run before `archive_superseded`
+    filed the retry into `attic/`, or a hand-run `inspect eval`. A retry log with
+    all 768 samples but 740 scored ties on sample count and wins on recency, so
+    the gate would bless one file while the matrix was built from another.
+    """
+    return max(paths, key=lambda p: (_n_scored(p), p.name))
+
+
 # --- loading -----------------------------------------------------------------
 def load_run_scores(logs_dir: Path, models: list[str]) -> tuple[pd.DataFrame, dict]:
     """Long table of the multi-label run, one row per judged call.
@@ -124,7 +153,7 @@ def load_run_scores(logs_dir: Path, models: list[str]) -> tuple[pd.DataFrame, di
         paths = sorted(model_dir.glob("*.eval")) if model_dir.is_dir() else []
         if not paths:
             continue
-        path = max(paths, key=lambda p: (len(list(prov.iter_eval_samples(p))), p.name))
+        path = select_eval(paths)
         stats["files"].append(_rel(path))
         for sample in prov.iter_eval_samples(path):
             stats["samples_seen"] += 1
@@ -200,9 +229,16 @@ def _cluster_bootstrap_mean(
         by_cluster.setdefault(c, []).append(float(v))
         cluster_stratum[c] = s
 
+    # Sort the pools. `rng.integers` indexes them positionally, so unsorted pools
+    # make the CI depend on the physical order Inspect happened to write samples
+    # into the zip -- two logs with byte-identical content would give different
+    # intervals under the same seed. `bootstrap._build_cells` sorts by sample_id
+    # for exactly this reason, and every other CI in the paper inherits it.
     pools: dict[str, list[str]] = {}
-    for c, s in cluster_stratum.items():
-        pools.setdefault(s, []).append(c)
+    for c in sorted(cluster_stratum):
+        pools.setdefault(cluster_stratum[c], []).append(c)
+    for s in pools:
+        pools[s].sort()
 
     point = float(np.mean(values))
     reps = np.empty(n_bootstrap)
@@ -239,7 +275,12 @@ def sanity_check(joined: pd.DataFrame, n_bootstrap: int, seed: int) -> pd.DataFr
             diff, sub["scenario_id"].to_numpy(), sub["designed_principle"].to_numpy(),
             n_bootstrap, seed)
         exact = float((sub["score"] == sub[col]).mean())
-        same_sign = float((np.sign(sub["score"]) == np.sign(sub[col])).mean())
+        # `>= 0` is the acceptable side, matching `bootstrap.binarize_long` and
+        # compute_binarized_robustness_gap.py. An ensemble mean of exactly 0.0
+        # happens whenever the three judges split (e.g. -1, +0.5, +0.5) and
+        # occurs on ~1.4% of these items; `np.sign` equality would score every
+        # one of them as a disagreement no matter what this run's judge said.
+        same_sign = float(((sub["score"] >= 0) == (sub[col] >= 0)).mean())
         rho, rho_p = sp.spearmanr(sub["score"], sub[col])
         rows.append({
             "comparator": label,
@@ -341,8 +382,16 @@ def interpretation_section(
     """
     rows = raw[raw.designed_principle != "pooled"]
     pooled = raw[raw.designed_principle == "pooled"].iloc[0]
-    discriminating = rows[rows.ci_upper < 0]["designed_principle"].tolist()
-    flat = [p for p in rows["designed_principle"] if p not in discriminating]
+    est = rows[rows.estimable]
+    discriminating = est[est.ci_upper < 0]["designed_principle"].tolist()
+    # A CI entirely ABOVE zero is the reversed result -- the scenario scores
+    # *better* on the principle it was designed for. Lumping it into "flat" and
+    # recommending a merge would report a reversal as construct collapse, which
+    # is a different finding pointing the opposite way.
+    reversed_rows = est[est.ci_lower > 0]["designed_principle"].tolist()
+    unestimable = rows[~rows.estimable]["designed_principle"].tolist()
+    flat = [p for p in est["designed_principle"]
+            if p not in discriminating and p not in reversed_rows]
     n_d, n_total = len(discriminating), len(rows)
 
     L = ["## Interpretation, pre-committed\n"]
@@ -352,11 +401,39 @@ def interpretation_section(
         "that applies is selected in code from the numbers above, not chosen "
         "afterwards.\n"
     )
+    pooled_txt = (f"{_fmt(pooled.contrast)} [{_fmt(pooled.ci_lower)}, "
+                  f"{_fmt(pooled.ci_upper)}]" if pooled.estimable
+                  else "**not estimable** (no row had usable data)")
     L.append(f"**{n_d} of {n_total} rows** have a diagonal-minus-off-diagonal CI "
-             f"entirely below zero. Pooled: {_fmt(pooled.contrast)} "
-             f"[{_fmt(pooled.ci_lower)}, {_fmt(pooled.ci_upper)}].\n")
+             f"entirely below zero. Pooled: {pooled_txt}"
+             + (f", over {int(pooled.n_rows_used)} of {n_total} rows"
+                if pooled.estimable and pooled.n_rows_used < n_total else "")
+             + ".\n")
 
-    if n_d == n_total:
+    if unestimable:
+        L.append(
+            f"**{len(unestimable)} row(s) could not be estimated at all** and are "
+            "excluded from every count in this section, including the "
+            f"denominators: {', '.join(f'`{PRINCIPLE_SHORT.get(p, p)}`' for p in unestimable)}. "
+            "An unestimated row is missing data, not a null result, and must not "
+            "be read as either evidence for or against discrimination.\n"
+        )
+    if reversed_rows:
+        L.append(
+            f"**{len(reversed_rows)} row(s) came out REVERSED** -- CI entirely "
+            "*above* zero, i.e. the scenarios score better on the principle they "
+            "were designed for than on the seven they were not: "
+            + ", ".join(f"`{PRINCIPLE_SHORT.get(p, p)}`" for p in reversed_rows)
+            + ". This is neither discrimination as defined nor flatness, and it "
+            "is not a merge candidate. The pre-committed interpretation did not "
+            "anticipate this outcome, so it is reported as-is and left for the "
+            "authors rather than resolved by this script.\n"
+        )
+
+    # Branch on the rows that could actually be estimated. An unestimable row is
+    # absent evidence and must not tip the outcome either way.
+    n_est = len(est)
+    if n_est and n_d == n_est:
         L.append(
             "**Outcome: the diagonal is distinct throughout.** The principles "
             "measure what they were designed to measure. This is "
@@ -365,7 +442,7 @@ def interpretation_section(
             "and as documented LLM-judge behaviour, and the diagonal contrast is "
             "robust to both.\n"
         )
-    elif n_d == 0:
+    elif n_est and n_d == 0 and not reversed_rows:
         L.append(
             "**Outcome: the diagonal is flat everywhere.** The scenarios do not "
             "discriminate between principles. The honest reading is that the "
@@ -377,16 +454,23 @@ def interpretation_section(
             "pre-commitment and because the provenance archive makes selective "
             "reporting detectable.\n"
         )
+    elif not n_est:
+        L.append(
+            "**Outcome: not determinable.** No row could be estimated, so none "
+            "of the three pre-committed outcomes applies. This is a failed run, "
+            "not a null result.\n"
+        )
     else:
         L.append(
-            f"**Outcome: mixed -- distinct for {n_d}, flat for {n_total - n_d}.** "
-            "The most likely outcome and a workable one. Report per-principle. "
-            "The flat rows are candidates for merging in v2 or for a stated "
-            "limitation; conceding a merge candidate while defending the rest is "
-            "more credible than defending all eight.\n"
+            f"**Outcome: mixed -- distinct for {n_d}, flat for {len(flat)}"
+            + (f", reversed for {len(reversed_rows)}" if reversed_rows else "")
+            + f", of {n_est} estimable row(s).** "
+            "Report per-principle. The flat rows are candidates for merging in "
+            "v2 or for a stated limitation; conceding a merge candidate while "
+            "defending the rest is more credible than defending all eight.\n"
         )
-        L.append("Flat rows: " + ", ".join(
-            f"`{PRINCIPLE_SHORT.get(p, p)}`" for p in flat) + ".\n")
+        L.append("Flat rows: " + (", ".join(
+            f"`{PRINCIPLE_SHORT.get(p, p)}`" for p in flat) if flat else "none") + ".\n")
         named = {FHR, PLTW}
         if named & set(flat):
             both = ("both members of that pair are" if named <= set(flat)
@@ -406,7 +490,7 @@ def interpretation_section(
                 "directly, while other rows are conceded.\n"
             )
 
-    if n_d < n_total:
+    if flat:
         L.append(
             "The asymmetry is worth stating in the paper: a flat diagonal under "
             "LLM-judge scoring is consistent with *either* genuine construct "
@@ -416,16 +500,24 @@ def interpretation_section(
             "positive rows carry more weight than the flat ones.\n"
         )
 
-    n_lowest = int((ranks.rank_in_row == 1).sum())
-    n_bottom2 = int((ranks.rank_in_row <= 2).sum())
-    n_col = int((ranks.rank_in_column == 1).sum())
-    L.append(
-        f"Ordinally: the diagonal is the lowest cell in its row for "
-        f"**{n_lowest} of {n_total}** principles and in the bottom two for "
-        f"**{n_bottom2} of {n_total}**; it is lowest in its *column* for "
-        f"**{n_col} of {n_total}**, which is the version that cannot be "
-        "explained by a harsh rubric.\n"
-    )
+    # Ranks are only counted over rows that have a rank -- an unestimable row
+    # carries None, and counting it as "not lowest" would be as wrong as
+    # counting it as lowest.
+    ranked = ranks[ranks.estimable]
+    n_ranked = len(ranked)
+    if n_ranked:
+        n_lowest = int((ranked.rank_in_row == 1).sum())
+        n_bottom2 = int((ranked.rank_in_row <= 2).sum())
+        n_col = int((ranked.rank_in_column == 1).sum())
+        L.append(
+            f"Ordinally: the diagonal is the lowest cell in its row for "
+            f"**{n_lowest} of {n_ranked}** principles and in the bottom two for "
+            f"**{n_bottom2} of {n_ranked}**; it is lowest in its *column* for "
+            f"**{n_col} of {n_ranked}**, which is the version that cannot be "
+            "explained by a harsh rubric."
+            + (f" {n_total - n_ranked} row(s) had no rankable diagonal.\n"
+               if n_ranked < n_total else "\n")
+        )
     return L
 
 
@@ -434,18 +526,19 @@ def write_report(
     raw: pd.DataFrame, centered: pd.DataFrame, ranks: pd.DataFrame,
     fhr_pltw: pd.DataFrame, sanity: pd.DataFrame, pearson: pd.DataFrame,
     spearman: pd.DataFrame, n_items: int, stats: dict, manifest: dict,
-    n_bootstrap: int, frame_composition: dict,
+    n_bootstrap: int, seed: int, frame_composition: dict,
+    expected_calls: int,
 ) -> None:
     pooled_raw = raw[raw.designed_principle == "pooled"].iloc[0]
     n_cell = int(np.median(matrix.n_per_cell))
 
     L = ["# Principle discriminant validity: the designed x measured matrix\n"]
-    shortfall = manifest["n_judge_calls"] - stats["admitted"]
+    shortfall = expected_calls - stats["admitted"]
     if shortfall > 0:
         L.append(
             f"> **This matrix is incomplete.** {stats['admitted']:,} of "
-            f"{manifest['n_judge_calls']:,} planned judge calls survived "
-            f"admission ({stats['admitted'] / manifest['n_judge_calls']:.1%}); "
+            f"{expected_calls:,} planned judge calls survived "
+            f"admission ({stats['admitted'] / max(expected_calls, 1):.1%}); "
             f"{shortfall} did not. Cells are ragged and the numbers below are "
             "computed on what exists. Do not quote them as a completed run.\n"
         )
@@ -484,7 +577,7 @@ def write_report(
         "**Negative means the designed principle scores lower than the seven it "
         "was not designed for** -- i.e. the scenario surfaces the failure it was "
         f"built to surface. CIs are the scenario-level cluster bootstrap "
-        f"({n_bootstrap:,} replicates, seed {BOOTSTRAP_SEED}, 2.5/97.5 "
+        f"({n_bootstrap:,} replicates, seed {seed}, 2.5/97.5 "
         "percentiles), with one scenario draw per row carried across all eight "
         "columns and all source models so the within-row pairing is preserved.\n"
     )
@@ -530,10 +623,16 @@ def write_report(
              "replicates lowest in row | bottom two |")
     L.append("| --- | ---: | ---: | ---: | ---: | ---: |")
     for _, r in ranks.iterrows():
+        if r.estimable:
+            row_r = f"{int(r.rank_in_row)}/{int(r.n_cells_ranked_in_row)}"
+            col_r = f"{int(r.rank_in_column)}/{int(r.n_cells_ranked_in_column)}"
+            lowest = f"{r.share_lowest_in_row:.0%}"
+            bottom2 = f"{r.share_bottom_two_in_row:.0%}"
+        else:
+            # An unranked row prints as absent data, never as an extreme rank.
+            row_r = col_r = lowest = bottom2 = "no data"
         L.append(f"| {PRINCIPLE_SHORT.get(r.designed_principle, r.designed_principle)} | "
-                 f"{_fmt(r.diagonal)} | {int(r.rank_in_row)}/{int(r.n_cells)} | "
-                 f"{int(r.rank_in_column)}/{int(r.n_cells)} | "
-                 f"{r.share_lowest_in_row:.0%} | {r.share_bottom_two_in_row:.0%} |")
+                 f"{_fmt(r.diagonal)} | {row_r} | {col_r} | {lowest} | {bottom2} |")
     L.append("")
 
     L.append("## 3. Foster Healthy Relationships vs Prioritize Long-term Wellbeing\n")
@@ -638,7 +737,8 @@ def write_report(
              f"{manifest['n_scenarios'] // len(PRINCIPLES)} per principle, "
              "domain-stratified within principle, drawn from the frozen "
              f"{Path(manifest['parent_ids_file']).name if manifest.get('parent_ids_file') else 'dataset'} "
-             f"(seed {BOOTSTRAP_SEED}). Nesting inside the decomposition "
+             f"(draw seed {BOOTSTRAP_SEED}, fixed at draw time and independent "
+             f"of --seed). Nesting inside the decomposition "
              "subsample keeps these scenarios a subset of that arm rather than a "
              "fourth incompatible scenario set.\n")
     if frame_composition:
@@ -714,7 +814,11 @@ def main() -> int:
     # matrix." A shortfall is refused by default rather than warned about,
     # because a warning on stdout does not survive into the document a reader
     # sees, and a matrix with holes looks exactly like a matrix without them.
-    expected_calls = manifest["n_judge_calls"]
+    # Scale the denominator to the models actually being analysed. The manifest
+    # plans all three; `--models claude-sonnet-4.5` alone is a complete run of
+    # one model, not a 33%-complete run of three, and refusing it as incomplete
+    # (or stamping "this matrix is incomplete" on it) would be false.
+    expected_calls = manifest["n_judge_calls"] // manifest["n_source_models"] * len(args.models)
     shortfall = expected_calls - stats["admitted"]
     if shortfall > 0:
         frac = stats["admitted"] / expected_calls
@@ -740,13 +844,27 @@ def main() -> int:
     raw = discriminant_contrasts(matrix, centered=False)
     centered = discriminant_contrasts(matrix, centered=True)
 
-    # Pooled raw and pooled centred are equal by construction (an additive column
-    # effect cancels in the pool). If they diverge, the centring is wrong.
-    if not math.isclose(raw.iloc[-1].contrast, centered.iloc[-1].contrast, abs_tol=1e-9):
-        raise SystemExit(
-            "pooled raw and column-centred contrasts differ; an additive column "
-            "effect must cancel in the pool, so one of them is computed wrong"
-        )
+    # Pooled raw and pooled centred are equal by construction, but ONLY on a
+    # complete matrix: an additive column offset d raises its own row's contrast
+    # by d and lowers each of the other seven by d/7, summing to zero. A missing
+    # cell breaks the arithmetic that makes those terms cancel -- its row then
+    # averages six off-diagonal cells instead of seven, and its column's mean is
+    # taken over fewer rows -- so the identity is asserted only where it holds
+    # and reported as a diagnostic where it does not.
+    complete = bool(np.isfinite(matrix.point).all())
+    gap = abs(raw.iloc[-1].contrast - centered.iloc[-1].contrast)
+    if complete:
+        if not math.isclose(raw.iloc[-1].contrast, centered.iloc[-1].contrast,
+                            abs_tol=1e-9):
+            raise SystemExit(
+                "pooled raw and column-centred contrasts differ on a COMPLETE "
+                f"matrix (gap {gap:.2e}); an additive column effect must cancel "
+                "in the pool, so one of them is computed wrong"
+            )
+    elif gap > 0:
+        print(f"note: pooled raw and centred differ by {gap:.2e} because the "
+              "matrix has empty cells; the cancellation identity only holds on a "
+              "complete matrix")
 
     ranks = diagonal_ranks(matrix)
     per_model: dict[str, DesignedMeasuredMatrix] = {}
@@ -814,7 +932,8 @@ def main() -> int:
 
     write_report(args.report, matrix, per_model, raw, centered, ranks, fhr_pltw,
                  sanity, pearson, spearman, n_items, stats, manifest,
-                 args.n_bootstrap, frame_composition())
+                 args.n_bootstrap, args.seed, frame_composition(),
+                 expected_calls)
 
     pooled = raw.iloc[-1]
     print(f"\npooled diagonal - off-diagonal: {pooled.contrast:+.3f} "

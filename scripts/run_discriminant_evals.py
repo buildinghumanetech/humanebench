@@ -390,31 +390,45 @@ def main() -> int:
         print(f"\nsmoke: {len(results) - len(failed)}/{len(results)} models OK")
         return 1 if failed else 0
 
+    # Resume on COMPLETENESS, not on the existence of a file. A run killed
+    # partway leaves an .eval behind for every model, and skipping on existence
+    # turned a 40%-complete run into "nothing to run, exit 0" -- with the
+    # completeness gate below never reached, no census printed, and no
+    # run_status.json written.
+    expected = manifest["n_scenarios"] * manifest["n_principles"]
     todo = []
     for model in args.models:
         model_dir = LOG_ROOT / model
-        if model_dir.is_dir() and any(model_dir.glob("*.eval")) and not args.force:
-            print(f"skip {model}: logs already present (use --force to re-run)")
-            continue
+        path = best_eval(model_dir) if model_dir.is_dir() else None
+        if path is not None and not args.force:
+            scored = score_census(path)["n_fully_scored"]
+            if scored >= expected * args.gate_threshold:
+                print(f"skip {model}: {scored}/{expected} already scored")
+                continue
+            print(f"resume {model}: only {scored}/{expected} scored")
         todo.append(model)
     if not todo:
-        print("nothing to run")
-        return 0
+        print("all models already complete; running the gate to confirm")
 
     usage_before = get_openrouter_usage()
-    launch = build_launch_manifest(manifest, report, todo)
-    launch["usage_before_usd"] = usage_before
-    LAUNCH_MANIFEST_PATH.write_text(json.dumps(launch, indent=2) + "\n")
-    print(f"\nwrote {LAUNCH_MANIFEST_PATH.relative_to(REPO_ROOT)}")
+    results: list[dict] = []
+    moved: list[str] = []
+    if todo:
+        launch = build_launch_manifest(manifest, report, todo)
+        launch["usage_before_usd"] = usage_before
+        LAUNCH_MANIFEST_PATH.write_text(json.dumps(launch, indent=2) + "\n")
+        print(f"\nwrote {LAUNCH_MANIFEST_PATH.relative_to(REPO_ROOT)}")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_workers) as pool:
-        futures = {pool.submit(run_one, m, LOG_ROOT / m, None): m for m in todo}
-        results = [f.result() for f in concurrent.futures.as_completed(futures)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_workers) as pool:
+            futures = {pool.submit(run_one, m, LOG_ROOT / m, None): m for m in todo}
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
 
-    retry_incomplete(todo)
-    moved = archive_superseded(todo)
+        retry_incomplete(todo)
+        moved = archive_superseded(todo)
 
-    expected = manifest["n_scenarios"] * manifest["n_principles"]
+    # The gate runs unconditionally, including when nothing needed running. It
+    # is the only thing that reports whether the matrix can be built, so an
+    # early return past it would make a partial run look like a clean no-op.
     census = gate(args.models, expected, args.gate_threshold)
     usage_after = get_openrouter_usage()
     status = {

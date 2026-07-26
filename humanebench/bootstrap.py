@@ -111,6 +111,23 @@ def _percentile_ci(samples: np.ndarray) -> tuple[float, float]:
     )
 
 
+def _nan_percentile_ci(samples: np.ndarray) -> tuple[float, float]:
+    """`_percentile_ci` that ignores NaN replicates and returns NaN if all are.
+
+    Separate from `_percentile_ci` on purpose: every existing caller works on
+    complete arrays, where a NaN means something has gone wrong upstream and
+    should not be quietly skipped. Only the designed x measured path, where an
+    unscored cell is an expected outcome, uses this.
+    """
+    finite = samples[np.isfinite(samples)]
+    if finite.size == 0:
+        return (float("nan"), float("nan"))
+    return (
+        float(np.percentile(finite, CI_LOW_PCT)),
+        float(np.percentile(finite, CI_HIGH_PCT)),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public API: marginal per-cell CIs
 # ---------------------------------------------------------------------------
@@ -786,7 +803,7 @@ class DesignedMeasuredMatrix:
     def cell(self, designed: str, scored: str) -> tuple[float, float, float]:
         """(point, ci_lower, ci_upper) for one cell."""
         i, j = self.principles.index(designed), self.principles.index(scored)
-        lo, hi = _percentile_ci(self.replicates[:, i, j])
+        lo, hi = _nan_percentile_ci(self.replicates[:, i, j])
         return float(self.point[i, j]), lo, hi
 
     def cell_difference(
@@ -801,7 +818,7 @@ class DesignedMeasuredMatrix:
         i = self.principles.index(designed)
         a, b = self.principles.index(scored_a), self.principles.index(scored_b)
         diff = self.replicates[:, i, a] - self.replicates[:, i, b]
-        lo, hi = _percentile_ci(diff)
+        lo, hi = _nan_percentile_ci(diff)
         return float(self.point[i, a] - self.point[i, b]), lo, hi
 
 
@@ -816,9 +833,20 @@ def _row_contrasts(mats: np.ndarray, centered: bool) -> np.ndarray:
     is the full correction. It answers the one objection the raw contrast cannot
     -- that a principle's diagonal looks low only because that principle's rubric
     is the harshest, which would depress its whole column regardless of design.
+
+    NaN handling: an empty cell makes its own row's contrast NaN, and nothing
+    else. The column mean is a ``nanmean``, so one hole does not poison the
+    other seven rows that share that column -- a plain mean here would take a
+    single failed cell and turn every centred contrast in the matrix into NaN.
     """
     k = mats.shape[-1]
-    m = mats - mats.mean(axis=-2, keepdims=True) if centered else mats
+    if centered:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN columns
+            col_means = np.nanmean(mats, axis=-2, keepdims=True)
+        m = mats - col_means
+    else:
+        m = mats
     eye = np.eye(k, dtype=bool)
     diag = np.diagonal(m, axis1=-2, axis2=-1)
     off = np.where(eye, np.nan, m)
@@ -883,6 +911,20 @@ def bootstrap_designed_measured_matrix(
     if (per_scenario > 1).any():
         bad = per_scenario[per_scenario > 1].index.tolist()[:5]
         raise ValueError(f"scenarios mapped to >1 designed principle: {bad}")
+
+    # One score per (scenario, model, scored principle). The cell array below is
+    # filled by fancy-index assignment, which keeps only the LAST write for a
+    # duplicated key -- so duplicates would silently vanish from n_per_cell while
+    # still inflating the caller's admitted-call count, producing a report with
+    # two contradictory denominators. Fail instead.
+    key = ["scenario_id", "source_model", "scored_principle"]
+    dupes = long.duplicated(subset=key, keep=False)
+    if dupes.any():
+        example = long.loc[dupes, key].drop_duplicates().head(3).to_dict("records")
+        raise ValueError(
+            f"{int(dupes.sum())} duplicate (scenario, model, scored principle) rows; "
+            f"e.g. {example}. Each judged call must appear exactly once."
+        )
 
     n_p = len(PRINCIPLES)
     point = np.full((n_p, n_p), np.nan)
@@ -955,31 +997,47 @@ def discriminant_contrasts(
     Returns rows for each principle plus a final ``pooled`` row (the unweighted
     mean of the eight, recomputed inside each replicate so the CI accounts for
     all eight rows moving together).
+
+    A row with no data yields ``estimable=False`` and NaN throughout rather than
+    a number. Consumers must branch on ``estimable``: ``excludes_zero`` is False
+    for an unestimable row, and False there means "we cannot say", not "no
+    effect". The pooled row carries ``n_rows_used`` so a pool taken over seven
+    rows instead of eight is visible rather than implied.
     """
     point = _row_contrasts(matrix.point, centered)
     reps = _row_contrasts(matrix.replicates, centered)
 
     rows: list[dict] = []
     for i, principle in enumerate(matrix.principles):
-        lo, hi = _percentile_ci(reps[:, i])
+        lo, hi = _nan_percentile_ci(reps[:, i])
+        estimable = bool(np.isfinite(point[i]) and np.isfinite(lo) and np.isfinite(hi))
         rows.append({
             "designed_principle": principle,
             "contrast": float(point[i]),
             "ci_lower": lo,
             "ci_upper": hi,
-            "excludes_zero": bool(hi < 0 or lo > 0),
+            "estimable": estimable,
+            "excludes_zero": bool(estimable and (hi < 0 or lo > 0)),
             "n_scenarios": int(matrix.n_scenarios[i]),
+            "n_rows_used": 1 if estimable else 0,
             "centered": centered,
         })
-    pooled_reps = reps.mean(axis=1)
-    lo, hi = _percentile_ci(pooled_reps)
+    # nanmean, so one unestimable row costs that row rather than the headline.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        pooled_reps = np.nanmean(reps, axis=1)
+        pooled_point = float(np.nanmean(point))
+    lo, hi = _nan_percentile_ci(pooled_reps)
+    estimable = bool(np.isfinite(pooled_point) and np.isfinite(lo) and np.isfinite(hi))
     rows.append({
         "designed_principle": "pooled",
-        "contrast": float(point.mean()),
+        "contrast": pooled_point,
         "ci_lower": lo,
         "ci_upper": hi,
-        "excludes_zero": bool(hi < 0 or lo > 0),
+        "estimable": estimable,
+        "excludes_zero": bool(estimable and (hi < 0 or lo > 0)),
         "n_scenarios": int(matrix.n_scenarios.sum()),
+        "n_rows_used": int(np.isfinite(point).sum()),
         "centered": centered,
     })
     return pd.DataFrame(rows)
@@ -998,24 +1056,50 @@ def diagonal_ranks(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
 
     ``share_lowest_in_row`` and ``share_bottom_two_in_row`` are the fraction of
     bootstrap replicates in which the ordinal claim still holds.
+
+    A missing cell must not be ranked. ``NaN < NaN`` is False, so a naive
+    comparison count reports an unscored row as rank 1 of 8 with 100% of
+    replicates agreeing -- the strongest ordinal evidence the table can express,
+    produced by an absence of data. Unestimable rows get ``estimable=False`` and
+    NaN ranks instead, and ``n_cells_ranked`` records how many cells the rank was
+    actually taken over.
     """
     k = len(matrix.principles)
     rows: list[dict] = []
     for i, principle in enumerate(matrix.principles):
         row_vals, col_vals = matrix.point[i, :], matrix.point[:, i]
-        row_rank = int((row_vals < row_vals[i]).sum() + 1)
-        col_rank = int((col_vals < col_vals[i]).sum() + 1)
+        diag = matrix.point[i, i]
+        row_ok, col_ok = np.isfinite(row_vals), np.isfinite(col_vals)
+        estimable = bool(np.isfinite(diag))
 
-        rep_rows = matrix.replicates[:, i, :]
-        rep_rank = (rep_rows < rep_rows[:, [i]]).sum(axis=1) + 1
+        if estimable:
+            row_rank = int((row_vals[row_ok] < diag).sum() + 1)
+            col_rank = int((col_vals[col_ok] < diag).sum() + 1)
+            rep_rows = matrix.replicates[:, i, :]
+            rep_diag = rep_rows[:, [i]]
+            # Compare only against finite competitors, and only in replicates
+            # where the diagonal itself is finite.
+            finite = np.isfinite(rep_rows)
+            below = np.where(finite, rep_rows < rep_diag, False).sum(axis=1) + 1
+            usable = np.isfinite(rep_diag).ravel()
+            rep_rank = below[usable]
+            share_lowest = float((rep_rank == 1).mean()) if rep_rank.size else float("nan")
+            share_bottom2 = float((rep_rank <= 2).mean()) if rep_rank.size else float("nan")
+        else:
+            row_rank = col_rank = None
+            share_lowest = share_bottom2 = float("nan")
+
         rows.append({
             "designed_principle": principle,
-            "diagonal": float(matrix.point[i, i]),
+            "diagonal": float(diag),
+            "estimable": estimable,
             "rank_in_row": row_rank,
             "rank_in_column": col_rank,
             "n_cells": k,
-            "share_lowest_in_row": float((rep_rank == 1).mean()),
-            "share_bottom_two_in_row": float((rep_rank <= 2).mean()),
+            "n_cells_ranked_in_row": int(row_ok.sum()),
+            "n_cells_ranked_in_column": int(col_ok.sum()),
+            "share_lowest_in_row": share_lowest,
+            "share_bottom_two_in_row": share_bottom2,
         })
     return pd.DataFrame(rows)
 

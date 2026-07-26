@@ -741,3 +741,81 @@ def test_cell_difference_is_paired_within_replicate():
                 + (np.percentile(b, 97.5) - np.percentile(b, 2.5)) ** 2)
     )
     assert paired_width < naive_width
+
+
+@pytest.mark.unit
+def test_empty_cell_does_not_poison_other_rows_or_the_pooled_headline():
+    """One unscored cell must cost that row, not the whole matrix.
+
+    Regression for the review: column-centring used a plain mean, so a single
+    all-NaN cell turned every centred contrast NaN, and the pooled contrast used
+    a plain mean, so the paper's headline number rendered as an em-dash and as
+    "does not exclude zero" on data where seven of eight rows were fine.
+    """
+    rng = np.random.default_rng(31)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.5, noise=0.15)
+    # Delete one (designed, scored) cell entirely -- all 36 of its observations.
+    hole = (long.designed_principle == PRINCIPLES[0]) & \
+           (long.scored_principle == PRINCIPLES[5])
+    long = long[~hole]
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=200, seed=BOOTSTRAP_SEED)
+    assert matrix.n_per_cell[0, 5] == 0
+    assert np.isnan(matrix.point[0, 5])
+
+    for centered in (False, True):
+        c = discriminant_contrasts(matrix, centered=centered).set_index("designed_principle")
+        pooled = c.loc["pooled"]
+        assert pooled.estimable, f"pooled unestimable with centered={centered}"
+        assert np.isfinite(pooled.contrast) and np.isfinite(pooled.ci_lower)
+        assert pooled.contrast == pytest.approx(-0.5, abs=0.12)
+        # Rows that share the holed column must still be estimable.
+        others = c.drop(index=["pooled"])
+        assert others.estimable.all(), f"a hole in one cell disabled {(~others.estimable).sum()} rows"
+
+    # The raw == centred identity is EXACT only on a complete matrix: a hole
+    # makes its row average six off-diagonal cells instead of seven and its
+    # column's mean cover fewer rows, so the offsets no longer cancel term for
+    # term. It must stay close, but the analysis must not assert exactness here.
+    raw = discriminant_contrasts(matrix, centered=False).iloc[-1]
+    cen = discriminant_contrasts(matrix, centered=True).iloc[-1]
+    assert raw.contrast != pytest.approx(cen.contrast, abs=1e-12)
+    assert raw.contrast == pytest.approx(cen.contrast, abs=1e-2)
+
+
+@pytest.mark.unit
+def test_unestimable_row_is_flagged_not_scored_as_a_null():
+    """A row with no data must read as 'no data', never as a null result."""
+    rng = np.random.default_rng(32)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.5, noise=0.15)
+    long = long[long.designed_principle != PRINCIPLES[3]]  # drop a whole row
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=100, seed=BOOTSTRAP_SEED)
+
+    c = discriminant_contrasts(matrix).set_index("designed_principle")
+    dead = c.loc[PRINCIPLES[3]]
+    assert not dead.estimable
+    assert not dead.excludes_zero  # False here means "cannot say", per the flag
+    assert np.isnan(dead.contrast)
+    assert c.loc["pooled"].n_rows_used == 7, "pooled must report the rows it used"
+
+    ranks = diagonal_ranks(matrix).set_index("designed_principle")
+    dead_rank = ranks.loc[PRINCIPLES[3]]
+    assert not dead_rank.estimable
+    assert pd.isna(dead_rank.rank_in_row), (
+        "an unscored row must not be ranked -- NaN < NaN is False, which would "
+        "report it as rank 1 of 8, the strongest ordinal evidence in the table"
+    )
+    assert np.isnan(dead_rank.share_lowest_in_row)
+    # Surviving rows are unaffected and still ranked against real competitors.
+    alive = ranks.drop(index=[PRINCIPLES[3]])
+    assert alive.estimable.all()
+    assert (alive.n_cells_ranked_in_column == 7).all()
+
+
+@pytest.mark.unit
+def test_duplicate_judged_calls_are_rejected():
+    """Duplicates would be silently deduped by fancy-index assignment."""
+    rng = np.random.default_rng(33)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.3)
+    doubled = pd.concat([long, long], ignore_index=True)
+    with pytest.raises(ValueError, match="duplicate"):
+        bootstrap_designed_measured_matrix(doubled, n_bootstrap=10)
