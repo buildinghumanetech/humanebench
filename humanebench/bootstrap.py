@@ -734,6 +734,272 @@ def cohort_flip_stats(
     return out
 
 
+# ---------------------------------------------------------------------------
+# Public API: designed x measured principle matrix
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DesignedMeasuredMatrix:
+    """The 8x8 matrix and its replicates, from one shared per-row scenario draw.
+
+    Rows are the principle a scenario was *designed* for, columns the principle
+    it was *scored* against. A cell is the mean severity over that row's
+    scenarios crossed with the source models.
+
+    Attributes:
+        principles:   row and column labels, in canonical order.
+        models:       source models pooled into each cell.
+        point:        (8, 8) means on the observed data.
+        replicates:   (n_bootstrap, 8, 8).
+        n_per_cell:   (8, 8) non-missing observation count.
+        n_scenarios:  (8,) scenarios per row.
+    """
+
+    principles: tuple[str, ...]
+    models: tuple[str, ...]
+    point: np.ndarray
+    replicates: np.ndarray
+    n_per_cell: np.ndarray
+    n_scenarios: np.ndarray
+
+    def cell(self, designed: str, scored: str) -> tuple[float, float, float]:
+        """(point, ci_lower, ci_upper) for one cell."""
+        i, j = self.principles.index(designed), self.principles.index(scored)
+        lo, hi = _percentile_ci(self.replicates[:, i, j])
+        return float(self.point[i, j]), lo, hi
+
+    def cell_difference(
+        self, designed: str, scored_a: str, scored_b: str
+    ) -> tuple[float, float, float]:
+        """(point, lo, hi) for cell(designed, a) - cell(designed, b).
+
+        Paired within the replicate, so the CI reflects that both cells are
+        computed on the same resampled scenarios -- which is the whole reason the
+        contrast is more precise than differencing two marginal CIs.
+        """
+        i = self.principles.index(designed)
+        a, b = self.principles.index(scored_a), self.principles.index(scored_b)
+        diff = self.replicates[:, i, a] - self.replicates[:, i, b]
+        lo, hi = _percentile_ci(diff)
+        return float(self.point[i, a] - self.point[i, b]), lo, hi
+
+
+def _row_contrasts(mats: np.ndarray, centered: bool) -> np.ndarray:
+    """Diagonal minus off-diagonal mean, per row.
+
+    ``mats`` is (..., k, k). Returns (..., k).
+
+    With ``centered``, each cell first has its column mean removed. That is
+    exactly the two-way additive residual contrast: subtracting the row mean as
+    well would cancel out of a within-row difference, so column-centring alone
+    is the full correction. It answers the one objection the raw contrast cannot
+    -- that a principle's diagonal looks low only because that principle's rubric
+    is the harshest, which would depress its whole column regardless of design.
+    """
+    k = mats.shape[-1]
+    m = mats - mats.mean(axis=-2, keepdims=True) if centered else mats
+    eye = np.eye(k, dtype=bool)
+    diag = np.diagonal(m, axis1=-2, axis2=-1)
+    off = np.where(eye, np.nan, m)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        off_mean = np.nanmean(off, axis=-1)
+    return diag - off_mean
+
+
+def bootstrap_designed_measured_matrix(
+    long: pd.DataFrame,
+    n_bootstrap: int = N_BOOTSTRAP_DEFAULT,
+    seed: int = BOOTSTRAP_SEED,
+    models: Sequence[str] | None = None,
+) -> DesignedMeasuredMatrix:
+    """Bootstrap the designed x measured matrix off ONE shared draw per row.
+
+    Every cell in a row is computed from the *same* 12 scenarios, and the
+    headline statistic is a difference between cells within a row. Resampling
+    each cell independently would throw away that pairing and inflate the CI on
+    the contrast, in the same way and for the same reason that
+    `bootstrap_cell_scores` is the wrong design for a cohort-level count.
+
+    So each replicate draws, for each row, a resample of that row's scenarios
+    with replacement, and carries those same scenario ids through all eight
+    columns and all source models before recomputing the row. Rows are drawn
+    independently of one another, which is correct here because the rows are
+    built on disjoint scenario sets by construction -- unlike the persona grid,
+    where the same scenario appears in every cell.
+
+    The resampling unit is the scenario, not the (scenario, model) pair: a
+    scenario contributes one observation per model and those observations share
+    whatever makes the scenario hard, so they are one cluster.
+
+    Args:
+        long: columns [scenario_id, source_model, designed_principle,
+            scored_principle, score]; one row per judged call.
+        n_bootstrap: replicate count.
+        seed: RNG seed.
+        models: restrict to these source models (default: all present). Used for
+            the per-model matrices that check the result is not one model's
+            response style.
+
+    Returns:
+        A `DesignedMeasuredMatrix`.
+    """
+    required = {"scenario_id", "source_model", "designed_principle",
+                "scored_principle", "score"}
+    missing_cols = required - set(long.columns)
+    if missing_cols:
+        raise ValueError(f"long is missing columns: {sorted(missing_cols)}")
+
+    if models is not None:
+        long = long[long["source_model"].isin(models)]
+    model_names = tuple(sorted(long["source_model"].unique()))
+    if not model_names:
+        raise ValueError("no source models present after filtering")
+
+    # A scenario belongs to exactly one designed principle; assert rather than
+    # silently taking the first, since a violation would double-count a row.
+    per_scenario = long.groupby("scenario_id")["designed_principle"].nunique()
+    if (per_scenario > 1).any():
+        bad = per_scenario[per_scenario > 1].index.tolist()[:5]
+        raise ValueError(f"scenarios mapped to >1 designed principle: {bad}")
+
+    n_p = len(PRINCIPLES)
+    point = np.full((n_p, n_p), np.nan)
+    n_per_cell = np.zeros((n_p, n_p), dtype=int)
+    n_scenarios = np.zeros(n_p, dtype=int)
+    replicates = np.full((n_bootstrap, n_p, n_p), np.nan)
+    rng = np.random.default_rng(seed)
+
+    col_index = {p: j for j, p in enumerate(PRINCIPLES)}
+    model_index = {m: k for k, m in enumerate(model_names)}
+
+    for i, designed in enumerate(PRINCIPLES):
+        sub = long[long["designed_principle"] == designed]
+        if sub.empty:
+            continue
+        scenarios = tuple(sorted(sub["scenario_id"].unique()))
+        scen_index = {s: k for k, s in enumerate(scenarios)}
+        n_s = len(scenarios)
+        n_scenarios[i] = n_s
+
+        # (scenario, model, scored principle); NaN marks an absent judgement.
+        arr = np.full((n_s, len(model_names), n_p), np.nan)
+        arr[
+            sub["scenario_id"].map(scen_index).to_numpy().astype(int),
+            sub["source_model"].map(model_index).to_numpy().astype(int),
+            sub["scored_principle"].map(col_index).to_numpy().astype(int),
+        ] = sub["score"].to_numpy(dtype=float)
+
+        n_per_cell[i] = (~np.isnan(arr)).sum(axis=(0, 1))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN cells
+            point[i] = np.nanmean(arr, axis=(0, 1))
+            if n_bootstrap:
+                # One scenario draw per replicate, reused across models and
+                # columns -- that shared draw is what preserves the pairing the
+                # within-row contrast depends on.
+                idx = rng.integers(0, n_s, size=(n_bootstrap, n_s))
+                replicates[:, i, :] = np.nanmean(arr[idx], axis=(1, 2))
+
+    return DesignedMeasuredMatrix(
+        principles=tuple(PRINCIPLES),
+        models=model_names,
+        point=point,
+        replicates=replicates,
+        n_per_cell=n_per_cell,
+        n_scenarios=n_scenarios,
+    )
+
+
+def discriminant_contrasts(
+    matrix: DesignedMeasuredMatrix, centered: bool = False
+) -> pd.DataFrame:
+    """Per-row and pooled `diagonal - off-diagonal`, with cluster-bootstrap CIs.
+
+    The headline statistic. **A negative value means the designed principle
+    scores lower than the seven it was not designed for** -- i.e. the scenarios
+    discriminate. A value at zero means the scenario merely elicited a good or
+    bad response in general and the principle label is decorative.
+
+    The contrast is taken *within* a row, so anything that shifts a whole row --
+    a model-quality factor, judge leniency, the judge factor collapse documented
+    by Feuer et al. (arXiv:2509.20293) -- cancels. That is what this design buys
+    over factoring the matrix, where a high correlation is equally consistent
+    with genuine overlap and with the judge collapsing distinct criteria.
+
+    With ``centered=True`` each cell's column mean is removed first, which also
+    cancels a per-rubric leniency effect. Reported alongside the raw contrast,
+    never instead of it.
+
+    Returns rows for each principle plus a final ``pooled`` row (the unweighted
+    mean of the eight, recomputed inside each replicate so the CI accounts for
+    all eight rows moving together).
+    """
+    point = _row_contrasts(matrix.point, centered)
+    reps = _row_contrasts(matrix.replicates, centered)
+
+    rows: list[dict] = []
+    for i, principle in enumerate(matrix.principles):
+        lo, hi = _percentile_ci(reps[:, i])
+        rows.append({
+            "designed_principle": principle,
+            "contrast": float(point[i]),
+            "ci_lower": lo,
+            "ci_upper": hi,
+            "excludes_zero": bool(hi < 0 or lo > 0),
+            "n_scenarios": int(matrix.n_scenarios[i]),
+            "centered": centered,
+        })
+    pooled_reps = reps.mean(axis=1)
+    lo, hi = _percentile_ci(pooled_reps)
+    rows.append({
+        "designed_principle": "pooled",
+        "contrast": float(point.mean()),
+        "ci_lower": lo,
+        "ci_upper": hi,
+        "excludes_zero": bool(hi < 0 or lo > 0),
+        "n_scenarios": int(matrix.n_scenarios.sum()),
+        "centered": centered,
+    })
+    return pd.DataFrame(rows)
+
+
+def diagonal_ranks(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
+    """Where the diagonal cell sits in its row and in its column.
+
+    Rank 1 is the lowest (most negative) cell. An ordinal summary survives any
+    monotone distortion of the judge's scale, so it stands even if the severity
+    levels are not equally spaced -- which, being a 4-point rubric, they are not.
+
+    The column rank is the companion to the column-centred contrast: if a
+    principle's diagonal is lowest in its row *and* lowest in its column, the
+    row result is not explained by that rubric simply being harsh.
+
+    ``share_lowest_in_row`` and ``share_bottom_two_in_row`` are the fraction of
+    bootstrap replicates in which the ordinal claim still holds.
+    """
+    k = len(matrix.principles)
+    rows: list[dict] = []
+    for i, principle in enumerate(matrix.principles):
+        row_vals, col_vals = matrix.point[i, :], matrix.point[:, i]
+        row_rank = int((row_vals < row_vals[i]).sum() + 1)
+        col_rank = int((col_vals < col_vals[i]).sum() + 1)
+
+        rep_rows = matrix.replicates[:, i, :]
+        rep_rank = (rep_rows < rep_rows[:, [i]]).sum(axis=1) + 1
+        rows.append({
+            "designed_principle": principle,
+            "diagonal": float(matrix.point[i, i]),
+            "rank_in_row": row_rank,
+            "rank_in_column": col_rank,
+            "n_cells": k,
+            "share_lowest_in_row": float((rep_rank == 1).mean()),
+            "share_bottom_two_in_row": float((rep_rank <= 2).mean()),
+        })
+    return pd.DataFrame(rows)
+
+
 def bootstrap_naive_grid(
     long: pd.DataFrame,
     n_bootstrap: int = N_BOOTSTRAP_DEFAULT,
