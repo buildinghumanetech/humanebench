@@ -82,27 +82,64 @@ def _openrouter_get(path: str, timeout: float = 20.0) -> dict | None:
 
 
 def get_openrouter_credits() -> float | None:
-    """Remaining credit in USD, or None if it cannot be determined.
+    """Spendable headroom in USD, or None if it cannot be determined.
 
-    An uncapped key reports ``limit: null``. That is returned as None
-    (*unknown*), never as infinity: an infinite balance would make every
-    ``credits < needed`` comparison false and silently disable the spend guard
-    for the whole night, which is the opposite of what the guard is for.
+    Two independent ceilings, and the binding one is whichever is lower:
+
+    ``/credits``  account balance (total purchased minus lifetime usage).
+    ``/key``      per-key spend limit minus that key's usage.
+
+    Both are consulted and the minimum is returned. Querying only ``/credits``
+    would ignore a key spend-limit entirely, which matters most on an account
+    with **auto top-up**: there the balance is not a ceiling at all -- it refills
+    on demand -- so a key limit may be the only real budget control in force.
+    An uncapped key reports ``limit: null`` and simply contributes no ceiling.
     """
+    ceilings: list[float] = []
+
     payload = _openrouter_get("/credits")
     if payload and isinstance(payload.get("data"), dict):
         d = payload["data"]
         total, used = d.get("total_credits"), d.get("total_usage")
         if total is not None and used is not None:
-            return float(total) - float(used)
+            ceilings.append(float(total) - float(used))
 
     payload = _openrouter_get("/key")
     if payload and isinstance(payload.get("data"), dict):
         d = payload["data"]
         limit, usage = d.get("limit"), d.get("usage")
-        if limit is not None and usage is not None:
-            return float(limit) - float(usage)
+        if limit is not None:
+            ceilings.append(float(limit) - float(usage or 0))
+
+    return min(ceilings) if ceilings else None
+
+
+def get_openrouter_usage() -> float | None:
+    """Lifetime spend on the account, for measuring what this run consumed.
+
+    On an auto-top-up account the balance is a poor progress signal: it refills,
+    so watching it go down understates spend. Cumulative usage only ever rises,
+    which makes it the right baseline for a budget cap.
+    """
+    payload = _openrouter_get("/credits")
+    if payload and isinstance(payload.get("data"), dict):
+        used = payload["data"].get("total_usage")
+        if used is not None:
+            return float(used)
+    payload = _openrouter_get("/key")
+    if payload and isinstance(payload.get("data"), dict):
+        used = payload["data"].get("usage")
+        if used is not None:
+            return float(used)
     return None
+
+
+def _spend_so_far(baseline: float | None) -> float | None:
+    """USD consumed since ``baseline``, or None if usage cannot be read."""
+    if baseline is None:
+        return None
+    now = get_openrouter_usage()
+    return None if now is None else max(0.0, now - baseline)
 
 
 def _json_safe(value):
@@ -485,11 +522,22 @@ def _run_one(cond: dc.Condition, model: str) -> dict:
 
 def run_condition(
     cond: dc.Condition, models: list[str], max_workers: int, credit_factor: float,
-    status: dict, require_credit_check: bool = True
+    status: dict, require_credit_check: bool = True,
+    max_spend: float | None = None, usage_baseline: float | None = None
 ) -> dict:
     print(f"\n{'=' * 72}\nCondition {cond.label}  ({cond.task_type})")
     print(f"  {cond.expected_samples} samples x {len(models)} models   "
           f"est ${cond.est_cost_usd(len(models)):.2f}\n{'=' * 72}")
+
+    spent = _spend_so_far(usage_baseline)
+    if max_spend is not None and spent is not None and spent >= max_spend:
+        msg = f"spend cap reached: ${spent:.2f} of ${max_spend:.2f} consumed"
+        print(f"  ABORT: {msg}")
+        record_event(status, "spend_cap_abort", condition=cond.task_type, detail=msg)
+        return {"status": "skipped_spend_cap", "spent_usd": round(spent, 2)}
+    if spent is not None:
+        print(f"  spent so far this run: ${spent:.2f}"
+              + (f" of ${max_spend:.2f} cap" if max_spend else ""))
 
     credits = get_openrouter_credits()
     needed = cond.est_cost_usd(len(models)) * credit_factor
@@ -506,9 +554,20 @@ def run_condition(
     elif credits < needed:
         msg = (f"insufficient credit: ${credits:.2f} available, "
                f"${needed:.2f} needed ({credit_factor}x est)")
-        print(f"  ABORT: {msg}")
-        record_event(status, "credit_abort", condition=cond.task_type, detail=msg)
-        return {"status": "skipped_insufficient_credit", "credit_usd": credits, "needed_usd": needed}
+        if max_spend is not None:
+            # With an explicit spend cap the balance is not the control, and on
+            # an auto-top-up account it is actively misleading: it refills on
+            # demand, so a low reading says nothing about whether the run can
+            # complete. Downgrade to a warning and let the cap do the work.
+            print(f"  ! {msg}; proceeding because --max-spend ${max_spend:.2f} "
+                  "is the binding control (balance may auto-top-up)")
+            record_event(status, "credit_low_but_capped", condition=cond.task_type,
+                         detail=msg, max_spend_usd=max_spend)
+        else:
+            print(f"  ABORT: {msg}")
+            record_event(status, "credit_abort", condition=cond.task_type, detail=msg)
+            return {"status": "skipped_insufficient_credit",
+                    "credit_usd": credits, "needed_usd": needed}
     else:
         print(f"  credit OK: ${credits:.2f} available, ${needed:.2f} required")
 
@@ -545,8 +604,20 @@ def run_condition(
             if not halfway_checked and cond.scale == "full" and i >= 5:
                 halfway_checked = True
                 mid = get_openrouter_credits()
+                mid_spent = _spend_so_far(usage_baseline)
                 record_event(status, "credit_check", condition=cond.task_type,
-                             after_models=i, credit_usd=_json_safe(mid))
+                             after_models=i, credit_usd=_json_safe(mid),
+                             spent_usd=_json_safe(mid_spent))
+                if (max_spend is not None and mid_spent is not None
+                        and mid_spent >= max_spend):
+                    aborted_midway = True
+                    n_withheld = len(queued); queued.clear()
+                    print(f"  ABORT mid-condition: spend cap reached "
+                          f"(${mid_spent:.2f} of ${max_spend:.2f}); withheld "
+                          f"{n_withheld} un-started model(s)")
+                    record_event(status, "spend_cap_abort_midway",
+                                 condition=cond.task_type,
+                                 spent_usd=_json_safe(mid_spent), withheld=n_withheld)
                 if mid is not None:
                     remaining_need = (len(models) - i) * per_model_cost * credit_factor
                     print(f"  [mid-condition] credit ${mid:.2f}, "
@@ -617,6 +688,13 @@ def main() -> int:
                     help="parallel models within a condition (keep low: judge 429s "
                          "consume score_attempts and land as NaN)")
     ap.add_argument("--min-credit-factor", type=float, default=1.2)
+    ap.add_argument("--max-spend", type=float, default=None,
+                    help="hard ceiling in USD on what THIS run may consume, "
+                         "measured as the rise in OpenRouter lifetime usage from "
+                         "a baseline taken at launch. On an auto-top-up account "
+                         "this is the only real budget control: the balance "
+                         "refills, so a sufficiency check against it can never "
+                         "bind. Checked before each condition and mid-condition.")
     ap.add_argument("--gate-threshold", type=float, default=0.98)
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--smoke-model", default="openrouter/google/gemini-2.5-flash")
@@ -659,8 +737,15 @@ def main() -> int:
         credits = get_openrouter_credits()
         print(f"  credit: {'unknown' if credits is None else f'${credits:.2f}'}")
         if credits is not None and credits < total_cost:
-            print(f"  ! credit ${credits:.2f} is below the ${total_cost:.2f} estimate; "
-                  "later conditions will be skipped when their own check fails")
+            if args.max_spend:
+                print(f"  ! credit ${credits:.2f} is below the ${total_cost:.2f} "
+                      f"estimate, but --max-spend ${args.max_spend:.2f} is the "
+                      "binding control (fine on an auto-top-up account)")
+            else:
+                print(f"  ! credit ${credits:.2f} is below the ${total_cost:.2f} "
+                      "estimate; later conditions will be skipped when their own "
+                      "check fails. If the account auto-tops-up, pass --max-spend "
+                      "instead so the cap governs rather than the balance.")
 
         judge_slugs = list(dc.JUDGE_MODELS)
         avail = check_model_availability(sorted(set(models) | set(judge_slugs)))
@@ -712,8 +797,20 @@ def main() -> int:
           "(written before the first API call)")
 
     status = load_status()
+    usage_baseline = get_openrouter_usage()
+    status["usage_baseline_usd"] = _json_safe(usage_baseline)
+    status["max_spend_usd"] = args.max_spend
+    if args.max_spend and usage_baseline is None:
+        print("\nABORT: --max-spend was given but OpenRouter lifetime usage could "
+              "not be read, so spend cannot be measured.")
+        return 3
+    if args.max_spend:
+        print(f"\nspend cap: ${args.max_spend:.2f} above a baseline of "
+              f"${usage_baseline:.2f} lifetime usage")
     record_event(status, "launch", conditions=[c.task_type for c in selected],
-                 n_models=len(models), est_cost_usd=round(total_cost, 2))
+                 n_models=len(models), est_cost_usd=round(total_cost, 2),
+                 usage_baseline_usd=_json_safe(usage_baseline),
+                 max_spend_usd=args.max_spend)
     save_status(status)
 
     t0 = time.time()
@@ -730,7 +827,9 @@ def main() -> int:
 
         outcome = run_condition(cond, models, args.max_workers,
                                 args.min_credit_factor, status,
-                                require_credit_check=not args.no_require_credit_check)
+                                require_credit_check=not args.no_require_credit_check,
+                                max_spend=args.max_spend,
+                                usage_baseline=usage_baseline)
         if outcome["status"] != "ran":
             status["conditions"][cond.task_type] = outcome
             save_status(status)
