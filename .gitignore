@@ -255,3 +255,10 @@ evaluator/workshop/results.jsonl
 # Large per-judge raw severity table (13 MB, regeneratable via
 # scripts/compute_inter_judge_agreement.py)
 tables/inter_judge_raw.csv
+
+# Multi-label scoring datasets (7 MB). They embed archived model responses, and
+# `logs/` is ignored above for exactly that reason -- responses are not published
+# from this repo. Regeneratable byte-for-byte via
+# scripts/build_discriminant_multilabel_dataset.py, and their sha256s are
+# recorded in data/discriminant/manifest.json, which IS committed.
+data/discriminant/multilabel_*.jsonl
