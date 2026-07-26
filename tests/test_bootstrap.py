@@ -17,8 +17,11 @@ from humanebench.bootstrap import (
     HUMANESCORE_KEY,
     PRINCIPLES,
     bootstrap_cell_scores,
+    bootstrap_cohort_grid,
     bootstrap_cohort_principle_means,
+    bootstrap_naive_grid,
     bootstrap_persona_deltas,
+    cohort_flip_stats,
 )
 
 
@@ -332,3 +335,178 @@ def test_cohort_resampling_unit_is_scenario_not_model():
         f"cohort width {cohort_width:.4f} differs from single-model width "
         f"{single_width:.4f} by more than 5% — resampling unit suspect"
     )
+
+
+# ---------------------------------------------------------------------------
+# bootstrap_cohort_grid / cohort_flip_stats
+#
+# These back the cohort-level statistics in the paper (the anti-humane flip
+# count and the size of the robust set). They are separate from
+# bootstrap_cohort_principle_means above: the defining property here is that ONE
+# scenario draw is carried across every (model, persona) cell, so that a count
+# computed across models inherits the correlation a shared scenario induces.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_cohort_grid_point_matches_mean_of_principle_means():
+    """Grid point estimates equal the mean of the 8 principle means per cell."""
+    rng = np.random.default_rng(4242)
+    models = ["m1", "m2"]
+    personas = ["baseline", "good_persona", "bad_persona"]
+    df = _multi_model_long(
+        rng, models=models, personas=personas,
+        persona_means={"baseline": 0.5, "good_persona": 0.8, "bad_persona": -0.3},
+        n_per_principle=20,
+    )
+    grid = bootstrap_cohort_grid(df, n_bootstrap=0)
+
+    expected = (
+        df.groupby(["model", "persona", "principle"])["score"].mean()
+        .groupby(["model", "persona"]).mean()
+    )
+    for i, model in enumerate(grid.models):
+        for j, persona in enumerate(grid.personas):
+            assert grid.point[i, j] == pytest.approx(expected[(model, persona)]), (
+                f"{model}/{persona} point estimate is not the mean of principle means"
+            )
+
+
+@pytest.mark.unit
+def test_cohort_grid_shares_one_scenario_draw_across_cells():
+    """The defining property: every cell sees the SAME resampled scenarios.
+
+    Two models with byte-identical scores must therefore produce byte-identical
+    replicates. Independent per-cell resampling (`bootstrap_naive_grid`) must
+    not, which is what makes it the wrong design for a cohort statistic.
+    """
+    rng = np.random.default_rng(7)
+    base = _synth_long(rng, personas=["baseline"],
+                       persona_means={"baseline": 0.4}, n_per_principle=25)
+    base = base.drop(columns=["model"])
+    twin = pd.concat([base.assign(model=m) for m in ("m1", "m2")], ignore_index=True)
+
+    shared = bootstrap_cohort_grid(twin, n_bootstrap=50)
+    i1, i2 = shared.models.index("m1"), shared.models.index("m2")
+    diff = shared.replicates[:, i1, 0] - shared.replicates[:, i2, 0]
+    assert np.allclose(diff, 0.0), (
+        "identical models diverged under a supposedly shared scenario draw — "
+        "the resample is not being carried across cells"
+    )
+
+    naive = bootstrap_naive_grid(twin, n_bootstrap=50)
+    j1, j2 = naive.models.index("m1"), naive.models.index("m2")
+    naive_diff = naive.replicates[:, j1, 0] - naive.replicates[:, j2, 0]
+    assert not np.allclose(naive_diff, 0.0), (
+        "naive per-cell resampling produced identical replicates; the two "
+        "designs are no longer distinguishable and the design-effect "
+        "comparison is meaningless"
+    )
+
+
+@pytest.mark.unit
+def test_cohort_grid_seed_reproducibility():
+    """Same seed → identical replicates; different seed → different replicates."""
+    rng = np.random.default_rng(99)
+    df = _multi_model_long(
+        rng, models=["m1", "m2"], personas=["baseline", "bad_persona"],
+        persona_means={"baseline": 0.5, "bad_persona": -0.4}, n_per_principle=15,
+    )
+    a = bootstrap_cohort_grid(df, n_bootstrap=40, seed=BOOTSTRAP_SEED)
+    b = bootstrap_cohort_grid(df, n_bootstrap=40, seed=BOOTSTRAP_SEED)
+    c = bootstrap_cohort_grid(df, n_bootstrap=40, seed=BOOTSTRAP_SEED + 1)
+    assert np.array_equal(a.replicates, b.replicates)
+    assert not np.array_equal(a.replicates, c.replicates)
+
+
+@pytest.mark.unit
+def test_cohort_grid_tolerates_ragged_cells():
+    """A scenario missing from one cell must not corrupt any other cell.
+
+    Real logs are ragged: 23 of the 45 (model, persona) cells hold fewer than
+    788 scenarios after judge-failure cascades.
+    """
+    rng = np.random.default_rng(123)
+    df = _multi_model_long(
+        rng, models=["m1", "m2"], personas=["baseline", "bad_persona"],
+        persona_means={"baseline": 0.5, "bad_persona": -0.4}, n_per_principle=12,
+    )
+    victim = df["sample_id"].iloc[0]
+    ragged = df.drop(df[(df.model == "m1") & (df.persona == "baseline")
+                        & (df.sample_id == victim)].index)
+
+    grid = bootstrap_cohort_grid(ragged, n_bootstrap=0)
+    expected = (
+        ragged.groupby(["model", "persona", "principle"])["score"].mean()
+        .groupby(["model", "persona"]).mean()
+    )
+    for i, model in enumerate(grid.models):
+        for j, persona in enumerate(grid.personas):
+            assert grid.point[i, j] == pytest.approx(expected[(model, persona)])
+
+    i = grid.models.index("m1")
+    j = grid.personas.index("baseline")
+    assert grid.n_missing[i, j] == 1, "raggedness not reported in n_missing"
+    assert grid.n_missing.sum() == 1, "raggedness leaked into other cells"
+
+
+@pytest.mark.unit
+def test_cohort_flip_stats_counts_and_membership():
+    """Flip = S_base > 0 AND S_bad < 0, counted across models."""
+    rows = []
+    # m_flip flips; m_robust stays positive; m_low is negative at baseline too.
+    spec = {
+        "m_flip": {"baseline": 0.6, "bad_persona": -0.6},
+        "m_robust": {"baseline": 0.7, "bad_persona": 0.6},
+        "m_low": {"baseline": -0.2, "bad_persona": -0.8},
+    }
+    for model, means in spec.items():
+        for persona, mean in means.items():
+            for principle in PRINCIPLES:
+                for k in range(10):
+                    rows.append({"persona": persona, "model": model,
+                                 "principle": principle,
+                                 "sample_id": f"{principle}-{k:03d}",
+                                 "score": mean})
+    df = pd.DataFrame(rows)
+
+    stats = cohort_flip_stats(bootstrap_cohort_grid(df, n_bootstrap=20))
+    assert stats["flip_sign"]["point"] == 1
+    assert stats["flip_sign"]["models"] == ("m_flip",)
+    # Constant scores → no resampling variation → degenerate CI.
+    assert stats["flip_sign"]["ci"] == (1.0, 1.0)
+    # m_robust is the only cell at or above the 0.5 robustness threshold.
+    assert stats["robust_sbad"]["models"] == ("m_robust",)
+
+
+@pytest.mark.unit
+def test_cohort_flip_stats_adversarial_persona_is_selectable():
+    """`adversarial_persona` must default to bad_persona and be overridable.
+
+    Guards the reported numbers against a default drift when additional
+    adversarial conditions are added to the logs. Skips cleanly if the
+    parameter is not present yet, so this test can land before the
+    parameterisation it guards.
+    """
+    import inspect as _inspect
+    if "adversarial_persona" not in _inspect.signature(cohort_flip_stats).parameters:
+        pytest.skip("cohort_flip_stats has no adversarial_persona parameter yet")
+
+    rows = []
+    # Under bad_persona m1 flips; under decoy_persona it does not.
+    spec = {"baseline": 0.6, "bad_persona": -0.5, "decoy_persona": 0.4}
+    for persona, mean in spec.items():
+        for principle in PRINCIPLES:
+            for k in range(8):
+                rows.append({"persona": persona, "model": "m1",
+                             "principle": principle,
+                             "sample_id": f"{principle}-{k:03d}", "score": mean})
+    df = pd.DataFrame(rows)
+    grid = bootstrap_cohort_grid(df, n_bootstrap=10)
+
+    assert cohort_flip_stats(grid)["flip_sign"]["point"] == 1, (
+        "default adversarial persona is no longer bad_persona — every reported "
+        "flip count depends on this default"
+    )
+    other = cohort_flip_stats(grid, adversarial_persona="decoy_persona")
+    assert other["flip_sign"]["point"] == 0
