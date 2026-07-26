@@ -28,31 +28,22 @@ LOGS_DIR = REPO_ROOT / "logs"
 
 SUBSET_DIR = REPO_ROOT / "data" / "decomposition"
 
-# Two nested subsamples. The 400 is drawn from the 788 analysis set; the 200 is
-# drawn FROM the 400, not independently. Independent draws at different sizes do
-# not nest -- numpy's choice returns a different selection per size rather than a
-# prefix -- so an independently drawn 200 would share only ~50% of its ids with
-# the 400 and every E-vs-C/D comparison would be unpaired.
-SUBSET_400_IDS_PATH = SUBSET_DIR / "subsample_400_ids.txt"
-SUBSET_400_DATASET_PATH = SUBSET_DIR / "humane_bench_subsample_400.jsonl"
-SUBSET_400_SUMMARY_PATH = SUBSET_DIR / "subsample_400_summary.json"
-SUBSET_400_IDS_REL = "data/decomposition/subsample_400_ids.txt"
-SUBSET_400_DATASET_REL = "data/decomposition/humane_bench_subsample_400.jsonl"
-SUBSET_400_PROMPT_HASH = "276327e0977a65f360af06bf8b466bb72ae0e9616f3478087590bbdd94007043"
-
-SUBSET_200_IDS_PATH = SUBSET_DIR / "subsample_200_ids.txt"
-SUBSET_200_DATASET_PATH = SUBSET_DIR / "humane_bench_subsample_200.jsonl"
-SUBSET_200_SUMMARY_PATH = SUBSET_DIR / "subsample_200_summary.json"
-SUBSET_200_IDS_REL = "data/decomposition/subsample_200_ids.txt"
-SUBSET_200_DATASET_REL = "data/decomposition/humane_bench_subsample_200.jsonl"
-SUBSET_200_PROMPT_HASH = "2aefec58864c9538357a8c292696ef95716ab62d819cab4999e2d01e87123257"
-
-# Back-compat aliases (the 400 is the primary subsample).
-SUBSET_IDS_PATH = SUBSET_400_IDS_PATH
-SUBSET_DATASET_PATH = SUBSET_400_DATASET_PATH
-SUBSET_SUMMARY_PATH = SUBSET_400_SUMMARY_PATH
-SUBSET_IDS_REL = SUBSET_400_IDS_REL
-SUBSET_DATASET_REL = SUBSET_400_DATASET_REL
+# One frozen subsample, shared by C, D and E so those three arms are perfectly
+# paired with each other and nested inside B's full 788.
+#
+# Stratified principle -> VP bucket -> domain. The VP level is deliberate: a
+# draw stratified only on principle and domain reproduced the population's 34%
+# VP share but returned 5 children-tagged scenarios against 10.2 expected, the
+# worst of 40 seeds. With the VP level the headline group counts are constant
+# across seeds (children 10, teenagers 16, elderly 11), so they are a property
+# of the design rather than of the seed -- which is what makes the draw
+# defensible rather than something that has to be explained.
+SUBSET_IDS_PATH = SUBSET_DIR / "subsample_200_ids.txt"
+SUBSET_DATASET_PATH = SUBSET_DIR / "humane_bench_subsample_200.jsonl"
+SUBSET_SUMMARY_PATH = SUBSET_DIR / "subsample_200_summary.json"
+SUBSET_IDS_REL = "data/decomposition/subsample_200_ids.txt"
+SUBSET_DATASET_REL = "data/decomposition/humane_bench_subsample_200.jsonl"
+SUBSET_PROMPT_HASH = "c6bff47ffe03542e9158946b2ae016d36c3451dc445b50df112b6e0735af7240"
 
 # Empirical anchor from scripts/run_parallel_retries.py: $29.44 per 800-sample
 # evaluation (generation + 3 judge calls per sample).
@@ -203,17 +194,28 @@ CONDITIONS: tuple[Condition, ...] = (
         task_type="decomp_c_prose",
         label="C",
         prompt_const="DECOMP_C_SYSTEM_PROMPT",
-        dataset_rel=SUBSET_400_DATASET_REL,
-        expected_samples=400,
+        dataset_rel=SUBSET_DATASET_REL,
+        expected_samples=200,
         scale="subset",
         rationale="Short naturalistic prose; ecological validity over format matching.",
+        deviations=(
+            "adversarial-conditions.md RQ5 (C) ends 'Be the person they most want "
+            "to keep talking to.' That clause was deleted. Every other prompt in "
+            "the set states a commercial objective and stops; this one additionally "
+            "gestures at parasocial positioning, which is adjacent to the "
+            "dependency and boundary-blurring tactics the decomposition exists to "
+            "remove. Retaining it would have left one arm carrying a soft tactic "
+            "while the others carried none, so a C-vs-D difference could not be "
+            "attributed to register alone. The objective is fully stated by the two "
+            "preceding sentences.",
+        ),
     ),
     Condition(
         task_type="decomp_d_okr",
         label="D",
         prompt_const="DECOMP_D_SYSTEM_PROMPT",
-        dataset_rel=SUBSET_400_DATASET_REL,
-        expected_samples=400,
+        dataset_rel=SUBSET_DATASET_REL,
+        expected_samples=200,
         scale="subset",
         rationale="Growth-team OKR framing; objective arrives as a quarterly target.",
         deviations=(
@@ -226,7 +228,7 @@ CONDITIONS: tuple[Condition, ...] = (
         task_type="decomp_e_abtest",
         label="E",
         prompt_const="DECOMP_E_SYSTEM_PROMPT",
-        dataset_rel=SUBSET_200_DATASET_REL,
+        dataset_rel=SUBSET_DATASET_REL,
         expected_samples=200,
         scale="subset",
         rationale=(
@@ -334,8 +336,4 @@ def expected_prompt_hash(condition: Condition) -> str:
     """The canonical prompt hash a completed run of ``condition`` must produce."""
     from humanebench.provenance import FROZEN_PROMPT_HASH
 
-    if condition.scale == "full":
-        return FROZEN_PROMPT_HASH
-    if condition.expected_samples == 400:
-        return SUBSET_400_PROMPT_HASH
-    return SUBSET_200_PROMPT_HASH
+    return FROZEN_PROMPT_HASH if condition.scale == "full" else SUBSET_PROMPT_HASH

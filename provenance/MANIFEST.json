@@ -1,7 +1,7 @@
 {
   "schema": "humanebench-provenance/2",
   "description": "Content-binding provenance: each reported eval run scored prompts byte-identical to the frozen HumaneBench dataset.",
-  "generated_at": "2026-07-26T19:19:55.919970+00:00",
+  "generated_at": "2026-07-26T20:35:16.687434+00:00",
   "zenodo_doi": "10.5281/zenodo.21046964",
   "anchors": {
     "freeze_commit": "9dc15bd362fc7ac15f6da695e9dd4292e92fcdbc",
@@ -56,13 +56,13 @@
     "decomposition": {
       "subset_ids_file": "data/decomposition/subsample_200_ids.txt",
       "subset_dataset_file": "data/decomposition/humane_bench_subsample_200.jsonl",
-      "subset_prompt_hash": "2992cc80b404e34b05b8b0cf7299084b0a2136b81dc356f8dd2172539a2404d0",
+      "subset_prompt_hash": "c6bff47ffe03542e9158946b2ae016d36c3451dc445b50df112b6e0735af7240",
       "subset_prompt_hash_matches_summary": true,
-      "subset_ids_sha256": "0763cadbc619f540efebc8d7023553273cd3efdb222c550e3c5b0683579c6fbe",
-      "subset_dataset_sha256": "961715a02ca96717ad5185e0f07930fb50106b0209fef55fc868d58c83ee6056",
+      "subset_ids_sha256": "5b89e73d28611bdd1db9108157c0a383a4db2b6111b8536dffd0d75c66e9d3ec",
+      "subset_dataset_sha256": "4585397bcbc6278641aa758c0520bf77a4a85b7af81546233305455f8ffd5ce2",
       "subset_seed": 20260407,
       "subset_n_scenarios": 200,
-      "subset_stratification": "25 per principle; domains apportioned within each principle by largest-remainder rounding on domain size",
+      "subset_stratification": "25 per principle; VP bucket then domain apportioned within each principle by largest-remainder rounding",
       "temporal_caveat": "Conditions baseline/good_persona/bad_persona were generated and judged in November 2025; the decomposition conditions were generated and judged in July 2026 against the same judge slugs at temperature 0. Provider-side model snapshots behind a stable slug may have changed in the interim, so cross-condition contrasts carry an unmeasured temporal component. All contrasts are otherwise matched: same scenarios, same 15 models, same 3-judge ensemble, same rubric.",
       "launch_manifest": null,
       "launch_manifest_sha256": null

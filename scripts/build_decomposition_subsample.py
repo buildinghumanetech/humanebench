@@ -82,23 +82,53 @@ def largest_remainder(weights: dict[str, int], total: int) -> dict[str, int]:
     return alloc
 
 
+# Vulnerable-population buckets used as a middle stratum. The three named groups
+# are the ones the paper reports; everything else tagged is pooled, and untagged
+# rows form their own bucket.
+#
+# Without this level, VP composition is left to luck: a draw stratified only on
+# principle and domain reproduced the population's 34% VP *share* but returned
+# 5 children-tagged scenarios against 10.2 expected -- the worst of 40 seeds.
+# Stratifying on the bucket makes the counts a property of the design rather
+# than of the seed, which is the difference between a defensible draw and one
+# that has to be explained.
+VP_HEADLINE_GROUPS = ("children", "teenagers", "elderly")
+
+
+def vp_bucket(row: dict) -> str:
+    tag = (row.get("metadata") or {}).get("vulnerable-population") or ""
+    if tag in VP_HEADLINE_GROUPS:
+        return tag
+    return "other-vp" if tag else "none"
+
+
 def stratified_subsample(
     rows: list[tuple[str, dict]],
     excluded: set[str],
     *,
     per_principle: int = PER_PRINCIPLE,
     seed: int = BOOTSTRAP_SEED,
+    vp_strata: bool = False,
 ) -> tuple[list[str], dict[str, dict[str, int]]]:
-    """Return ``(sorted_ids, {principle: {domain: n}})`` for the frozen draw."""
+    """Return ``(sorted_ids, {principle: {stratum: n}})`` for the frozen draw.
+
+    Principle is always the top stratum -- HumaneScore is the mean of 8
+    principle means, so imbalance there reweights the metric itself. With
+    ``vp_strata`` the second level is the VP bucket and the third is domain;
+    without it, domain is the second level and VP composition is incidental.
+    """
     rng = np.random.default_rng(seed)
+
+    def key(row: dict) -> str:
+        domain = (row.get("metadata") or {}).get("domain") or "__untagged__"
+        return f"{vp_bucket(row)}|{domain}" if vp_strata else domain
 
     by_principle: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
     for _raw, row in rows:
         if row["id"] in excluded:
             continue
         principle = row["target"]
-        domain = (row.get("metadata") or {}).get("domain") or "__untagged__"
-        by_principle[principle][domain].append(row["id"])
+        by_principle[principle][key(row)].append(row["id"])
 
     missing = [p for p in PRINCIPLES if p not in by_principle]
     if missing:
@@ -166,6 +196,10 @@ def main() -> int:
              "prefix -- so a smaller arm must be drawn FROM the larger one for "
              "any comparison between them to stay paired.",
     )
+    ap.add_argument("--vp-strata", action="store_true",
+                    help="stratify principle -> VP bucket -> domain, so the "
+                         "children/teenagers/elderly counts are set by the design "
+                         "rather than by the seed")
     ap.add_argument("--name", default=None,
                     help="output basename stem (default: subsample_<n>)")
     ap.add_argument(
@@ -202,7 +236,8 @@ def main() -> int:
     print(f"pool rows: {len(rows)}   eligible after exclusions: {n_elig}")
 
     ids, composition = stratified_subsample(
-        rows, excluded, per_principle=args.per_principle, seed=args.seed
+        rows, excluded, per_principle=args.per_principle, seed=args.seed,
+        vp_strata=args.vp_strata
     )
     id_set = set(ids)
 
@@ -227,9 +262,11 @@ def main() -> int:
         "per_principle": args.per_principle,
         "n_scenarios": len(ids),
         "stratification": (
-            f"{args.per_principle} per principle; domains apportioned within each "
-            "principle by largest-remainder rounding on domain size"
+            f"{args.per_principle} per principle; "
+            + ("VP bucket then domain" if args.vp_strata else "domain")
+            + " apportioned within each principle by largest-remainder rounding"
         ),
+        "vp_strata": bool(args.vp_strata),
         "source_dataset": "data/humane_bench.jsonl",
         "source_dataset_sha256": file_sha256(DATASET_PATH),
         "n_excluded_in_source": len(excluded),
