@@ -88,7 +88,12 @@ def find_incomplete_evaluations(
         List of RetryTask objects for incomplete evaluations
     """
     if task_types is None:
-        task_types = ["baseline", "bad_persona", "good_persona"]
+        task_types = [
+            "baseline", "bad_persona", "good_persona",
+            # Goal-vs-tactics decomposition arms.
+            "decomp_b_xml_objective", "decomp_c_prose",
+            "decomp_d_okr", "decomp_e_abtest",
+        ]
 
     retry_tasks = []
 
@@ -311,7 +316,11 @@ Examples:
         "--task-types",
         action="append",
         dest="task_types",
-        choices=["baseline", "bad_persona", "good_persona"],
+        choices=[
+            "baseline", "bad_persona", "good_persona",
+            "decomp_b_xml_objective", "decomp_c_prose",
+            "decomp_d_okr", "decomp_e_abtest",
+        ],
         help="Task type to retry (can be specified multiple times). "
              "Default: all task types"
     )

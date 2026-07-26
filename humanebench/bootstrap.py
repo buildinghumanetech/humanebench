@@ -605,6 +605,26 @@ def bootstrap_cohort_grid(
 
     n_missing = np.isnan(mat).sum(axis=1).reshape(n_m, n_p)
 
+    # A cell missing most of the frame is almost always a mixed-scale mistake:
+    # comparing a persona scored on all 788 scenarios against one scored on a
+    # 200-scenario subsample silently produces an *unpaired* contrast, which
+    # biases the point estimate and narrows the CI. Ragged cells of a few
+    # scenarios (judge-failure cascades) are normal and stay silent.
+    frac_missing = n_missing / max(n_s, 1)
+    bad = np.argwhere(frac_missing > 0.25)
+    if bad.size:
+        worst = ", ".join(
+            f"{models[i]}/{personas[j]} missing {n_missing[i, j]}/{n_s}"
+            for i, j in bad[:4]
+        )
+        warnings.warn(
+            f"{len(bad)} cell(s) are missing >25% of the {n_s}-scenario frame "
+            f"({worst}). If you are mixing full-scale and subsample conditions, "
+            "pass scenario_ids= the shared scenario set so the contrast stays "
+            "paired.",
+            stacklevel=2,
+        )
+
     # Column blocks, one per principle present in the frame.
     principle_cols: list[np.ndarray] = []
     for principle in PRINCIPLES:
@@ -653,6 +673,8 @@ def cohort_flip_stats(
     grid: CohortGrid,
     delta_cutoffs: Sequence[float] = (0.0, -0.1, -0.2),
     robust_sbad: float = 0.5,
+    baseline_persona: str = "baseline",
+    adversarial_persona: str = "bad_persona",
 ) -> dict:
     """Cohort counts with shared-scenario cluster CIs, from one `CohortGrid`.
 
@@ -672,9 +694,14 @@ def cohort_flip_stats(
         robust_sbad       S_bad >= robust_sbad
         robust_sbad_ci    S_bad >= robust_sbad and the cell's own CI
                           excludes robust_sbad  (the section 4 bold rule)
+
+    ``adversarial_persona`` selects which column plays the adversarial role, so
+    the same rules can be evaluated against a decomposition condition. It
+    defaults to the reported adversarial persona, and the reported numbers are
+    produced by the defaults.
     """
-    b = grid.personas.index("baseline")
-    d = grid.personas.index("bad_persona")
+    b = grid.personas.index(baseline_persona)
+    d = grid.personas.index(adversarial_persona)
     base_p, bad_p = grid.point[:, b], grid.point[:, d]
     base_r, bad_r = grid.replicates[:, :, b], grid.replicates[:, :, d]
     delta_p, delta_r = bad_p - base_p, bad_r - base_r
