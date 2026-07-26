@@ -34,6 +34,7 @@ load_dotenv()
 
 import argparse
 import concurrent.futures
+from collections import Counter
 import json
 import math
 import os
@@ -229,7 +230,43 @@ def gate_condition(cond: dc.Condition, models: list[str], threshold: float) -> d
         worst = min(worst, frac)
     report["worst_fraction_scored"] = round(worst, 5)
     report["passed"] = worst >= threshold
+    report["serving_providers"] = provider_census(cond, models)
     return report
+
+
+def provider_census(cond: dc.Condition, models: list[str]) -> dict:
+    """Which upstream stack actually answered, per model.
+
+    The reported runs recorded only the slug, so their provider mixture had to be
+    recovered afterwards from raw responses. Capturing it at run time means the
+    decomposition does not inherit that gap: a cell served by several stacks is
+    visible in the status file rather than needing a later forensic pass.
+    """
+    out: dict = {}
+    for model in models:
+        model_dir = cond.log_dir / model.split("/")[-1]
+        path = best_eval(model_dir) if model_dir.is_dir() else None
+        if path is None:
+            continue
+        counts: Counter = Counter()
+        try:
+            for sample in prov.iter_eval_samples(path):
+                for ev in sample.get("events") or []:
+                    if ev.get("event") != "model" or ev.get("model") != model:
+                        continue
+                    resp = (ev.get("call") or {}).get("response")
+                    if isinstance(resp, dict):
+                        counts[resp.get("provider")] += 1
+                    break
+        except Exception as exc:  # a census must never fail a completed run
+            out[model] = {"error": repr(exc)}
+            continue
+        total = sum(counts.values()) or 1
+        out[model] = {
+            "n_distinct_providers": len(counts),
+            "shares": {str(k): round(v / total, 4) for k, v in counts.most_common()},
+        }
+    return out
 
 
 def archive_superseded(cond: dc.Condition, models: list[str],
@@ -370,6 +407,31 @@ def build_launch_manifest(conditions: list[dc.Condition], models: list[str]) -> 
             "(scripts/run_parallel_retries.py); engagement-framed prompts may "
             "exceed it because responses run longer."
         ),
+        "provider_routing": {
+            "policy": "unpinned",
+            "rationale": (
+                "OpenRouter fulfils one slug from several upstream serving stacks. "
+                "The reported runs were routed unpinned -- 7 of 15 models drew from "
+                "more than one provider (llama-4-maverick from 8, "
+                "deepseek-v3.1-terminus from 5). Pinning providers here would make "
+                "this condition more controlled than the conditions it is contrasted "
+                "against, adding a second axis of difference alongside the prompt "
+                "change. A confound shared by both arms is preferable to an "
+                "asymmetry between them."
+            ),
+            "reported_run_mixture": "tables/serving_provenance.md",
+            "per_response_provider_recorded": True,
+            "unversioned_slugs": [
+                "openrouter/google/gemini-2.5-pro",
+                "openrouter/google/gemini-2.5-flash",
+            ],
+            "unversioned_note": (
+                "These two carry no version marker in their OpenRouter "
+                "canonical_slug, so whether they are the weights tested in Nov 2025 "
+                "is not determinable from any exposed field. The other nine resolve "
+                "to a dated or named snapshot predating those runs."
+            ),
+        },
         "temporal_caveat": dc.TEMPORAL_CAVEAT,
         "analysis_commitments": [
             "Report difference-in-differences (delta_bad - delta_condition), never a ratio: "
