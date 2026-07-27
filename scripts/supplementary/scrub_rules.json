@@ -1,0 +1,170 @@
+{
+  "description": "Edits applied to the STAGED COPIES only -- the repository stays canonical. Every rule carries expect_hits, and a mismatch fails the build: a rule that stops matching means the repo moved and this list is stale, which is exactly when a leak slips through unnoticed. Ops: replace (literal), write (whole file), manifest_json, golden_rater_names.",
+
+  "rules": [
+    {
+      "path": "humanebench/provenance.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "# Zenodo DOI for the archived logs deposit (reserved on a draft deposition).\nZENODO_DOI = \"10.5281/zenodo.21046964\"",
+      "replace": "# DOI of the archived logs deposit. Blank in the review copy: AAAI-27\n# submissions may not point outside the supplementary package, and the\n# deposit landing page names the authors.\nARCHIVE_DOI = \"\"",
+      "why": "The value AND the identifier have to go -- the constant's name alone would tell a reviewer which archive to search. Its one importer, build_provenance.py, is renamed in step with it, and already renders a falsy DOI as a withheld placeholder."
+    },
+
+    {
+      "path": "PROVENANCE.md",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "| Zenodo deposit ([10.5281/zenodo.21046964](https://doi.org/10.5281/zenodo.21046964)) | Archived copy of the raw `.eval` logs + this manifest + the finalized dataset, so the logs can be downloaded and re-verified. |",
+      "replace": "| Archived log deposit (DOI withheld for anonymous review) | Archived copy of the raw `.eval` logs + this manifest + the finalized dataset, so the logs can be downloaded and re-verified once the deposit is public. |",
+      "why": "The DOI resolves to a landing page naming the authors."
+    },
+    {
+      "path": "PROVENANCE.md",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "The raw logs (~0.5 GB) are not committed to git (`logs/` is gitignored); they live in the\nZenodo deposit, while the repo carries the hashes and the verifier.",
+      "replace": "The raw logs (~0.5 GB) are not committed to git (`logs/` is gitignored) and are too\nlarge for the supplementary package; they live in an archival deposit, released on\npublication, while this package carries the hashes and the verifier. Every check\nbelow that does not need the log bytes runs on what is included here.",
+      "why": "Names the archive service and implies a link the submission may not carry."
+    },
+    {
+      "path": "PROVENANCE.md",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "- `paper_notes/cut_diff_report__cuts_v2_all_confabulation.md` — effect of the 12 excluded\n  items on the reported numbers.",
+      "replace": "- Effect of the 12 excluded items on the reported numbers: reported in the paper's\n  exclusions appendix (the working note itself is not part of this package).",
+      "why": "paper_notes/ is not shipped; a dangling pointer reads as a missing file."
+    },
+    {
+      "path": "PROVENANCE.md",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "# Against a fresh Zenodo download (no repo git history needed for content checks):",
+      "replace": "# Against a fresh copy of the archived logs (no repo git history needed for content checks):",
+      "why": "Names the archive service."
+    },
+
+    {
+      "path": "provenance/MANIFEST.md",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "- **Zenodo DOI:** 10.5281/zenodo.21046964",
+      "replace": "- **Archive DOI:** _(withheld for anonymous review)_",
+      "why": "Matches the label build_provenance.py emits after its own scrub, so regenerating this file inside the package reproduces it."
+    },
+
+    {
+      "path": "provenance/MANIFEST.json",
+      "op": "manifest_json",
+      "expect_hits": 47,
+      "why": "45 dataset_location values are absolute paths under a home directory that carries the author's username; the DOI and the deposit note name the archive service. Rewritten by walking the parsed JSON, never by regex over the text -- a regex here would silently corrupt a 47 KB record of hashes."
+    },
+
+    {
+      "path": "scripts/build_provenance.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "    python scripts/build_provenance.py --logs-dir /path/to/extracted/zenodo/logs",
+      "replace": "    python scripts/build_provenance.py --logs-dir /path/to/extracted/logs",
+      "why": "Names the archive service."
+    },
+    {
+      "path": "scripts/build_provenance.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "        \"zenodo_doi\": prov.ZENODO_DOI,",
+      "replace": "        \"archive_doi\": prov.ARCHIVE_DOI,",
+      "why": "Key renamed to match the scrubbed MANIFEST.json, so regenerating the manifest from inside the package yields the same key. Nothing reads this field: verify_provenance.py checks path/file_sha256/anchors only."
+    },
+    {
+      "path": "scripts/build_provenance.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "            \"The Zenodo deposit covers the reported runs only; decomposition logs \"\n            \"are repo-local until the deposit is updated.\"",
+      "replace": "            \"The archived deposit covers the reported runs only; decomposition logs \"\n            \"are repo-local until the deposit is updated.\"",
+      "why": "Names the archive service."
+    },
+    {
+      "path": "scripts/build_provenance.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "        f\"- **Zenodo DOI:** {manifest['zenodo_doi'] or '_(pending deposit)_'}\",",
+      "replace": "        f\"- **Archive DOI:** {manifest['archive_doi'] or '_(withheld for anonymous review)_'}\",",
+      "why": "Follows the renamed key; without this the scrubbed script would KeyError on its own manifest."
+    },
+    {
+      "path": "scripts/build_provenance.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "                         \"(default: repo logs/). Point at an extracted Zenodo tarball \"",
+      "replace": "                         \"(default: repo logs/). Point at an extracted log tarball \"",
+      "why": "Names the archive service."
+    },
+
+    {
+      "path": "scripts/verify_provenance.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "    python scripts/verify_provenance.py --logs-dir /path/to/extracted/zenodo/logs",
+      "replace": "    python scripts/verify_provenance.py --logs-dir /path/to/extracted/logs",
+      "why": "Names the archive service."
+    },
+    {
+      "path": "scripts/verify_provenance.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "against a bare Zenodo download; the content-binding checks (1-4, 7) still hold.",
+      "replace": "against a bare download of the archived logs; the content-binding checks (1-4, 7) still hold.",
+      "why": "Names the archive service."
+    },
+    {
+      "path": "scripts/verify_provenance.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "        # When verifying an extracted Zenodo dir, match on the tail the manifest",
+      "replace": "        # When verifying an extracted archive dir, match on the tail the manifest",
+      "why": "Names the archive service."
+    },
+
+    {
+      "path": "scripts/compute_vp_table5.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "# TODO: add bootstrap CIs (Andalib to layer on with PR #71 pattern)",
+      "replace": "# TODO: add bootstrap CIs (follow the PR #71 pattern)",
+      "why": "Names an author."
+    },
+
+    {
+      "path": "scripts/human_judging_analysis/consolidate_ratings.py",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "SPREADSHEET_DIR = \"/Users/asamandari1/Downloads/redownloaded_human_evals\"",
+      "replace": "SPREADSHEET_DIR = \"./redownloaded_human_evals\"",
+      "why": "Absolute path carrying the author's username."
+    },
+
+    {
+      "path": "helm_integration/README.md",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "- **HELM data:** https://github.com/stanford-crfm/helm/issues",
+      "replace": "- **HELM data:** the Stanford HELM project's public issue tracker",
+      "why": "Third-party URL, not an identity leak, but the package carries no external links at all so the rule stays uniform and no scan whitelist is needed."
+    },
+
+    {
+      "path": "data/golden_questions.jsonl",
+      "op": "golden_rater_names",
+      "expect_hits": 11,
+      "why": "metadata.human_rater_names lists the human raters by first name on 11 of 24 rows, and two of them are authors. The other 13 rows already use rater-N pseudonyms, so this rewrites the named ones to a disjoint rater-a/b/c series -- disjoint because they are a different set of raters and merging the two series would assert an identity nobody checked. A keyword scan would not have caught this: one of the three names is on no redaction list."
+    },
+
+    {
+      "path": "LICENSE",
+      "op": "write",
+      "content": "SPDX-License-Identifier: Apache-2.0\n\nCopyright holder withheld for AAAI-27 dual-anonymous review; the full notice is\nrestored in the camera-ready release. The licence itself is unmodified Apache\nLicense 2.0, whose canonical text is published by the Apache Software Foundation.\n",
+      "why": "The Apache-2.0 boilerplate's copyright line names the organisation. The SPDX identifier is the licence grant, so nothing is given up by shortening it."
+    }
+  ]
+}
