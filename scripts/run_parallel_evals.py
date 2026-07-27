@@ -55,7 +55,8 @@ DEFAULT_MODELS = [
 ]
 
 
-def run_evaluation(task_type: str, model: str, log_dir: Path) -> dict:
+def run_evaluation(task_type: str, model: str, log_dir: Path,
+                   cwd: Path | None = None) -> dict:
     """
     Run a single evaluation task.
 
@@ -98,7 +99,12 @@ def run_evaluation(task_type: str, model: str, log_dir: Path) -> dict:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1  # Line buffered
+            bufsize=1,  # Line buffered
+            # The task path is relative ("src/<task>_task.py"); `cwd` pins where
+            # it resolves. os.chdir is NOT an alternative here -- it is
+            # process-global, and this function runs on several worker threads
+            # at once.
+            cwd=str(cwd) if cwd else None,
         )
 
         # Prefix for this evaluation's output
