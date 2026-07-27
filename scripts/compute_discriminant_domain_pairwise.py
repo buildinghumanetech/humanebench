@@ -109,29 +109,38 @@ def bootstrap_domain_interaction(
     if na < MIN_SCENARIOS_PER_SIDE or nb < MIN_SCENARIOS_PER_SIDE:
         return float("nan"), float("nan"), float("nan"), na, nb
 
-    def compute(a_ids, b_ids):
-        def cell_mean(designed, scored, scenarios):
-            mask = (
-                (long["designed_principle"] == designed)
-                & (long["scored_principle"] == scored)
-                & (long["scenario_id"].isin(scenarios))
-            )
-            vals = long.loc[mask, "score"].values
-            return np.mean(vals) if len(vals) > 0 else np.nan
-        a = cell_mean(principle_a, principle_a, a_ids)
-        b = cell_mean(principle_a, principle_b, a_ids)
-        c = cell_mean(principle_b, principle_a, b_ids)
-        d = cell_mean(principle_b, principle_b, b_ids)
+    def _build_cell_scores(designed, scenarios, principles_scored):
+        """Pre-index: {scored_principle: {scenario_id: mean_score}}."""
+        mask = (long["designed_principle"] == designed) & (long["scenario_id"].isin(scenarios))
+        sub = long.loc[mask]
+        out = {}
+        for scored in principles_scored:
+            g = sub.loc[sub["scored_principle"] == scored].groupby("scenario_id")["score"].mean()
+            out[scored] = g.to_dict()
+        return out
+
+    scored_principles = [principle_a, principle_b]
+    a_cells = _build_cell_scores(principle_a, a_scenarios, scored_principles)
+    b_cells = _build_cell_scores(principle_b, b_scenarios, scored_principles)
+
+    def _interaction(a_ids, b_ids):
+        def cell_mean(cells, scored, ids):
+            vals = [cells[scored][s] for s in ids if s in cells[scored]]
+            return np.mean(vals) if vals else np.nan
+        a = cell_mean(a_cells, principle_a, a_ids)
+        b = cell_mean(a_cells, principle_b, a_ids)
+        c = cell_mean(b_cells, principle_a, b_ids)
+        d = cell_mean(b_cells, principle_b, b_ids)
         return (a - b) - (c - d)
 
-    point = compute(a_scenarios, b_scenarios)
+    point = _interaction(a_scenarios, b_scenarios)
     reps = np.empty(n_bootstrap)
     a_arr = np.array(a_scenarios)
     b_arr = np.array(b_scenarios)
     for i in range(n_bootstrap):
         a_draw = rng.choice(a_arr, size=na, replace=True)
         b_draw = rng.choice(b_arr, size=nb, replace=True)
-        reps[i] = compute(a_draw.tolist(), b_draw.tolist())
+        reps[i] = _interaction(a_draw.tolist(), b_draw.tolist())
 
     lo = float(np.nanpercentile(reps, 2.5))
     hi = float(np.nanpercentile(reps, 97.5))

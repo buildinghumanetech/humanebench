@@ -1298,12 +1298,12 @@ def pairwise_equivalence(
             reps = ((matrix.replicates[:, i, i] - matrix.replicates[:, i, j])
                     - (matrix.replicates[:, j, i] - matrix.replicates[:, j, j]))
             point = (matrix.point[i, i] - matrix.point[i, j]) - (matrix.point[j, i] - matrix.point[j, j])
-            estimable = bool(np.isfinite(point))
+            lo = float(np.nanpercentile(reps, pct[0])) if np.any(np.isfinite(reps)) else float("nan")
+            hi = float(np.nanpercentile(reps, pct[1])) if np.any(np.isfinite(reps)) else float("nan")
+            estimable = bool(np.isfinite(point) and np.isfinite(lo) and np.isfinite(hi))
             if estimable:
-                lo, hi = float(np.nanpercentile(reps, pct[0])), float(np.nanpercentile(reps, pct[1]))
                 equivalent = bool(-bound < lo and hi < bound)
             else:
-                lo = hi = float("nan")
                 equivalent = False
             rows.append({
                 "principle_a": principles[i],

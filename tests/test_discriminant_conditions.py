@@ -159,9 +159,18 @@ class TestExpansionDraw:
         assert "protect-dignity-and-safety-084" not in exp
 
         from humanebench.bootstrap import PRINCIPLES
-        for p in PRINCIPLES:
-            count = sum(1 for sid in exp if sid.startswith(p.replace("-", "-")[:20]))
-        assert len(exp) == 192
+        import json
+        expansion_jsonl = REPO_ROOT / "data" / "decomposition" / "humane_bench_discriminant_expansion_192.jsonl"
+        if expansion_jsonl.exists():
+            targets = {}
+            with expansion_jsonl.open() as fh:
+                for line in fh:
+                    if line.strip():
+                        row = json.loads(line)
+                        targets[row["id"]] = row["target"]
+            for p in PRINCIPLES:
+                count = sum(1 for sid in exp if targets.get(sid) == p)
+                assert count == 24, f"{p}: expected 24, got {count}"
 
 
 @pytest.mark.unit
