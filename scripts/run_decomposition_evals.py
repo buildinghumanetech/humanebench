@@ -2,10 +2,13 @@
 """Launch the goal-vs-tactics decomposition evaluation runs.
 
 Runs conditions B -> C -> D -> E strictly in that order, parallel across models
-within a condition. The ordering is the budget policy: B is the load-bearing
-arm, so if credits run out partway the earlier conditions are complete and
-self-contained and the incomplete one is recorded as such rather than silently
-half-reported.
+within a condition. The ordering means an interrupted night leaves the earlier
+conditions complete and self-contained rather than four half-finished arms.
+
+Budget enforcement is deliberately NOT done here. An in-repo spend guard aborted
+two launches on readings of an auto-top-up balance that refills on demand and
+means nothing as a ceiling; the cap now lives on the OpenRouter account, where
+it is enforced server-side and cannot be wrong in this code.
 
 Three things this does that a bare `inspect eval` loop does not:
 
@@ -13,10 +16,9 @@ Three things this does that a bare `inspect eval` loop does not:
    verbatim prompts and their hashes, the models, the scale, the subsample, and
    the seeds. The analysis session reads that file instead of reconstructing
    what ran from timestamps.
-2. Checks OpenRouter credit before each condition and partway through the
-   expensive one, so exhaustion stops the run cleanly instead of converting into
-   thousands of NaN scores. (The scorer retries any exception 3x with no
-   backoff and then records NaN, so a dry account degrades quality silently.)
+2. Resumes per MODEL: a cell with a complete log is skipped, a partial log is
+   continued with `inspect eval-retry` (only if it matches the current config),
+   so re-running after any interruption never re-pays for finished work.
 3. Gates each condition on completeness *after* it finishes -- counting samples
    that carry a full 3-judge on-scale score, not just samples that exist -- and
    stops the pipeline if a condition came out degraded.
@@ -91,74 +93,6 @@ def _openrouter_get(path: str, timeout: float = 20.0) -> dict | None:
         return None
 
 
-def get_openrouter_credits() -> float | None:
-    """Spendable headroom in USD, or None if it cannot be determined.
-
-    Two independent ceilings, and the binding one is whichever is lower:
-
-    ``/credits``  account balance (total purchased minus lifetime usage).
-    ``/key``      per-key spend limit minus that key's usage.
-
-    Both are consulted and the minimum is returned. Querying only ``/credits``
-    would ignore a key spend-limit entirely, which matters most on an account
-    with **auto top-up**: there the balance is not a ceiling at all -- it refills
-    on demand -- so a key limit may be the only real budget control in force.
-    An uncapped key reports ``limit: null`` and simply contributes no ceiling.
-    """
-    ceilings: list[float] = []
-
-    payload = _openrouter_get("/credits")
-    if payload and isinstance(payload.get("data"), dict):
-        d = payload["data"]
-        total, used = d.get("total_credits"), d.get("total_usage")
-        if total is not None and used is not None:
-            ceilings.append(float(total) - float(used))
-
-    payload = _openrouter_get("/key")
-    if payload and isinstance(payload.get("data"), dict):
-        d = payload["data"]
-        limit, usage = d.get("limit"), d.get("usage")
-        if limit is not None:
-            ceilings.append(float(limit) - float(usage or 0))
-
-    return min(ceilings) if ceilings else None
-
-
-def get_openrouter_usage() -> float | None:
-    """Lifetime spend on the account, for measuring what this run consumed.
-
-    On an auto-top-up account the balance is a poor progress signal: it refills,
-    so watching it go down understates spend. Cumulative usage only ever rises,
-    which makes it the right baseline for a budget cap.
-    """
-    payload = _openrouter_get("/credits")
-    if payload and isinstance(payload.get("data"), dict):
-        used = payload["data"].get("total_usage")
-        if used is not None:
-            return float(used)
-    payload = _openrouter_get("/key")
-    if payload and isinstance(payload.get("data"), dict):
-        used = payload["data"].get("usage")
-        if used is not None:
-            return float(used)
-    return None
-
-
-def _spend_so_far(baseline: float | None) -> float | None:
-    """USD consumed since ``baseline``, or None if usage cannot be read."""
-    if baseline is None:
-        return None
-    now = get_openrouter_usage()
-    return None if now is None else max(0.0, now - baseline)
-
-
-def _json_safe(value):
-    """NaN/inf are not valid JSON; keep run_status.json machine-readable."""
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
-    return value
-
-
 def check_model_availability(slugs: list[str]) -> dict[str, bool]:
     """Membership-test each slug against OpenRouter's live model list."""
     payload = _openrouter_get("/models")
@@ -204,8 +138,7 @@ def score_census(eval_path: Path, exclude: set[str] | None = None) -> dict:
     Two diagnostics are tracked separately because they mean different things:
 
     ``n_judge_failures``  a judge never returned after ``score_attempts`` tries,
-        so the scorer early-returned with no ``individual_scores`` at all. Under
-        credit exhaustion this is the count that climbs.
+        so the scorer early-returned with no ``individual_scores`` at all.
     ``n_nan_with_scores``  all judges answered, but one flagged the *evaluated
         model's* response invalid (in the reported runs these are empty model
         responses). The ensemble value is NaN while the three judge severities
@@ -615,66 +548,18 @@ def _run_one(cond: dc.Condition, model: str) -> dict:
 
 
 def run_condition(
-    cond: dc.Condition, models: list[str], max_workers: int, credit_factor: float,
-    status: dict, require_credit_check: bool = True,
-    max_spend: float | None = None, usage_baseline: float | None = None
+    cond: dc.Condition, models: list[str], max_workers: int, status: dict
 ) -> dict:
     print(f"\n{'=' * 72}\n[{datetime.now().strftime('%H:%M:%S')}] "
           f"Condition {cond.label}  ({cond.task_type})")
     print(f"  {cond.expected_samples} samples x {len(models)} models   "
           f"est ${cond.est_cost_usd(len(models)):.2f}\n{'=' * 72}")
 
-    spent = _spend_so_far(usage_baseline)
-    if max_spend is not None and spent is not None and spent >= max_spend:
-        msg = f"spend cap reached: ${spent:.2f} of ${max_spend:.2f} consumed"
-        print(f"  ABORT: {msg}")
-        record_event(status, "spend_cap_abort", condition=cond.task_type, detail=msg)
-        return {"status": "skipped_spend_cap", "spent_usd": round(spent, 2)}
-    if spent is not None:
-        print(f"  spent so far this run: ${spent:.2f}"
-              + (f" of ${max_spend:.2f} cap" if max_spend else ""))
-
-    credits = get_openrouter_credits()
-    needed = cond.est_cost_usd(len(models)) * credit_factor
-    if credits is None:
-        if require_credit_check:
-            msg = ("credit balance unreadable and --require-credit-check is set "
-                   "(default); refusing to spend blind")
-            print(f"  ABORT: {msg}")
-            record_event(status, "credit_unknown_abort", condition=cond.task_type,
-                         detail=msg)
-            return {"status": "skipped_credit_unreadable"}
-        print("  ! could not read OpenRouter credit; proceeding anyway "
-              "(--no-require-credit-check)")
-    elif credits < needed:
-        msg = (f"insufficient credit: ${credits:.2f} available, "
-               f"${needed:.2f} needed ({credit_factor}x est)")
-        if max_spend is not None:
-            # With an explicit spend cap the balance is not the control, and on
-            # an auto-top-up account it is actively misleading: it refills on
-            # demand, so a low reading says nothing about whether the run can
-            # complete. Downgrade to a warning and let the cap do the work.
-            print(f"  ! {msg}; proceeding because --max-spend ${max_spend:.2f} "
-                  "is the binding control (balance may auto-top-up)")
-            record_event(status, "credit_low_but_capped", condition=cond.task_type,
-                         detail=msg, max_spend_usd=max_spend)
-        else:
-            print(f"  ABORT: {msg}")
-            record_event(status, "credit_abort", condition=cond.task_type, detail=msg)
-            return {"status": "skipped_insufficient_credit",
-                    "credit_usd": credits, "needed_usd": needed}
-    else:
-        print(f"  credit OK: ${credits:.2f} available, ${needed:.2f} required")
-
     started = datetime.now(timezone.utc).isoformat()
     results: list[dict] = []
-    halfway_checked = False
-    aborted_midway = False
-    per_model_cost = cond.est_cost_usd(len(models)) / max(len(models), 1)
 
-    # Submit in waves. Submitting every model up front means all of them have
-    # already started by the time the 5th finishes, and cancel() on a running
-    # future is a no-op -- so the mid-condition abort would cancel nothing.
+    # Submit in waves and top the pool up as completions land; the executor
+    # never sees more than one wave of queued work at a time.
     wave = max(max_workers, 1)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
         futures = {
@@ -684,7 +569,6 @@ def run_condition(
         while futures:
             fut = next(concurrent.futures.as_completed(list(futures)))
             model_name = futures.pop(fut)
-            i = len(results) + 1
             try:
                 results.append(fut.result())
             except Exception as exc:  # never lose the run's status to one model
@@ -694,57 +578,7 @@ def run_condition(
                 record_event(status, "model_exception", condition=cond.task_type,
                              model=model_name, error=repr(exc))
 
-            # Checked on EVERY completion, not once partway. The pool tops up
-            # after each completion, so a single check at i>=5 fired when only
-            # one model was still un-started -- it withheld ~1 model's cost
-            # rather than the several it was meant to protect.
             if queued:
-                mid = get_openrouter_credits()
-                mid_spent = _spend_so_far(usage_baseline)
-                if max_spend is not None and mid_spent is not None:
-                    print(f"  [{datetime.now().strftime('%H:%M:%S')}] spent "
-                          f"${mid_spent:.2f} of ${max_spend:.2f} cap "
-                          f"({len(queued)} model(s) still queued)", flush=True)
-                if not halfway_checked:
-                    halfway_checked = True
-                    record_event(status, "credit_check", condition=cond.task_type,
-                                 after_models=i, credit_usd=_json_safe(mid),
-                                 spent_usd=_json_safe(mid_spent))
-                if (max_spend is not None and mid_spent is not None
-                        and mid_spent >= max_spend):
-                    aborted_midway = True
-                    n_withheld = len(queued); queued.clear()
-                    print(f"  ABORT mid-condition: spend cap reached "
-                          f"(${mid_spent:.2f} of ${max_spend:.2f}); withheld "
-                          f"{n_withheld} un-started model(s)")
-                    record_event(status, "spend_cap_abort_midway",
-                                 condition=cond.task_type,
-                                 spent_usd=_json_safe(mid_spent), withheld=n_withheld)
-                # Skipped entirely when a spend cap is in force. On an
-                # auto-top-up account the balance is not a ceiling -- it refills
-                # on demand -- so comparing it to "still needed" aborts a run
-                # that would have completed fine. The pre-condition check was
-                # fixed for this; this one was not, and it killed a run at the
-                # first completion with $9.90 showing and $60 actually spent
-                # against an $800 cap.
-                if mid is not None and max_spend is None:
-                    remaining_need = (len(models) - i) * per_model_cost * credit_factor
-                    print(f"  [mid-condition] credit ${mid:.2f}, "
-                          f"${remaining_need:.2f} still needed")
-                    if mid < remaining_need:
-                        aborted_midway = True
-                        n_withheld = len(queued)
-                        queued.clear()
-                        print(f"  ABORT mid-condition: withheld {n_withheld} "
-                              "un-started model(s); in-flight runs will finish")
-                        record_event(status, "credit_abort_midway",
-                                     condition=cond.task_type,
-                                     credit_usd=_json_safe(mid),
-                                     needed_usd=round(remaining_need, 2),
-                                     withheld=n_withheld)
-                save_status(status)
-
-            if queued and not aborted_midway:
                 nxt = queued.pop(0)
                 futures[ex.submit(_run_one, cond, nxt)] = nxt
 
@@ -752,24 +586,17 @@ def run_condition(
     print(f"  subprocesses: {len(results) - n_failed} ok, {n_failed} failed")
 
     exclude = load_excluded_ids(cond.dataset_path)
-    if not aborted_midway:
-        retry_incomplete(cond, models, max_workers)
+    retry_incomplete(cond, models, max_workers)
     moved = archive_superseded(cond, models, exclude)
     if moved:
         print(f"  archived {len(moved)} superseded .eval file(s) to attic/")
 
     return {
-        # Still "ran": the condition produced data and must be gated and
-        # censused like any other. Returning a non-"ran" status made main()
-        # break before gate_condition, so a mid-condition abort left the
-        # partial run unassessed.
         "status": "ran",
-        "aborted_midway": aborted_midway,
         "started_at": started,
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "n_subprocess_failures": n_failed,
         "archived": moved,
-        "credit_before_usd": _json_safe(credits),
     }
 
 
@@ -801,14 +628,6 @@ def main() -> int:
     ap.add_argument("--max-workers", type=int, default=6,
                     help="parallel models within a condition (keep low: judge 429s "
                          "consume score_attempts and land as NaN)")
-    ap.add_argument("--min-credit-factor", type=float, default=1.2)
-    ap.add_argument("--max-spend", type=float, default=None,
-                    help="hard ceiling in USD on what THIS run may consume, "
-                         "measured as the rise in OpenRouter lifetime usage from "
-                         "a baseline taken at launch. On an auto-top-up account "
-                         "this is the only real budget control: the balance "
-                         "refills, so a sufficiency check against it can never "
-                         "bind. Checked before each condition and mid-condition.")
     ap.add_argument("--gate-threshold", type=float, default=0.98)
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--smoke-model", default="openrouter/google/gemini-2.5-flash")
@@ -823,10 +642,6 @@ def main() -> int:
     ap.add_argument("--allow-missing-slugs", action="store_true",
                     help="proceed even if an evaluated model's slug is not live on "
                          "OpenRouter. A missing *judge* slug always aborts.")
-    ap.add_argument("--no-require-credit-check", action="store_true",
-                    help="proceed even when the OpenRouter balance cannot be read "
-                         "(by default an unreadable balance aborts rather than "
-                         "spending blind)")
     ap.add_argument("--force", action="store_true",
                     help="re-run conditions already recorded complete in run_status.json")
     args = ap.parse_args()
@@ -864,19 +679,9 @@ def main() -> int:
 
     if not args.skip_preflight:
         print("\nPre-flight")
-        credits = get_openrouter_credits()
-        print(f"  credit: {'unknown' if credits is None else f'${credits:.2f}'}")
-        if credits is not None and credits < total_cost:
-            if args.max_spend:
-                print(f"  ! credit ${credits:.2f} is below the ${total_cost:.2f} "
-                      f"estimate, but --max-spend ${args.max_spend:.2f} is the "
-                      "binding control (fine on an auto-top-up account)")
-            else:
-                print(f"  ! credit ${credits:.2f} is below the ${total_cost:.2f} "
-                      "estimate; later conditions will be skipped when their own "
-                      "check fails. If the account auto-tops-up, pass --max-spend "
-                      "instead so the cap governs rather than the balance.")
-
+        # No balance check, deliberately: on an auto-top-up account the balance
+        # refills on demand and says nothing about whether a run can complete.
+        # The budget cap is set on the OpenRouter account, server-side.
         judge_slugs = list(dc.JUDGE_MODELS)
         avail = check_model_availability(sorted(set(models) | set(judge_slugs)))
         if avail:
@@ -931,20 +736,8 @@ def main() -> int:
           "(written before the first API call)")
 
     status = load_status()
-    usage_baseline = get_openrouter_usage()
-    status["usage_baseline_usd"] = _json_safe(usage_baseline)
-    status["max_spend_usd"] = args.max_spend
-    if args.max_spend and usage_baseline is None:
-        print("\nABORT: --max-spend was given but OpenRouter lifetime usage could "
-              "not be read, so spend cannot be measured.")
-        return 3
-    if args.max_spend:
-        print(f"\nspend cap: ${args.max_spend:.2f} above a baseline of "
-              f"${usage_baseline:.2f} lifetime usage")
     record_event(status, "launch", conditions=[c.task_type for c in selected],
-                 n_models=len(models), est_cost_usd=round(total_cost, 2),
-                 usage_baseline_usd=_json_safe(usage_baseline),
-                 max_spend_usd=args.max_spend)
+                 n_models=len(models), est_cost_usd=round(total_cost, 2))
     save_status(status)
 
     t0 = time.time()
@@ -959,11 +752,7 @@ def main() -> int:
                   "skipping. Use --force to re-run.")
             continue
 
-        outcome = run_condition(cond, models, args.max_workers,
-                                args.min_credit_factor, status,
-                                require_credit_check=not args.no_require_credit_check,
-                                max_spend=args.max_spend,
-                                usage_baseline=usage_baseline)
+        outcome = run_condition(cond, models, args.max_workers, status)
         if outcome["status"] != "ran":
             status["conditions"][cond.task_type] = outcome
             save_status(status)
