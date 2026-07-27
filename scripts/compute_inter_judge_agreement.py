@@ -921,6 +921,19 @@ def main() -> None:
              "a '_golden_24' suffix.",
     )
     parser.add_argument(
+        "--personas",
+        nargs="+",
+        default=list(PERSONAS),
+        metavar="DIR",
+        help="Top-level logs/ condition directories to scan. Defaults to the "
+             "three reported personas, which is the only invocation whose "
+             "output may be cited as the published agreement figures. Passing "
+             "anything else builds a SEPARATE table for those conditions; the "
+             "resulting alpha is never pooled with the published one, and the "
+             "human-slice and golden-24 passes are skipped because both are "
+             "defined on the reported personas.",
+    )
+    parser.add_argument(
         "--exclude-ids",
         type=Path,
         default=None,
@@ -958,8 +971,19 @@ def main() -> None:
         print(f"Excluding {len(exclude_ids)} items tagged "
               f"excluded_from_analysis=True in data/humane_bench.jsonl.")
 
+    personas = list(args.personas)
+    is_default_personas = personas == list(PERSONAS)
+    if not is_default_personas:
+        print(
+            f"[note] non-default personas {personas}: this run produces a "
+            f"SEPARATE agreement table. Its alpha is conditioned on these "
+            f"conditions and must not be pooled with the published figures."
+        )
+
     print(f"Scanning {logs_dir} ...")
-    long_df, stats = collect_long_table(logs_dir, exclude_ids=exclude_ids)
+    long_df, stats = collect_long_table(
+        logs_dir, exclude_ids=exclude_ids, personas=personas
+    )
     print(f"  files scanned:        {stats['files_scanned']}")
     print(f"  samples scanned:      {stats['total_samples']:,}")
     print(f"  samples included:     {stats['samples_included']:,}")
@@ -995,8 +1019,19 @@ def main() -> None:
     write_outputs(metrics, stats, long_df, tables_dir, args.n_bootstrap)
 
     # Optional second pass: restrict to the 48 sample_uids humans rated.
+    # Both this pass and the golden-24 pass below are defined on the reported
+    # personas: the human ratings and the golden run were collected under them
+    # and nowhere else. Running them beside a non-default scan would overwrite
+    # the published `_human_slice` / `_golden_24` tables with the same numbers
+    # under a directory that implies they describe the scanned conditions.
     human_csv = args.human_ratings_csv.expanduser().resolve()
-    if human_csv.is_file():
+    if not is_default_personas:
+        print(
+            "\n[note] skipping the 48-scenario human slice and the golden-24 "
+            "pass: both are defined on the reported personas, not on "
+            f"{personas}."
+        )
+    elif human_csv.is_file():
         print(f"\n--- Human-slice pass (restrict to {human_csv.name}) ---")
         try:
             slice_df, slice_stats, n_target = _filter_to_human_slice(long_df, human_csv)
@@ -1033,7 +1068,9 @@ def main() -> None:
     # Optional third pass: α on the 24 curated golden items from a fresh
     # scan of the golden_questions_eval .eval file(s).
     golden_dir = args.golden_eval_dir.expanduser().resolve()
-    if golden_dir.is_dir():
+    if not is_default_personas:
+        pass  # already announced with the human-slice skip above
+    elif golden_dir.is_dir():
         golden_eval_files = sorted(golden_dir.glob("**/*.eval"))
         if golden_eval_files:
             print(

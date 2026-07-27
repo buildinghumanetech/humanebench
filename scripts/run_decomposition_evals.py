@@ -436,7 +436,7 @@ def build_launch_manifest(conditions: list[dc.Condition], models: list[str]) -> 
             "policy": "unpinned",
             "rationale": (
                 "OpenRouter fulfils one slug from several upstream serving stacks. "
-                "The reported runs were routed unpinned -- 7 of 15 models drew from "
+                "The reported runs were routed unpinned -- 6 of 15 models drew from "
                 "more than one provider (llama-4-maverick from 8, "
                 "deepseek-v3.1-terminus from 5). Pinning providers here would make "
                 "this condition more controlled than the conditions it is contrasted "
@@ -444,6 +444,13 @@ def build_launch_manifest(conditions: list[dc.Condition], models: list[str]) -> 
                 "change. A confound shared by both arms is preferable to an "
                 "asymmetry between them."
             ),
+            # The launch manifests already written on disk still carry "7 of 15":
+            # they were serialised before the census was corrected, and a manifest
+            # is a record of what was believed at launch. They are left as
+            # written; the corrected figure lives here, in
+            # tables/serving_provenance.md, and in the pre-commitment's dated
+            # correction note. Seven double-counted each model's self-judging
+            # calls as generation; the generating call is identified by position.
             "reported_run_mixture": "tables/serving_provenance.md",
             "per_response_provider_recorded": True,
             "unversioned_slugs": [

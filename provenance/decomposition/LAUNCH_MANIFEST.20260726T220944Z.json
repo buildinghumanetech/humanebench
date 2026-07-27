@@ -1,8 +1,8 @@
 {
   "schema": "humanebench-decomposition-launch/1",
   "description": "Goal-vs-tactics decomposition of the HumaneBench adversarial condition. Reported as a robustness analysis of the adversarial condition, not as a fourth headline condition.",
-  "launched_at": "2026-07-27T12:53:49.159204+00:00",
-  "git_commit": "07ac4d12f2706c84f6d72e48a8537002dd1a434a",
+  "launched_at": "2026-07-26T22:02:51.159337+00:00",
+  "git_commit": "faff77f3152d5fb9d9b604e1016975ec7f7acf31",
   "anchor_condition": {
     "persona": "bad_persona",
     "note": "Existing reported run (condition A); not re-run."

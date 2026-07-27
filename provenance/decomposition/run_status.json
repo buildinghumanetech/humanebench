@@ -3,19 +3,10 @@
   "conditions": {
     "decomp_b_xml_objective": {
       "status": "ran",
-      "aborted_midway": true,
-      "started_at": "2026-07-26T22:09:46.303399+00:00",
-      "finished_at": "2026-07-26T23:11:54.621675+00:00",
+      "started_at": "2026-07-27T12:53:49.179069+00:00",
+      "finished_at": "2026-07-27T14:43:16.812614+00:00",
       "n_subprocess_failures": 0,
-      "archived": [
-        "logs/decomp_b_xml_objective/claude-opus-4.1/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_LWWNqpPAZMwzCTKYgUPDF2.eval",
-        "logs/decomp_b_xml_objective/claude-sonnet-4/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_YtC8fw87BUFxtkibGw3Ck8.eval",
-        "logs/decomp_b_xml_objective/claude-sonnet-4.5/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_hEHMijq8EMDAZbncobueu3.eval",
-        "logs/decomp_b_xml_objective/deepseek-v3.1-terminus/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_KTKDEg4hhJpkkXC43XagCP.eval",
-        "logs/decomp_b_xml_objective/gemini-2.5-flash/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_7b5f9A2gEJquKctqeTPFRM.eval",
-        "logs/decomp_b_xml_objective/gemini-2.5-pro/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_KbjbGJq5jUp9YVzBUdfMkg.eval"
-      ],
-      "credit_before_usd": 10.410181887999997,
+      "archived": [],
       "gate": {
         "task_type": "decomp_b_xml_objective",
         "threshold": 0.98,
@@ -88,29 +79,64 @@
             "n_nan_with_scores": 3
           },
           "openrouter/meta-llama/llama-4-maverick": {
-            "status": "missing",
-            "fraction_scored": 0.0
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/llama-4-maverick/2026-07-27T08-53-52-04-00_decomp-b-xml-objective-eval_WLhkUP3zFMYitxr4vw644y.eval",
+            "fraction_scored": 0.99746,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 786,
+            "n_judge_failures": 2,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
           },
           "openrouter/openai/gpt-4.1": {
-            "status": "missing",
-            "fraction_scored": 0.0
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/gpt-4.1/2026-07-27T08-53-52-04-00_decomp-b-xml-objective-eval_JUcFWhyyd8Bq5bv8Qxgo7b.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 788,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
           },
           "openrouter/openai/gpt-4o-2024-11-20": {
-            "status": "missing",
-            "fraction_scored": 0.0
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/gpt-4o-2024-11-20/2026-07-27T08-53-52-04-00_decomp-b-xml-objective-eval_SMiJvWfMWpGDS4cgrjvkRo.eval",
+            "fraction_scored": 0.99746,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 786,
+            "n_judge_failures": 2,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
           },
           "openrouter/openai/gpt-5": {
-            "status": "missing",
-            "fraction_scored": 0.0
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/gpt-5/2026-07-27T08-53-52-04-00_decomp-b-xml-objective-eval_ngicQyhY4ZQyqX4KQZyBKc.eval",
+            "fraction_scored": 0.99746,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 786,
+            "n_judge_failures": 2,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
           },
           "openrouter/openai/gpt-5.1": {
-            "status": "missing",
-            "fraction_scored": 0.0
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/gpt-5.1/2026-07-27T08-53-52-04-00_decomp-b-xml-objective-eval_Cxvs5xKpWCqCKriRhAjz4b.eval",
+            "fraction_scored": 0.99746,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 786,
+            "n_judge_failures": 2,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
           }
         },
-        "worst_fraction_scored": 0.0,
+        "worst_fraction_scored": 0.99746,
         "wrong_frame_models": [],
-        "passed": false,
+        "passed": true,
         "serving_providers": {
           "openrouter/anthropic/claude-opus-4.1": {
             "n_distinct_providers": 1,
@@ -151,10 +177,695 @@
             "shares": {
               "Google": 1.0
             }
+          },
+          "openrouter/meta-llama/llama-4-maverick": {
+            "n_distinct_providers": 5,
+            "shares": {
+              "DeepInfra": 0.3375,
+              "DigitalOcean": 0.255,
+              "Novita": 0.1875,
+              "Parasail": 0.115,
+              "Google": 0.105
+            }
+          },
+          "openrouter/openai/gpt-4.1": {
+            "n_distinct_providers": 2,
+            "shares": {
+              "OpenAI": 0.9962,
+              "Azure": 0.0037
+            }
+          },
+          "openrouter/openai/gpt-4o-2024-11-20": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          },
+          "openrouter/openai/gpt-5": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          },
+          "openrouter/openai/gpt-5.1": {
+            "n_distinct_providers": 2,
+            "shares": {
+              "OpenAI": 0.9988,
+              "Azure": 0.0013
+            }
           }
         }
       },
-      "completeness": "incomplete"
+      "completeness": "complete"
+    },
+    "decomp_c_prose": {
+      "status": "ran",
+      "started_at": "2026-07-27T14:43:21.520800+00:00",
+      "finished_at": "2026-07-27T16:04:50.946728+00:00",
+      "n_subprocess_failures": 0,
+      "archived": [],
+      "gate": {
+        "task_type": "decomp_c_prose",
+        "threshold": 0.98,
+        "expected_analysis_samples": 200,
+        "models": {
+          "openrouter/anthropic/claude-opus-4.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/claude-opus-4.1/2026-07-27T10-43-23-04-00_decomp-c-prose-eval_HJBeY57fCXZX2LmgjsUXyt.eval",
+            "fraction_scored": 0.995,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 199,
+            "n_judge_failures": 1,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/anthropic/claude-sonnet-4": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/claude-sonnet-4/2026-07-27T10-43-23-04-00_decomp-c-prose-eval_8QG9BPiAHUTYHVQwjtLhTR.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/anthropic/claude-sonnet-4.5": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/claude-sonnet-4.5/2026-07-27T10-43-23-04-00_decomp-c-prose-eval_YqJhz5dkJyhbh4QumvrQnG.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/deepseek/deepseek-v3.1-terminus": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/deepseek-v3.1-terminus/2026-07-27T10-43-23-04-00_decomp-c-prose-eval_auimPqpiCBtPs7fePSiDyy.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/google/gemini-2.5-flash": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/gemini-2.5-flash/2026-07-27T10-43-23-04-00_decomp-c-prose-eval_MKBHX6Qz3DEqkmYBBdXWGJ.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 3
+          },
+          "openrouter/google/gemini-2.5-pro": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/gemini-2.5-pro/2026-07-27T10-43-23-04-00_decomp-c-prose-eval_MYzgoBMMKQ5gfx9WGGMffz.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/meta-llama/llama-4-maverick": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/llama-4-maverick/2026-07-27T10-53-19-04-00_decomp-c-prose-eval_NnBujQ5RWh57SyfvsXZzuK.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-4.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/gpt-4.1/2026-07-27T10-53-31-04-00_decomp-c-prose-eval_hWdoondmfPBZdiQbALKD2w.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-4o-2024-11-20": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/gpt-4o-2024-11-20/2026-07-27T10-53-56-04-00_decomp-c-prose-eval_EASTCwf2cpNGV2N74LPxMw.eval",
+            "fraction_scored": 0.995,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 199,
+            "n_judge_failures": 1,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-5": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/gpt-5/2026-07-27T10-55-20-04-00_decomp-c-prose-eval_7cPwFAirg9YH6ddsVzhtwa.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-5.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_c_prose/gpt-5.1/2026-07-27T10-58-18-04-00_decomp-c-prose-eval_KuomJJH3eKsFZNhjLHqkLM.eval",
+            "fraction_scored": 0.995,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 199,
+            "n_judge_failures": 1,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          }
+        },
+        "worst_fraction_scored": 0.995,
+        "wrong_frame_models": [],
+        "passed": true,
+        "serving_providers": {
+          "openrouter/anthropic/claude-opus-4.1": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/anthropic/claude-sonnet-4": {
+            "n_distinct_providers": 2,
+            "shares": {
+              "Amazon Bedrock": 0.995,
+              "Google": 0.005
+            }
+          },
+          "openrouter/anthropic/claude-sonnet-4.5": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/deepseek/deepseek-v3.1-terminus": {
+            "n_distinct_providers": 5,
+            "shares": {
+              "Novita": 0.26,
+              "DeepInfra": 0.225,
+              "SiliconFlow": 0.215,
+              "AtlasCloud": 0.155,
+              "StreamLake": 0.145
+            }
+          },
+          "openrouter/google/gemini-2.5-flash": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Google": 1.0
+            }
+          },
+          "openrouter/google/gemini-2.5-pro": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Google": 1.0
+            }
+          },
+          "openrouter/meta-llama/llama-4-maverick": {
+            "n_distinct_providers": 5,
+            "shares": {
+              "DeepInfra": 0.335,
+              "Novita": 0.18,
+              "Google": 0.175,
+              "DigitalOcean": 0.165,
+              "Parasail": 0.145
+            }
+          },
+          "openrouter/openai/gpt-4.1": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          },
+          "openrouter/openai/gpt-4o-2024-11-20": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          },
+          "openrouter/openai/gpt-5": {
+            "n_distinct_providers": 2,
+            "shares": {
+              "OpenAI": 0.995,
+              "Azure": 0.005
+            }
+          },
+          "openrouter/openai/gpt-5.1": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          }
+        }
+      },
+      "completeness": "complete"
+    },
+    "decomp_d_okr": {
+      "status": "ran",
+      "started_at": "2026-07-27T16:04:52.049504+00:00",
+      "finished_at": "2026-07-27T16:36:43.746134+00:00",
+      "n_subprocess_failures": 0,
+      "archived": [],
+      "gate": {
+        "task_type": "decomp_d_okr",
+        "threshold": 0.98,
+        "expected_analysis_samples": 200,
+        "models": {
+          "openrouter/anthropic/claude-opus-4.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/claude-opus-4.1/2026-07-27T12-04-53-04-00_decomp-d-okr-eval_JtHV3Xy6QXsAbCLX94TsB8.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/anthropic/claude-sonnet-4": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/claude-sonnet-4/2026-07-27T12-04-53-04-00_decomp-d-okr-eval_ETf738c7ko6YtXfamt29Wr.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/anthropic/claude-sonnet-4.5": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/claude-sonnet-4.5/2026-07-27T12-04-53-04-00_decomp-d-okr-eval_bm8WAA6Rj6hR7MrPZULvtf.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/deepseek/deepseek-v3.1-terminus": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/deepseek-v3.1-terminus/2026-07-27T12-04-53-04-00_decomp-d-okr-eval_F8QUSmMYRHZGYsiowDjATF.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/google/gemini-2.5-flash": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/gemini-2.5-flash/2026-07-27T12-04-53-04-00_decomp-d-okr-eval_KxogiNNRYuahGbTNDUZvkQ.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 2
+          },
+          "openrouter/google/gemini-2.5-pro": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/gemini-2.5-pro/2026-07-27T12-04-53-04-00_decomp-d-okr-eval_48T7nSWrbGxgAMWtcTEqkX.eval",
+            "fraction_scored": 0.99,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 198,
+            "n_judge_failures": 2,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 1
+          },
+          "openrouter/meta-llama/llama-4-maverick": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/llama-4-maverick/2026-07-27T12-14-29-04-00_decomp-d-okr-eval_asMhwMek2vhSzbHYBd2FS9.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-4.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/gpt-4.1/2026-07-27T12-15-12-04-00_decomp-d-okr-eval_74VqYabDeK6EMnCfLKY58x.eval",
+            "fraction_scored": 0.995,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 199,
+            "n_judge_failures": 1,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-4o-2024-11-20": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/gpt-4o-2024-11-20/2026-07-27T12-15-34-04-00_decomp-d-okr-eval_9KpmFtXtNNaT3pqyt4sQMK.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-5": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/gpt-5/2026-07-27T12-16-38-04-00_decomp-d-okr-eval_7nfx92FqNNrPsJ2pLnPHkC.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-5.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_d_okr/gpt-5.1/2026-07-27T12-18-57-04-00_decomp-d-okr-eval_mBuxcgB7Zr6UN32e52Frid.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          }
+        },
+        "worst_fraction_scored": 0.99,
+        "wrong_frame_models": [],
+        "passed": true,
+        "serving_providers": {
+          "openrouter/anthropic/claude-opus-4.1": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/anthropic/claude-sonnet-4": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/anthropic/claude-sonnet-4.5": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/deepseek/deepseek-v3.1-terminus": {
+            "n_distinct_providers": 5,
+            "shares": {
+              "Novita": 0.275,
+              "DeepInfra": 0.215,
+              "AtlasCloud": 0.18,
+              "SiliconFlow": 0.18,
+              "StreamLake": 0.15
+            }
+          },
+          "openrouter/google/gemini-2.5-flash": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Google": 1.0
+            }
+          },
+          "openrouter/google/gemini-2.5-pro": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Google": 1.0
+            }
+          },
+          "openrouter/meta-llama/llama-4-maverick": {
+            "n_distinct_providers": 5,
+            "shares": {
+              "DeepInfra": 0.355,
+              "DigitalOcean": 0.25,
+              "Novita": 0.19,
+              "Parasail": 0.14,
+              "Google": 0.065
+            }
+          },
+          "openrouter/openai/gpt-4.1": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          },
+          "openrouter/openai/gpt-4o-2024-11-20": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          },
+          "openrouter/openai/gpt-5": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          },
+          "openrouter/openai/gpt-5.1": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          }
+        }
+      },
+      "completeness": "complete"
+    },
+    "decomp_e_abtest": {
+      "status": "ran",
+      "started_at": "2026-07-27T16:36:44.874332+00:00",
+      "finished_at": "2026-07-27T17:11:17.420144+00:00",
+      "n_subprocess_failures": 0,
+      "archived": [],
+      "gate": {
+        "task_type": "decomp_e_abtest",
+        "threshold": 0.98,
+        "expected_analysis_samples": 200,
+        "models": {
+          "openrouter/anthropic/claude-opus-4.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/claude-opus-4.1/2026-07-27T12-36-46-04-00_decomp-e-abtest-eval_M6LKTddVWUQcTtqQyLXter.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/anthropic/claude-sonnet-4": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/claude-sonnet-4/2026-07-27T12-36-46-04-00_decomp-e-abtest-eval_69Zxif7xAmeoYFN7ioLieY.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/anthropic/claude-sonnet-4.5": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/claude-sonnet-4.5/2026-07-27T12-36-46-04-00_decomp-e-abtest-eval_9UxZiSsWahuFUEK9fmYX5Q.eval",
+            "fraction_scored": 0.995,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 199,
+            "n_judge_failures": 1,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/deepseek/deepseek-v3.1-terminus": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/deepseek-v3.1-terminus/2026-07-27T12-36-46-04-00_decomp-e-abtest-eval_JwhzpiYWNTeP3imfrV9my4.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/google/gemini-2.5-flash": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/gemini-2.5-flash/2026-07-27T12-36-46-04-00_decomp-e-abtest-eval_bPjCH6YcRtduRz7Hvn25tM.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/google/gemini-2.5-pro": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/gemini-2.5-pro/2026-07-27T12-36-46-04-00_decomp-e-abtest-eval_3g5KXLuUnNooTFtNekKtQz.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 1
+          },
+          "openrouter/meta-llama/llama-4-maverick": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/llama-4-maverick/2026-07-27T12-46-47-04-00_decomp-e-abtest-eval_DKryGivbi3NFmwzVh2h3QJ.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-4.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/gpt-4.1/2026-07-27T12-47-05-04-00_decomp-e-abtest-eval_ZeuDyifwsMVhg8rVsUe9m9.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-4o-2024-11-20": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/gpt-4o-2024-11-20/2026-07-27T12-47-26-04-00_decomp-e-abtest-eval_Vt8zojGQ9oXunmnN5nu6po.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-5": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/gpt-5/2026-07-27T12-50-37-04-00_decomp-e-abtest-eval_VUdRjePmzEkfu5pBxdXmpy.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/openai/gpt-5.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_e_abtest/gpt-5.1/2026-07-27T12-51-15-04-00_decomp-e-abtest-eval_kZifG6LLiSTFkCMbgD2t3b.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 200,
+            "n_excluded_by_flag": 0,
+            "n_fully_scored": 200,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          }
+        },
+        "worst_fraction_scored": 0.995,
+        "wrong_frame_models": [],
+        "passed": true,
+        "serving_providers": {
+          "openrouter/anthropic/claude-opus-4.1": {
+            "n_distinct_providers": 2,
+            "shares": {
+              "Amazon Bedrock": 0.995,
+              "Google": 0.005
+            }
+          },
+          "openrouter/anthropic/claude-sonnet-4": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/anthropic/claude-sonnet-4.5": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/deepseek/deepseek-v3.1-terminus": {
+            "n_distinct_providers": 5,
+            "shares": {
+              "Novita": 0.275,
+              "AtlasCloud": 0.265,
+              "SiliconFlow": 0.225,
+              "StreamLake": 0.155,
+              "DeepInfra": 0.08
+            }
+          },
+          "openrouter/google/gemini-2.5-flash": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Google": 1.0
+            }
+          },
+          "openrouter/google/gemini-2.5-pro": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Google": 1.0
+            }
+          },
+          "openrouter/meta-llama/llama-4-maverick": {
+            "n_distinct_providers": 5,
+            "shares": {
+              "DeepInfra": 0.35,
+              "Novita": 0.215,
+              "DigitalOcean": 0.175,
+              "Parasail": 0.15,
+              "Google": 0.11
+            }
+          },
+          "openrouter/openai/gpt-4.1": {
+            "n_distinct_providers": 2,
+            "shares": {
+              "OpenAI": 0.995,
+              "Azure": 0.005
+            }
+          },
+          "openrouter/openai/gpt-4o-2024-11-20": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          },
+          "openrouter/openai/gpt-5": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          },
+          "openrouter/openai/gpt-5.1": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "OpenAI": 1.0
+            }
+          }
+        }
+      },
+      "completeness": "complete"
     }
   },
   "events": [
@@ -252,9 +963,19 @@
         "openrouter/openai/gpt-5",
         "openrouter/openai/gpt-5.1"
       ]
+    },
+    {
+      "at": "2026-07-27T12:53:49.178716+00:00",
+      "event": "launch",
+      "conditions": [
+        "decomp_b_xml_objective",
+        "decomp_c_prose",
+        "decomp_d_okr",
+        "decomp_e_abtest"
+      ],
+      "n_models": 11,
+      "est_cost_usd": 566.72
     }
   ],
-  "updated_at": "2026-07-26T23:11:57.019348+00:00",
-  "usage_baseline_usd": 59.589818112,
-  "max_spend_usd": 800.0
+  "updated_at": "2026-07-27T17:11:18.698300+00:00"
 }

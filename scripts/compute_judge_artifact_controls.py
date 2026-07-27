@@ -245,8 +245,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--logs-dir", type=Path, default=REPO_ROOT / "logs")
-    ap.add_argument("--raw-csv", type=Path,
-                    default=REPO_ROOT / "tables" / "inter_judge_raw_regenerated.csv")
+    ap.add_argument("--raw-csv", type=Path, nargs="+",
+                    default=[REPO_ROOT / "tables" / "inter_judge_raw_regenerated.csv"],
+                    help="per-judge severity table(s) used to split disclosures "
+                         "by outcome. Accepts several, because the table is "
+                         "written per scanned condition set: pass the published "
+                         "one plus each decomposition condition's, e.g. "
+                         "tables/decomposition/alpha_*/inter_judge_raw.csv. A "
+                         "persona with no rows in any of them is reported as "
+                         "unscored rather than counted as a judge failure.")
     ap.add_argument("--output-dir", type=Path, default=REPO_ROOT / "tables")
     ap.add_argument("--prompts-per-principle", type=int, default=2,
                     help="judge prompts to blinding-check per principle per run")
@@ -266,21 +273,32 @@ def main() -> None:
     print(f"responses: {len(resp_df):,} scanned")
 
     # Join ensemble scores so disclosures can be split by outcome.
-    raw = pd.read_csv(args.raw_csv)
+    raw = pd.concat([pd.read_csv(p) for p in args.raw_csv], ignore_index=True)
     scores = (raw.groupby(["persona", "model", "sample_id"], as_index=False)
               .agg(score=("severity", "mean")))
     n_before = len(resp_df)
+    # A persona the severity tables never mention is *unscored here*, not
+    # judge-failed. Folding the two together would report tens of thousands of
+    # phantom judge failures the moment a condition is scanned without its
+    # severity table, and would silently drop that condition from part B.
+    scored_personas = set(scores["persona"])
+    unscored = [p for p in args.personas if p not in scored_personas]
     resp_df = resp_df.merge(scores, on=["persona", "model", "sample_id"], how="inner")
     resp_df["positive"] = resp_df["score"] > 0
 
-    # Account for the rows the inner merge drops. They are overwhelmingly the 12
-    # scenarios flagged out of analysis (12 x 45 runs = 540), not judge
-    # failures (44). Calling the whole gap "judge failure" overstates that rate
+    # Account for the rows the inner merge drops *within the scored personas*.
+    # They are overwhelmingly the 12 scenarios flagged out of analysis, not
+    # judge failures. Calling the whole gap "judge failure" overstates that rate
     # by more than an order of magnitude.
     excluded_ids = load_excluded_ids()
-    n_excluded_rows = int(pd.DataFrame(resp).sample_id.isin(excluded_ids).sum())
-    n_dropped = n_before - len(resp_df)
-    n_judge_fail = n_dropped - n_excluded_rows
+    resp_all = pd.DataFrame(resp)
+    scored_rows = resp_all[resp_all.persona.isin(scored_personas)]
+    n_unscored_rows = len(resp_all) - len(scored_rows)
+    excluded_hits = scored_rows[scored_rows.sample_id.isin(excluded_ids)]
+    n_excluded_rows = len(excluded_hits)
+    n_excluded_ids = int(excluded_hits.sample_id.nunique())
+    n_runs = int(scored_rows.groupby(["persona", "model"]).ngroups)
+    n_judge_fail = len(scored_rows) - n_excluded_rows - len(resp_df)
 
     # ---- (A) blinding ---------------------------------------------------
     per_cond = blind_df.groupby("persona")["scaffold_sha256"].apply(set)
@@ -354,20 +372,38 @@ def main() -> None:
     )
     L.append(
         f"Denominator: responses carrying a full ensemble score. Of the "
-        f"{n_before:,} responses on disk, {n_excluded_rows:,} are the 12 "
-        f"scenarios flagged out of analysis (12 x 45 runs) and {n_judge_fail:,} "
-        f"lost their judge scores, leaving {len(resp_df):,}.\n"
+        f"{n_before:,} responses on disk, {n_excluded_rows:,} answer the "
+        f"{n_excluded_ids} scenarios flagged out of analysis (across "
+        f"{n_runs} runs) and {n_judge_fail:,} lost their judge scores, "
+        f"leaving {len(resp_df):,}.\n"
     )
+    if unscored:
+        L.append(
+            f"**Excluded from this section: {', '.join(unscored)}** "
+            f"({n_unscored_rows:,} responses). No per-judge severity table was "
+            "supplied for these conditions, so their disclosure rates cannot be "
+            "split by outcome and are not reported. They are excluded, not "
+            "counted as judge failures. The blinding result above does cover "
+            "them.\n"
+        )
     L.append("| condition | responses | " + " | ".join(
-        f"disclose ({k})" for k in LEXICONS) + " |")
-    L.append("| --- | ---: |" + " ---: |" * len(LEXICONS))
+        f"disclose ({k})" for k in LEXICONS) + " | mean chars | median chars |")
+    L.append("| --- | ---: |" + " ---: |" * (len(LEXICONS) + 2))
     for persona in [p for p in args.personas if p in set(resp_df.persona)]:
         sub = resp_df[resp_df.persona == persona]
         cells = " | ".join(
             f"{sub[f'discloses_{k}'].sum():,} ({sub[f'discloses_{k}'].mean():.2%})"
             for k in LEXICONS)
-        L.append(f"| {persona} | {len(sub):,} | {cells} |")
+        L.append(f"| {persona} | {len(sub):,} | {cells} | "
+                 f"{sub['n_chars'].mean():,.0f} | {sub['n_chars'].median():,.0f} |")
     L.append("")
+    L.append(
+        "The length columns are the second half of the leakage question: a "
+        "judge cannot see the condition, but a condition that systematically "
+        "shortens or lengthens responses gives the judge something correlated "
+        "with it. They are judge-visible characters — for reasoning models, the "
+        "`text` blocks only.\n"
+    )
     L.append(
         "**The two lexicons disagree by roughly 4x on the adversarial arm and "
         "compress the contrast against baseline from about 3.8x to about 1.2x, "

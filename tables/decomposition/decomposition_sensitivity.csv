@@ -1,0 +1,31 @@
+frame,condition,task_type,cohort,group,n_flip_under_A,n_flip_under_condition,n_models,mean_delta_A,mean_delta_condition,mean_did,did_ci_lower,did_ci_upper,did_excludes_zero
+788 scenarios,B,decomp_b_xml_objective,all models,cohort,6,0,11,-0.686846219356288,-0.31774304108577434,-0.36910317827051364,-0.38157583900352166,-0.3564311480827278,True
+788 scenarios,B,decomp_b_xml_objective,all models,robust under A,0,0,5,-0.053305477100764206,-0.174665729282445,0.1213602521816808,,,
+788 scenarios,B,decomp_b_xml_objective,all models,flips under A,6,0,6,-1.214796837902558,-0.43697413425521536,-0.7778227036473426,,,
+788 scenarios,B,decomp_b_xml_objective,llama-4-maverick dropped,cohort,5,0,10,-0.6824607314870869,-0.2955152497164647,-0.38694548177062216,-0.4002253139348618,-0.37347153087479396,True
+788 scenarios,B,decomp_b_xml_objective,llama-4-maverick dropped,robust under A,0,0,5,-0.053305477100764206,-0.174665729282445,0.1213602521816808,,,
+788 scenarios,B,decomp_b_xml_objective,llama-4-maverick dropped,flips under A,5,0,5,-1.3116159858734096,-0.4163647701504843,-0.8952512157229253,,,
+200 scenarios (frozen subsample),B,decomp_b_xml_objective,all models,cohort,6,0,11,-0.6688888888888888,-0.2940530303030303,-0.37483585858585844,-0.4005508996212122,-0.34880605991985064,True
+200 scenarios (frozen subsample),B,decomp_b_xml_objective,all models,robust under A,0,0,5,-0.028243055555555552,-0.14715277777777774,0.1189097222222222,,,
+200 scenarios (frozen subsample),B,decomp_b_xml_objective,all models,flips under A,6,0,6,-1.2027604166666668,-0.41646990740740747,-0.7862905092592594,,,
+200 scenarios (frozen subsample),B,decomp_b_xml_objective,llama-4-maverick dropped,cohort,5,0,10,-0.6638402777777778,-0.26957986111111115,-0.3942604166666666,-0.4215052309782608,-0.36783029513888893,True
+200 scenarios (frozen subsample),B,decomp_b_xml_objective,llama-4-maverick dropped,robust under A,0,0,5,-0.028243055555555552,-0.14715277777777774,0.1189097222222222,,,
+200 scenarios (frozen subsample),B,decomp_b_xml_objective,llama-4-maverick dropped,flips under A,5,0,5,-1.2994375000000002,-0.3920069444444445,-0.9074305555555557,,,
+200 scenarios (frozen subsample),C,decomp_c_prose,all models,cohort,6,0,11,-0.6688888888888888,-0.31517361111111114,-0.3537152777777776,-0.3814845637077295,-0.326785322655907,True
+200 scenarios (frozen subsample),C,decomp_c_prose,all models,robust under A,0,0,5,-0.028243055555555552,-0.18280555555555553,0.15456249999999996,,,
+200 scenarios (frozen subsample),C,decomp_c_prose,all models,flips under A,6,0,6,-1.2027604166666668,-0.42548032407407416,-0.7772800925925927,,,
+200 scenarios (frozen subsample),C,decomp_c_prose,llama-4-maverick dropped,cohort,5,0,10,-0.6638402777777778,-0.32183680555555555,-0.3420034722222222,-0.3692458710748792,-0.3150500030879447,True
+200 scenarios (frozen subsample),C,decomp_c_prose,llama-4-maverick dropped,robust under A,0,0,5,-0.028243055555555552,-0.18280555555555553,0.15456249999999996,,,
+200 scenarios (frozen subsample),C,decomp_c_prose,llama-4-maverick dropped,flips under A,5,0,5,-1.2994375000000002,-0.46086805555555566,-0.8385694444444446,,,
+200 scenarios (frozen subsample),D,decomp_d_okr,all models,cohort,6,0,11,-0.6688888888888888,-0.3232670454545455,-0.34562184343434327,-0.3716389163372859,-0.3191617877140976,True
+200 scenarios (frozen subsample),D,decomp_d_okr,all models,robust under A,0,0,5,-0.028243055555555552,-0.16150000000000003,0.13325694444444447,,,
+200 scenarios (frozen subsample),D,decomp_d_okr,all models,flips under A,6,0,6,-1.2027604166666668,-0.4580729166666668,-0.7446875,,,
+200 scenarios (frozen subsample),D,decomp_d_okr,llama-4-maverick dropped,cohort,5,0,10,-0.6638402777777778,-0.32557291666666666,-0.3382673611111111,-0.365607536300505,-0.31052810990338164,True
+200 scenarios (frozen subsample),D,decomp_d_okr,llama-4-maverick dropped,robust under A,0,0,5,-0.028243055555555552,-0.16150000000000003,0.13325694444444447,,,
+200 scenarios (frozen subsample),D,decomp_d_okr,llama-4-maverick dropped,flips under A,5,0,5,-1.2994375000000002,-0.48964583333333345,-0.8097916666666668,,,
+200 scenarios (frozen subsample),E,decomp_e_abtest,all models,cohort,6,0,11,-0.6688888888888888,-0.15526830808080808,-0.5136205808080807,-0.5440772862643232,-0.48468279883818416,True
+200 scenarios (frozen subsample),E,decomp_e_abtest,all models,robust under A,0,0,5,-0.028243055555555552,-0.08844444444444446,0.060201388888888915,,,
+200 scenarios (frozen subsample),E,decomp_e_abtest,all models,flips under A,6,0,6,-1.2027604166666668,-0.21095486111111109,-0.9918055555555557,,,
+200 scenarios (frozen subsample),E,decomp_e_abtest,llama-4-maverick dropped,cohort,5,0,10,-0.6638402777777778,-0.16319097222222223,-0.5006493055555555,-0.5320978411835748,-0.4707435424214975,True
+200 scenarios (frozen subsample),E,decomp_e_abtest,llama-4-maverick dropped,robust under A,0,0,5,-0.028243055555555552,-0.08844444444444446,0.060201388888888915,,,
+200 scenarios (frozen subsample),E,decomp_e_abtest,llama-4-maverick dropped,flips under A,5,0,5,-1.2994375000000002,-0.2379375,-1.0615000000000003,,,
