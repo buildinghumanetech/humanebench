@@ -5,8 +5,12 @@
 # history until a post-deadline history filter removes them.
 helm_integration/data/gcs_cache/
 helm_integration/data/gcs_safety_cache/
-helm_integration/data/helm_raw_data.json
-helm_integration/data/helm_aggregate_scores.json
+# helm_raw_data.json (9.8 KB) and helm_aggregate_scores.json (7.6 KB) were
+# listed here but have been tracked since da98ec0 — ignore rules do not apply
+# to files already in the index, so the entries were dead and misleading.
+# Both are deliberately tracked: they are the inputs to compute_helm_power.py
+# and the AAAI HELM scatter, and re-scraping does not reproduce them because
+# HELM releases move under the same URL.
 
 # HELM Integration - Output files (optional - see note below)
 helm_integration/output/model_coverage_report.txt
