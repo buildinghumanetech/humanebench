@@ -16,6 +16,7 @@ from humanebench.bootstrap import (
     BOOTSTRAP_SEED,
     HUMANESCORE_KEY,
     PRINCIPLES,
+    DesignedMeasuredMatrix,
     bootstrap_cell_scores,
     bootstrap_cohort_grid,
     bootstrap_cohort_principle_means,
@@ -719,6 +720,47 @@ def test_diagonal_ranks_are_ordinal_and_direction_correct():
         bootstrap_designed_measured_matrix(long_high, n_bootstrap=100,
                                            seed=BOOTSTRAP_SEED))
     assert (high.rank_in_row == 8).all()
+
+
+@pytest.mark.unit
+def test_mirror_ranks_track_the_reversed_direction():
+    """The from-top columns must be the same claim with the inequality flipped.
+
+    They exist because the real run came out reversed. If they were merely the
+    complement of the lowest-rank columns they would add nothing; the check is
+    that a planted *positive* diagonal, which the committed direction scores as
+    the weakest possible result, is scored by the mirror as the strongest.
+    """
+    matrix = bootstrap_designed_measured_matrix(
+        _synth_matrix_long(np.random.default_rng(18), diagonal_effect=+0.6,
+                           noise=0.05),
+        n_bootstrap=100, seed=BOOTSTRAP_SEED)
+    ranks = diagonal_ranks(matrix)
+
+    assert (ranks.rank_in_row_from_top == 1).all()
+    assert (ranks.rank_in_column_from_top == 1).all()
+    assert (ranks.share_highest_in_row > 0.9).all()
+    assert (ranks.share_top_two_in_row >= ranks.share_highest_in_row).all()
+    # The committed direction sees nothing here -- both must be reported.
+    assert (ranks.share_lowest_in_row < 0.1).all()
+
+    # An unestimable row is not ranked in either direction. NaN comparisons read
+    # False, so a naive mirror would call an absent diagonal the highest cell.
+    holed = matrix.point.copy()
+    holed[2, 2] = np.nan
+    reps = matrix.replicates.copy()
+    reps[:, 2, 2] = np.nan
+    gapped = diagonal_ranks(DesignedMeasuredMatrix(
+        principles=matrix.principles, models=matrix.models, point=holed,
+        replicates=reps, n_per_cell=matrix.n_per_cell,
+        n_scenarios=matrix.n_scenarios))
+    row = gapped.iloc[2]
+    assert not row.estimable
+    # Not a rank of any kind: the column is float once a row goes unranked, so
+    # the guarantee is "missing", not the literal None that was appended.
+    assert pd.isna(row.rank_in_row_from_top)
+    assert pd.isna(row.rank_in_column_from_top)
+    assert np.isnan(row.share_highest_in_row)
 
 
 @pytest.mark.unit

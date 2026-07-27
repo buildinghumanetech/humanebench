@@ -1057,6 +1057,14 @@ def diagonal_ranks(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
     ``share_lowest_in_row`` and ``share_bottom_two_in_row`` are the fraction of
     bootstrap replicates in which the ordinal claim still holds.
 
+    The ``*_from_top`` / ``share_highest_*`` columns are the mirror statistics,
+    added **after** the run returned a diagonal above its row rather than below
+    it. They are the same comparison with the inequality flipped, so that a
+    reversed result can be characterised ordinally instead of only by its sign.
+    The lowest-based columns are the pre-committed ones and are unchanged; both
+    are emitted together so neither direction can be quietly selected after the
+    fact.
+
     A missing cell must not be ranked. ``NaN < NaN`` is False, so a naive
     comparison count reports an unscored row as rank 1 of 8 with 100% of
     replicates agreeing -- the strongest ordinal evidence the table can express,
@@ -1075,19 +1083,28 @@ def diagonal_ranks(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
         if estimable:
             row_rank = int((row_vals[row_ok] < diag).sum() + 1)
             col_rank = int((col_vals[col_ok] < diag).sum() + 1)
+            row_rank_top = int((row_vals[row_ok] > diag).sum() + 1)
+            col_rank_top = int((col_vals[col_ok] > diag).sum() + 1)
             rep_rows = matrix.replicates[:, i, :]
             rep_diag = rep_rows[:, [i]]
             # Compare only against finite competitors, and only in replicates
             # where the diagonal itself is finite.
             finite = np.isfinite(rep_rows)
             below = np.where(finite, rep_rows < rep_diag, False).sum(axis=1) + 1
+            above = np.where(finite, rep_rows > rep_diag, False).sum(axis=1) + 1
             usable = np.isfinite(rep_diag).ravel()
             rep_rank = below[usable]
+            rep_rank_top = above[usable]
             share_lowest = float((rep_rank == 1).mean()) if rep_rank.size else float("nan")
             share_bottom2 = float((rep_rank <= 2).mean()) if rep_rank.size else float("nan")
+            share_highest = (float((rep_rank_top == 1).mean())
+                             if rep_rank_top.size else float("nan"))
+            share_top2 = (float((rep_rank_top <= 2).mean())
+                          if rep_rank_top.size else float("nan"))
         else:
-            row_rank = col_rank = None
+            row_rank = col_rank = row_rank_top = col_rank_top = None
             share_lowest = share_bottom2 = float("nan")
+            share_highest = share_top2 = float("nan")
 
         rows.append({
             "designed_principle": principle,
@@ -1095,11 +1112,15 @@ def diagonal_ranks(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
             "estimable": estimable,
             "rank_in_row": row_rank,
             "rank_in_column": col_rank,
+            "rank_in_row_from_top": row_rank_top,
+            "rank_in_column_from_top": col_rank_top,
             "n_cells": k,
             "n_cells_ranked_in_row": int(row_ok.sum()),
             "n_cells_ranked_in_column": int(col_ok.sum()),
             "share_lowest_in_row": share_lowest,
             "share_bottom_two_in_row": share_bottom2,
+            "share_highest_in_row": share_highest,
+            "share_top_two_in_row": share_top2,
         })
     return pd.DataFrame(rows)
 
