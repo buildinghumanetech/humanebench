@@ -347,6 +347,7 @@ def bootstrap_cohort_principle_means(
     delta_personas: Sequence[tuple[str, str]] = (("bad_persona", "baseline"),),
     n_bootstrap: int = N_BOOTSTRAP_DEFAULT,
     seed: int = BOOTSTRAP_SEED,
+    replicates_out: dict[tuple[str, str, str], np.ndarray] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Bootstrap CIs for the cohort-mean per-principle scores in Table 4.
 
@@ -375,6 +376,12 @@ def bootstrap_cohort_principle_means(
         Columns: (principle, contrast_persona, baseline_persona,
                   point_estimate, ci_lower, ci_upper, n_scenarios, n_models)
         One row per (principle, delta_pair).
+
+    `replicates_out`, if given, is filled with the raw delta replicate arrays
+    keyed by (principle, contrast_persona, baseline_persona). Multiplicity
+    corrections need the replicate distribution, not just its percentiles, and
+    re-deriving one in a caller would mean a second implementation of this
+    estimator. Purely an out-parameter: passing it changes nothing returned.
     """
     models = list(models)
     personas = list(personas)
@@ -447,6 +454,8 @@ def bootstrap_cohort_principle_means(
             c_idx = persona_to_idx[contrast]
             b_idx = persona_to_idx[baseline]
             delta_reps = cohort_reps[:, c_idx] - cohort_reps[:, b_idx]
+            if replicates_out is not None:
+                replicates_out[(principle, contrast, baseline)] = delta_reps.copy()
             lo, hi = _percentile_ci(delta_reps)
             delta_rows.append({
                 "principle": principle,
