@@ -282,6 +282,9 @@ tables/decomposition/response_disclosure_rates.csv
 # scripts/build_discriminant_multilabel_dataset.py, and their sha256s are
 # recorded in data/discriminant/manifest.json, which IS committed.
 data/discriminant/multilabel_*.jsonl
+data/discriminant_expansion/multilabel_*.jsonl
+data/discriminant_rules27/multilabel_*.jsonl
+data/discriminant_canary/multilabel_*.jsonl
 
 # --- Stripped from history 2026-07-26; kept on disk, never published ---------
 #
@@ -296,6 +299,7 @@ data/discriminant/multilabel_*.jsonl
 /humanebench_aaai27_revision_plan.md
 /adversarial-conditions.md
 /DECOMP_HANDOFF.md
+/DISCRIMINANT_FOLLOWUP_SPEC.md
 /discriminant_validity_design.md
 
 # Working results and reconciliation notes. Numbers reach the repo through
