@@ -701,6 +701,10 @@ def run_condition(
             if queued:
                 mid = get_openrouter_credits()
                 mid_spent = _spend_so_far(usage_baseline)
+                if max_spend is not None and mid_spent is not None:
+                    print(f"  [{datetime.now().strftime('%H:%M:%S')}] spent "
+                          f"${mid_spent:.2f} of ${max_spend:.2f} cap "
+                          f"({len(queued)} model(s) still queued)", flush=True)
                 if not halfway_checked:
                     halfway_checked = True
                     record_event(status, "credit_check", condition=cond.task_type,
@@ -716,7 +720,14 @@ def run_condition(
                     record_event(status, "spend_cap_abort_midway",
                                  condition=cond.task_type,
                                  spent_usd=_json_safe(mid_spent), withheld=n_withheld)
-                if mid is not None:
+                # Skipped entirely when a spend cap is in force. On an
+                # auto-top-up account the balance is not a ceiling -- it refills
+                # on demand -- so comparing it to "still needed" aborts a run
+                # that would have completed fine. The pre-condition check was
+                # fixed for this; this one was not, and it killed a run at the
+                # first completion with $9.90 showing and $60 actually spent
+                # against an $800 cap.
+                if mid is not None and max_spend is None:
                     remaining_need = (len(models) - i) * per_model_cost * credit_factor
                     print(f"  [mid-condition] credit ${mid:.2f}, "
                           f"${remaining_need:.2f} still needed")
