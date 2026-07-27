@@ -206,7 +206,9 @@ def aggregate(judge_results: dict, judges_attempted: list | None = None) -> dict
 
     The ``ensemble`` object carries self-describing markers so a scraped
     ``aggregate.ensemble`` number can't be mistaken for the full cross-family ensemble:
-    ``is_full_ensemble`` (bool), ``n_judges_used`` / ``n_judges_attempted`` (ints — named
+    ``is_full_ensemble`` (``bool | None`` — ``True`` = every requested judge succeeded,
+    ``False`` = at least one was dropped, ``None`` = ``judges_attempted`` not supplied so
+    full/partial is unknown), ``n_judges_used`` / ``n_judges_attempted`` (ints — named
     distinctly from the top-level ``judges_attempted`` name list to avoid a type clash).
     """
     per_judge = {}
@@ -260,21 +262,35 @@ def _fmt(score: float) -> str:
 def render_report(agg: dict, meta: dict) -> str:
     """Render a markdown report from an aggregate result."""
     judges = list(agg["per_judge"].keys())
-    ensemble = len(judges) > 1
+    n_used = len(judges)
+    ensemble = n_used > 1
     ens = agg.get("ensemble", {})
-    # Single source of truth for "how many were attempted": the aggregate's own marker
-    # (set by aggregate() from judges_attempted). meta only supplies the display *names*
-    # for the banner. Fall back to meta/judges for callers that don't populate the marker.
+    # Single source of truth for the full/partial VERDICT and the attempted COUNT: the
+    # aggregate's own markers (set by aggregate() from judges_attempted). We never
+    # re-derive the verdict from counts here — if the aggregate declined to claim a full
+    # ensemble (is_full_ensemble is None), the report must not assert one either. meta
+    # only supplies the display *names* for the banner.
+    verdict = ens.get("is_full_ensemble")  # True | False | None
     attempted_names = meta.get("judges_attempted", judges)
     n_attempted = ens.get("n_judges_attempted")
     if n_attempted is None:
         n_attempted = len(attempted_names)
     ensemble_attempted = n_attempted > 1
-    degraded = len(judges) < n_attempted
-    # A multi-judge average is a true "Ensemble" only when nothing was dropped; a partial
-    # run is labelled "Partial (N of M)" so a copied headline number can't masquerade as
-    # the full ensemble.
-    agg_col = f"Partial ({len(judges)} of {n_attempted})" if degraded else "Ensemble"
+    degraded = verdict is False and n_used < n_attempted
+    # Label straight off the verdict: a true "Ensemble" only when the aggregate confirms
+    # nothing was dropped; "Partial (N of M)" when it confirms a drop; and a hedged
+    # "Multi-judge" when the attempted set wasn't recorded, so a copied headline number
+    # can never masquerade as the full published ensemble.
+    if verdict is False and degraded:
+        agg_col = f"Partial ({n_used} of {n_attempted})"
+    elif verdict is True:
+        agg_col = "Ensemble"
+    else:
+        agg_col = "Multi-judge"
+    # Only name the attempted judges in the banner when the recorded names actually match
+    # the attempted count; otherwise the parenthetical would list the *succeeded* judges as
+    # if they were the requested set, silently omitting the dropped one.
+    names_match = len(attempted_names) == n_attempted
     lines = []
     lines.append("## HumaneBench v3.0 — Transcript Evaluation")
     lines.append("")
@@ -282,12 +298,12 @@ def render_report(agg: dict, meta: dict) -> str:
     lines.append(f"**Transcript:** {meta.get('name', '(unnamed)')}  ·  "
                  f"**Turns scored:** {meta.get('turns', 'n/a')}")
     if degraded:
+        who = f" ({', '.join(attempted_names)})" if names_match else ""
         lines.append("")
-        lines.append(f"> ⚠️ **PARTIAL ENSEMBLE — PROVISIONAL.** Only {len(judges)} of "
-                     f"{n_attempted} requested judges "
-                     f"({', '.join(attempted_names)}) produced a score. This is **not** the "
-                     f"full cross-family ensemble and is **not** comparable to the published "
-                     f"leaderboard. Re-run once all judges are reachable.")
+        lines.append(f"> ⚠️ **PARTIAL ENSEMBLE — PROVISIONAL.** Only {n_used} of "
+                     f"{n_attempted} requested judges{who} produced a score. This is **not** "
+                     f"the full cross-family ensemble and is **not** comparable to the "
+                     f"published leaderboard. Re-run once all judges are reachable.")
     lines.append("")
 
     # Per-principle table
@@ -349,17 +365,25 @@ def render_report(agg: dict, meta: dict) -> str:
                  "not the product's typical behavior. Score 8–10 transcripts across "
                  "different intensities and topics, segmented by scenario, before drawing "
                  "product-level conclusions.")
-    if ensemble_attempted and not degraded:
+    if verdict is True:
         lines.append("- **Judge bias — mitigated.** This used the cross-family ensemble "
                      "(Claude + GPT + Gemini), which reduces single-judge temperament and "
                      "same-family tilt. This is the published HumaneBench methodology.")
-    elif ensemble_attempted and degraded:
+    elif degraded:
         lines.append(f"- **Judge bias — only PARTIALLY mitigated.** The cross-family ensemble "
-                     f"was requested but only {len(judges)} of {n_attempted} judges "
+                     f"was requested but only {n_used} of {n_attempted} judges "
                      f"succeeded, so this is a **provisional** score, **not** the published "
                      f"methodology and **not** leaderboard-comparable. Whatever judges ran "
                      f"still carry their own temperament (and same-family tilt if any share "
                      f"the tested product's family). Re-run once all judges are reachable.")
+    elif ensemble_attempted:
+        # verdict is None: several judges ran, but the attempted set wasn't recorded, so we
+        # can't confirm this is the full ensemble. Report the mitigation without claiming it.
+        lines.append("- **Judge bias — partially mitigated (unverified).** Multiple judges "
+                     "ran, which reduces single-judge temperament, but the requested-judge "
+                     "set wasn't recorded, so this can't be confirmed as the full published "
+                     "cross-family ensemble. Run `--ensemble` for a leaderboard-comparable "
+                     "number whose completeness is verified.")
     else:
         lines.append("- **Judge bias — NOT mitigated.** This is a **single-judge** score and "
                      "inherits that judge's temperament. **If the product under test runs on "
@@ -476,11 +500,15 @@ def _is_temperature_400(e: Exception) -> bool:
     status = getattr(e, "status_code", None)
     if status is None:
         status = getattr(e, "code", None)
-    if status is not None:
-        try:
-            return int(status) == 400   # numeric status (int or digit string) is decisive
-        except (TypeError, ValueError):
-            pass                        # non-numeric slug -> fall through to message check
+    # Only a genuine numeric status is decisive: a real int (not a bool, which would coerce
+    # 400->False) or a bare digit string. Anything else (a slug like "unsupported_value", a
+    # float, a padded string) is not a status -> fall through to the message check.
+    if isinstance(status, bool):
+        pass
+    elif isinstance(status, int):
+        return status == 400
+    elif isinstance(status, str) and status.strip().isdigit():
+        return int(status) == 400
     return bool(re.search(r"\b400\b", msg))
 
 

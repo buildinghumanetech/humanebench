@@ -201,6 +201,14 @@ class TestAggregation(unittest.TestCase):
         agg = hb.aggregate({"A": self._judge(0.5)}, judges_attempted=["A"])
         self.assertFalse(agg["ensemble"]["is_full_ensemble"])   # one judge is not an ensemble
 
+    def test_is_full_ensemble_none_when_attempted_unknown(self):
+        # judges_attempted omitted -> the aggregate must NOT claim a full ensemble; the
+        # marker is None (unknown), distinct from a verified True/False. Guards against a
+        # regression back to the old permissive `True` default (assertFalse(None) would
+        # silently pass, so assert identity to None).
+        agg = hb.aggregate({"A": self._judge(0.5), "B": self._judge(0.5)})
+        self.assertIsNone(agg["ensemble"]["is_full_ensemble"])
+
 
 class TestReport(unittest.TestCase):
     def _agg(self, single=True, attempted=None):
@@ -217,11 +225,29 @@ class TestReport(unittest.TestCase):
         self.assertIn("N = 1", report)
         self.assertIn("HumaneScore", report)
 
-    def test_ensemble_report_shows_per_judge_and_mitigation(self):
-        report = hb.render_report(self._agg(single=False), {"name": "t", "turns": 4})
-        self.assertIn("[Ensemble]", report)          # full-ensemble heading label
+    _TWO = ["Claude Sonnet 4.5", "GPT-5.1"]
+
+    def test_full_ensemble_labeled_and_published_methodology(self):
+        # Every requested judge succeeded (is_full_ensemble True): heading reads [Ensemble]
+        # and the report may claim the published methodology.
+        agg = self._agg(single=False, attempted=self._TWO)
+        self.assertIs(agg["ensemble"]["is_full_ensemble"], True)
+        report = hb.render_report(agg, {"name": "t", "turns": 4, "judges_attempted": self._TWO})
+        self.assertIn("[Ensemble]", report)
+        self.assertIn("This is the published HumaneBench methodology", report)
+
+    def test_unverified_multi_judge_does_not_claim_full_ensemble(self):
+        # judges_attempted omitted -> is_full_ensemble None. The report must NOT assert the
+        # claim the aggregate declined: no [Ensemble] label, no "published methodology". It
+        # hedges as [Multi-judge] and still notes the (unverified) mitigation.
+        agg = self._agg(single=False)                      # attempted=None -> verdict None
+        self.assertIsNone(agg["ensemble"]["is_full_ensemble"])
+        report = hb.render_report(agg, {"name": "t", "turns": 4})
+        self.assertIn("[Multi-judge]", report)
         self.assertIn("GPT-5.1", report)
-        self.assertIn("mitigated", report.lower())
+        self.assertIn("mitigated", report.lower())         # "partially mitigated (unverified)"
+        self.assertNotIn("[Ensemble]", report)
+        self.assertNotIn("This is the published HumaneBench methodology", report)
 
     _THREE = ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]
 
@@ -230,7 +256,7 @@ class TestReport(unittest.TestCase):
         # records the degradation (single source of truth), so the report is provisional and
         # the "published methodology / mitigated" claim must NOT appear.
         agg = self._agg(single=True, attempted=self._THREE)
-        self.assertFalse(agg["ensemble"]["is_full_ensemble"])
+        self.assertIs(agg["ensemble"]["is_full_ensemble"], False)   # not None, not True
         report = hb.render_report(agg, {"name": "t", "turns": 4, "judges_attempted": self._THREE})
         self.assertIn("PARTIAL ENSEMBLE", report)
         self.assertIn("provisional", report.lower())
@@ -241,7 +267,7 @@ class TestReport(unittest.TestCase):
         # 2 of 3 judges succeeded: the aggregate column/heading must read "Partial (2 of 3)",
         # never bare "Ensemble", so a copied headline number can't pose as the full ensemble.
         agg = self._agg(single=False, attempted=self._THREE)   # two of three
-        self.assertFalse(agg["ensemble"]["is_full_ensemble"])  # aggregate agrees it's partial
+        self.assertIs(agg["ensemble"]["is_full_ensemble"], False)  # aggregate agrees it's partial
         report = hb.render_report(agg, {"name": "t", "turns": 4, "judges_attempted": self._THREE})
         self.assertIn("Partial (2 of 3)", report)
         self.assertIn("PARTIALLY mitigated", report)
@@ -334,6 +360,23 @@ class TestIsTemperature400(unittest.TestCase):
     def test_temperature_but_no_400_signal(self):
         # temperature mentioned but no status attr and no "400" in text -> propagate (skip).
         self.assertFalse(hb._is_temperature_400(_FakeSDKError("temperature rejected")))
+
+    def test_non_numeric_code_no_400_token_is_false(self):
+        # The negative twin of the fall-through test: a string slug AND no "400" in the
+        # message -> the slug isn't a status and there's no 400 signal, so False.
+        self.assertFalse(hb._is_temperature_400(
+            _FakeSDKError("temperature rejected", code="unsupported_value")))
+
+    def test_bool_status_is_ignored_not_coerced(self):
+        # A bool is not a status: it must be ignored (not coerced True->1) and the predicate
+        # falls through to the message check. Message has no 400 token -> False.
+        self.assertFalse(hb._is_temperature_400(
+            _FakeSDKError("temperature not supported", status_code=True)))
+
+    def test_padded_digit_status_still_matches(self):
+        # A whitespace-padded digit string is still a numeric status.
+        self.assertTrue(hb._is_temperature_400(
+            _FakeSDKError("temperature not supported", status_code=" 400 ")))
 
 
 class TestInstallHint(unittest.TestCase):
