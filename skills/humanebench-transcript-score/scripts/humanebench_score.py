@@ -255,17 +255,34 @@ def band_label(score: float) -> str:
     return "net anti-humane"
 
 
-def _is_degraded(n_used: int, n_attempted: int, verdict) -> bool:
+def _is_degraded(n_used: int, n_attempted: int) -> bool:
     """True when a requested judge didn't produce a score — the single definition of
     "degraded", shared by the report and the JSON payload so they can't drift.
 
-    A confirmed-full ensemble (``verdict is True``) is never degraded. Otherwise a drop is
-    evidenced by ``n_used < n_attempted``: ``verdict is False`` confirms it, and a ``None``
-    verdict (attempted set unrecorded) falls back to that same count. A single-judge run
-    (``n_used == n_attempted == 1``, ``verdict False``) is NOT degraded — it's just not an
-    ensemble.
+    Degradation is exactly a drop in the count: ``n_used < n_attempted``. This is
+    verdict-agnostic on purpose — for every aggregate ``aggregate()`` builds, ``is_full``
+    already implies ``n_used == n_attempted``, so the verdict adds nothing; and for a
+    self-contradictory foreign aggregate (verdict ``True`` yet a drop) the count is the
+    authoritative-negative signal, so it degrades rather than emitting the most confident
+    output from the most contradictory input. A single-judge run (``n_used ==
+    n_attempted == 1``) is NOT degraded — it's simply not an ensemble.
     """
-    return n_used < n_attempted and verdict is not True
+    return n_used < n_attempted
+
+
+def _build_payload(meta: dict, succeeded: list, judge_names: list, agg: dict) -> dict:
+    """Assemble the JSON payload. Canonical degraded/full fields live in aggregate.ensemble
+    (is_full_ensemble / n_judges_used / n_judges_attempted); the top-level keys here are the
+    human-readable judge *name* lists. ``degraded`` goes through the SAME _is_degraded helper
+    render_report uses, so the JSON and the markdown apply one rule and can't drift."""
+    ens = agg["ensemble"]
+    return {
+        "meta": meta,
+        "judges": succeeded,                  # names that actually produced a score
+        "judges_attempted": judge_names,      # names we tried to run
+        "degraded": _is_degraded(ens["n_judges_used"], ens["n_judges_attempted"]),
+        "aggregate": agg,
+    }
 
 
 def _fmt(score: float) -> str:
@@ -290,9 +307,9 @@ def render_report(agg: dict, meta: dict) -> str:
         n_attempted = len(attempted_names)
     ensemble_attempted = n_attempted > 1
     # Degraded = a requested judge was dropped (shared helper, same rule as the JSON). A
-    # confirmed-full ensemble is never degraded; a single-judge run (n_used==n_attempted==1,
-    # verdict False) is not degraded either — it's just not an ensemble.
-    degraded = _is_degraded(n_used, n_attempted, verdict)
+    # confirmed-full ensemble is never degraded; a single-judge run (n_used==n_attempted==1)
+    # is not degraded either — it's just not an ensemble.
+    degraded = _is_degraded(n_used, n_attempted)
     # Label off verdict/degradation: "Partial (N of M)" whenever a drop is known; "Ensemble"
     # only on a confirmed-full verdict; "Multi-judge" for an unverified (verdict-None,
     # nothing-known-dropped) run, so a copied headline can never masquerade as the full
@@ -696,19 +713,7 @@ def main(argv: list[str] | None = None) -> int:
     agg = aggregate(results, judges_attempted=judge_names)
     meta = {"name": name, "turns": turns, "judges_attempted": judge_names}
     report = render_report(agg, meta)
-    # Canonical fields for the degraded/full question live in aggregate.ensemble
-    # (is_full_ensemble / n_judges_used / n_judges_attempted). The top-level keys here are
-    # the human-readable judge *name* lists; `degraded` goes through the SAME _is_degraded
-    # helper the report uses, so the JSON and the markdown apply one rule and can't drift.
-    _ens = agg["ensemble"]
-    payload = {
-        "meta": meta,
-        "judges": succeeded,                 # names that actually produced a score
-        "judges_attempted": judge_names,      # names we tried to run
-        "degraded": _is_degraded(_ens["n_judges_used"], _ens["n_judges_attempted"],
-                                 _ens["is_full_ensemble"]),
-        "aggregate": agg,
-    }
+    payload = _build_payload(meta, succeeded, judge_names, agg)
 
     if args.json_only:
         print(json.dumps(payload, indent=2))

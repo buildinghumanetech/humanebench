@@ -211,20 +211,33 @@ class TestAggregation(unittest.TestCase):
 
 
 class TestIsDegraded(unittest.TestCase):
-    def test_single_judge_not_degraded(self):
-        self.assertFalse(hb._is_degraded(1, 1, False))   # not an ensemble, but not degraded
+    def test_no_drop_not_degraded(self):
+        self.assertFalse(hb._is_degraded(1, 1))   # single judge: not an ensemble, not degraded
+        self.assertFalse(hb._is_degraded(3, 3))   # full ensemble
+        self.assertFalse(hb._is_degraded(2, 2))   # unverified multi, nothing dropped
 
-    def test_full_ensemble_not_degraded(self):
-        self.assertFalse(hb._is_degraded(3, 3, True))
+    def test_drop_is_degraded(self):
+        self.assertTrue(hb._is_degraded(2, 3))    # 2 of 3
+        self.assertTrue(hb._is_degraded(1, 3))    # 1 of 3
 
-    def test_verdict_false_with_drop_is_degraded(self):
-        self.assertTrue(hb._is_degraded(2, 3, False))
 
-    def test_verdict_none_with_drop_is_degraded(self):
-        self.assertTrue(hb._is_degraded(2, 3, None))     # count is the only evidence
+class TestBuildPayload(unittest.TestCase):
+    def _agg(self, succeeded, attempted):
+        j = hb.parse_judge_json(_full_payload({k: 0.5 for k in hb.PRINCIPLE_KEYS}))
+        return hb.aggregate({n: j for n in succeeded}, judges_attempted=attempted)
 
-    def test_verdict_none_no_drop_not_degraded(self):
-        self.assertFalse(hb._is_degraded(2, 2, None))    # unverified but nothing dropped
+    def test_single_judge_payload_not_degraded(self):
+        # The exact shape main() builds for a default (no --ensemble) run: verifies the
+        # JSON's degraded flag stays False — i.e. the round-8 wiring, not just the helper.
+        agg = self._agg(["Claude Sonnet 4.5"], ["Claude Sonnet 4.5"])
+        p = hb._build_payload({}, ["Claude Sonnet 4.5"], ["Claude Sonnet 4.5"], agg)
+        self.assertFalse(p["degraded"])
+
+    def test_one_of_three_payload_degraded(self):
+        agg = self._agg(["Claude Sonnet 4.5"], ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"])
+        p = hb._build_payload({}, ["Claude Sonnet 4.5"],
+                              ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"], agg)
+        self.assertTrue(p["degraded"])
 
 
 class TestReport(unittest.TestCase):
@@ -256,10 +269,8 @@ class TestReport(unittest.TestCase):
         self.assertIn("single-judge** score", report)
         self.assertNotIn("PARTIAL ENSEMBLE", report)
         self.assertNotIn("Partial (", report)
-        # ...and the JSON's degraded flag agrees (shared _is_degraded helper).
-        self.assertFalse(hb._is_degraded(agg["ensemble"]["n_judges_used"],
-                                         agg["ensemble"]["n_judges_attempted"],
-                                         agg["ensemble"]["is_full_ensemble"]))
+        # (The JSON side of this — payload["degraded"] False for a one-judge run — is pinned
+        # by TestBuildPayload.test_single_judge_payload_not_degraded.)
 
     _TWO = ["Claude Sonnet 4.5", "GPT-5.1"]
 
@@ -321,6 +332,18 @@ class TestReport(unittest.TestCase):
         self.assertIn("Partial (2 of 3)", report)
         self.assertIn("requested judges produced a score", report)  # parenthetical suppressed
         self.assertNotIn("requested judges (", report)
+
+    def test_partial_banner_omits_names_when_membership_wrong(self):
+        # Same CARDINALITY as n_attempted (3) but the names don't cover the succeeded judges:
+        # the membership half of the guard must still suppress the parenthetical so a stale or
+        # wrong name list can't be printed as the requested set.
+        agg = self._agg(single=False, attempted=self._THREE)  # succeeded: Claude Sonnet 4.5, GPT-5.1
+        report = hb.render_report(agg, {"name": "t", "turns": 4,
+                                        "judges_attempted": ["X", "Y", "Z"]})
+        self.assertIn("PARTIAL ENSEMBLE", report)
+        self.assertIn("requested judges produced a score", report)
+        self.assertNotIn("requested judges (", report)
+        self.assertNotIn("X, Y, Z", report)
 
     def test_marker_less_aggregate_honors_meta_attempted_count(self):
         # A legacy/marker-less aggregate (no is_full_ensemble / n_judges_attempted) rendered
