@@ -262,6 +262,9 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--logs-dir", type=Path, default=REPO_ROOT / "logs")
     ap.add_argument("--models", nargs="+", default=list(SOURCE_MODELS))
+    ap.add_argument("--gate-threshold", type=float, default=0.98,
+                    help="completeness fraction the census requires, matching "
+                         "the runner's gate and the analysis's refusal rule")
     ap.add_argument("--allow-skips", action="store_true",
                     help="exit 0 even when checks were skipped for missing "
                          "inputs. Only pass this if you have decided the skip "
@@ -308,15 +311,26 @@ def main() -> int:
     r.check(manifest["expected_prompt_hashes_sha256"] == prov.file_sha256(HASHES_PATH),
             "expected-prompt-hash table unchanged since the manifest was written")
 
+    # Restrict expectations to the models under verification. Without this, a
+    # legitimate single-model verify fails "every predicted call is present"
+    # against the other two models' 1,536 calls -- while the analysis explicitly
+    # scales its denominator to --models and calls the same run complete.
+    model_set = set(args.models)
     expected: dict[tuple[str, str, str], str] = {}
     diagonal_keys: set[tuple[str, str, str]] = set()
+    n_rows_total = 0
     for row in csv.DictReader(HASHES_PATH.open()):
+        n_rows_total += 1
+        if row["source_model"] not in model_set:
+            continue
         key = (row["scenario_id"], row["source_model"], row["scored_principle"])
         expected[key] = row["expected_judge_prompt_sha256"]
         if row["is_diagonal"] == "True":
             diagonal_keys.add(key)
-    r.check(len(expected) == manifest["n_judge_calls"],
-            f"{len(expected):,} judge calls predicted before launch")
+    r.check(n_rows_total == manifest["n_judge_calls"],
+            f"{n_rows_total:,} judge calls predicted before launch"
+            + (f"; verifying the {len(expected):,} for {sorted(model_set)}"
+               if len(expected) != n_rows_total else ""))
 
     # ---- 2. Scaffolds ---------------------------------------------------
     print("\nRubric scaffolds (reused verbatim?):")
@@ -352,15 +366,25 @@ def main() -> int:
         return 1
 
     # ---- 3-6. Prompts, diagonal, analytic scoring, judge ----------------
+    # Retries are routine, not violations: the scorer re-sends the byte-identical
+    # prompt as a NEW model event when a judge response fails to parse
+    # (score_attempts=3). So the unit of verification is the SAMPLE, not the
+    # event: every sample must have >= 1 judge event, and ALL of its events must
+    # carry one identical prompt that hashes to the pre-launch prediction. An
+    # event-count equality here would hard-fail a byte-perfect run over a single
+    # malformed JSON -- the same defect once produced "4 judges" for a 3-judge
+    # ensemble in compute_judge_artifact_controls.py.
     print("\nJudge prompts actually sent:")
-    seen: set[tuple[str, str, str]] = set()
+    hashed: set[tuple[str, str, str]] = set()
+    no_event: list[tuple[str, str, str]] = []
     prompt_mismatch: list[tuple[str, str, str]] = []
-    multi_call: list[str] = []
+    divergent_retries: list[str] = []
     wrong_judge: Counter = Counter()
     scaffold_hashes_seen: set[str] = set()
     principles_per_response: dict[tuple[str, str], set[str]] = defaultdict(set)
     sent_prompts: dict[tuple[str, str, str], str] = {}
-    n_calls = 0
+    n_events = 0
+    n_retried_samples = 0
 
     for model, samples in by_model.items():
         for sample in samples:
@@ -373,33 +397,48 @@ def main() -> int:
                 scenario = parts[0] if parts else None
             key = (scenario, model, scored)
             calls = judge_events(sample)
-            n_calls += len(calls)
-            if len(calls) != 1:
-                multi_call.append(f"{sample.get('id')} ({len(calls)} calls)")
-            for judge_model, prompt, _ev in calls:
+            n_events += len(calls)
+            if not calls:
+                no_event.append(key)
+                continue
+            distinct_prompts = {p for _m, p, _e in calls}
+            if len(distinct_prompts) != 1:
+                # Retries must be byte-identical re-sends; two DIFFERENT prompts
+                # in one sample is a real integrity failure, not a retry.
+                divergent_retries.append(f"{sample.get('id')} "
+                                         f"({len(distinct_prompts)} distinct prompts)")
+                continue
+            if len(calls) > 1:
+                n_retried_samples += 1
+            prompt = calls[0][1]
+            for judge_model, _p, _ev in calls:
                 wrong_judge[judge_model] += 1
-                scaffold_hashes_seen.add(
-                    hashlib.sha256(scaffold_of(prompt).encode()).hexdigest())
-                got = hashlib.sha256(prompt.encode()).hexdigest()
-                if expected.get(key) != got:
-                    prompt_mismatch.append(key)
-                sent_prompts[key] = prompt
-            seen.add(key)
+            scaffold_hashes_seen.add(
+                hashlib.sha256(scaffold_of(prompt).encode()).hexdigest())
+            got = hashlib.sha256(prompt.encode()).hexdigest()
+            if expected.get(key) != got:
+                prompt_mismatch.append(key)
+            else:
+                hashed.add(key)
+            sent_prompts[key] = prompt
             principles_per_response[(scenario, model)].add(scored)
 
-    # Count prompts actually HASHED, not samples seen. A sample with no recorded
-    # judge event contributes to `seen` but to nothing that was checked, so
-    # ranking on `seen` would pass this check on a log where zero prompts were
-    # ever compared -- the vacuous pass this whole section exists to prevent.
-    r.check(not prompt_mismatch and n_calls == len(expected),
-            f"{n_calls:,} of {len(expected):,} judge prompts hash to their "
-            "pre-launch predictions"
+    r.check(not prompt_mismatch and not divergent_retries and hashed == set(expected),
+            f"{len(hashed):,} of {len(expected):,} samples' judge prompts hash "
+            "to their pre-launch predictions"
             + (f" ({len(prompt_mismatch)} mismatched)" if prompt_mismatch else "")
-            + (f" -- {len(expected) - n_calls} prompt(s) never recorded, so they "
-               "were not checked at all" if n_calls != len(expected) else ""))
-    unseen = set(expected) - seen
-    r.check(not unseen, f"every predicted call is present in the logs"
-            + (f" ({len(unseen)} missing)" if unseen else ""))
+            + (f" ({len(divergent_retries)} samples with DIVERGENT retry "
+               f"prompts, e.g. {divergent_retries[:2]})" if divergent_retries else "")
+            + (f" ({len(set(expected) - hashed - set(prompt_mismatch))} never "
+               "recorded)" if hashed | set(prompt_mismatch) != set(expected) else ""))
+    r.check(not no_event,
+            "every sample carries at least one judge event"
+            + (f" ({len(no_event)} with none)" if no_event else ""))
+    if n_retried_samples:
+        print(f"        note: {n_retried_samples} sample(s) show judge retries "
+              f"({n_events - len(hashed) - len(no_event)} extra events), all "
+              "byte-identical re-sends -- routine parse-failure retries, not a "
+              "provenance issue")
 
     print("\nDiagonal vs the reported November runs:")
     # Cells the reported run genuinely never sent to this judge: an earlier
@@ -448,9 +487,10 @@ def main() -> int:
             print(f"        unexplained gap: {k[0]} / {k[1]}")
 
     print("\nAnalytic scoring (one call per principle):")
-    r.check(not multi_call,
-            f"exactly one judge call per sample across {n_calls:,} calls"
-            + (f" (offenders: {multi_call[:3]})" if multi_call else ""))
+    # The property retries could never violate: each sample's calls all carry
+    # ONE single-principle prompt (asserted above via distinct_prompts == 1),
+    # each response is scored under all eight principles, and exactly eight
+    # scaffolds exist in the whole run -- so no prompt named two principles.
     bad_coverage = {k: sorted(v) for k, v in principles_per_response.items()
                     if len(v) != len(PRINCIPLES)}
     r.check(not bad_coverage,
@@ -486,6 +526,13 @@ def main() -> int:
 
     # ---- 8. Census -------------------------------------------------------
     print("\nCompleteness:")
+    # Threshold matches the runner's gate and the analysis's refusal rule. This
+    # check previously demanded exactly 768/768, which is stricter than the
+    # pipeline it verifies: a single NaN-invalid judgement is documented in this
+    # codebase as unrecoverable by eval-retry, so perfection here would FAIL a
+    # run the gate passed and the analysis accepted -- three stages, three
+    # different verdicts on the same log. Surplus stays a hard failure: more
+    # samples than the frame is a wrong-dataset run, not an incomplete one.
     expected_per_model = manifest["n_scenarios"] * manifest["n_principles"]
     for model, samples in sorted(by_model.items()):
         n_full = n_fail = n_offscale = n_nan = 0
@@ -511,7 +558,14 @@ def main() -> int:
         if n_fail or n_offscale or n_nan:
             detail += f"  (judge failures {n_fail}, off-scale {n_offscale}, " \
                       f"invalid-flagged {n_nan})"
-        r.check(n_full == expected_per_model, f"{model:22s} {detail}")
+        if n_full > expected_per_model or len(samples) > expected_per_model:
+            r.fail(f"{model:22s} {detail} -- MORE samples than the frame: "
+                   "wrong-dataset run")
+        else:
+            r.check(n_full >= expected_per_model * args.gate_threshold,
+                    f"{model:22s} {detail}"
+                    + (f"  (>= {args.gate_threshold:.0%} threshold)"
+                       if n_full < expected_per_model else ""))
 
     print(f"\n{r.failed} failed, {r.skipped} skipped")
     if r.skipped and not args.allow_skips:

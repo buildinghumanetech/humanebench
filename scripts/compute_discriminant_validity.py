@@ -300,7 +300,8 @@ def sanity_check(joined: pd.DataFrame, n_bootstrap: int, seed: int) -> pd.DataFr
             "mean_signed_difference": point,
             "ci_lower": lo,
             "ci_upper": hi,
-            "ci_excludes_zero": bool(hi < 0 or lo > 0),
+            "ci_excludes_zero": bool(np.isfinite(lo) and np.isfinite(hi)
+                                     and (hi < 0 or lo > 0)),
             "mean_absolute_difference": float(np.abs(diff).mean()),
             "exact_agreement": exact,
             "same_sign_agreement": same_sign,
@@ -657,9 +658,9 @@ def write_report(
     L.append("| comparison | difference | 95% CI | excludes 0 |")
     L.append("| --- | ---: | :---: | :---: |")
     for _, r in fhr_pltw.iterrows():
+        verdict = ("yes" if r.excludes_zero else "no") if r.estimable else "not estimable"
         L.append(f"| {r.comparison} | {_fmt(r.difference)} | "
-                 f"[{_fmt(r.ci_lower)}, {_fmt(r.ci_upper)}] | "
-                 f"{'yes' if r.excludes_zero else 'no'} |")
+                 f"[{_fmt(r.ci_lower)}, {_fmt(r.ci_upper)}] | {verdict} |")
     L.append("")
 
     L.append("## 4. Sanity check against the main run\n")
@@ -813,6 +814,10 @@ def main() -> int:
                          "report header, not buried")
     args = ap.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    # The report's default parent is results/, which is gitignored and absent in
+    # a fresh worktree -- without this, the whole analysis runs and then dies on
+    # FileNotFoundError at the very last write.
+    args.report.parent.mkdir(parents=True, exist_ok=True)
 
     manifest = json.loads(MANIFEST_PATH.read_text())
     long, stats = load_run_scores(args.logs_dir, args.models)
@@ -831,8 +836,31 @@ def main() -> int:
     # plans all three; `--models claude-sonnet-4.5` alone is a complete run of
     # one model, not a 33%-complete run of three, and refusing it as incomplete
     # (or stamping "this matrix is incomplete" on it) would be false.
+    # Count checks can be fooled by a wrong dataset of the right size; identity
+    # checks cannot. Every scenario in the logs must belong to the frozen frame.
+    frame_ids = {ln.strip() for ln in IDS_PATH.read_text().splitlines() if ln.strip()}
+    alien = sorted(set(long["scenario_id"]) - frame_ids)
+    if alien:
+        print(f"WRONG FRAME: {len(alien)} scenario id(s) in the logs are not in "
+              f"the frozen 96 (e.g. {alien[:3]}). Not writing a matrix.",
+              file=sys.stderr)
+        return 4
+
     expected_calls = manifest["n_judge_calls"] // manifest["n_source_models"] * len(args.models)
     shortfall = expected_calls - stats["admitted"]
+    if shortfall < 0:
+        # More admitted calls than the frame plans is not "extra data" -- it is
+        # exactly what a run against a stale or oversized dataset looks like,
+        # and --allow-incomplete must not override it: a wrong-frame run is
+        # wrong, not incomplete.
+        print(
+            f"WRONG FRAME: {stats['admitted']:,} judge calls admitted but the "
+            f"frame plans only {expected_calls:,} for {sorted(args.models)}.\n"
+            "Not writing a matrix. The logs contain samples outside the frozen "
+            "frame -- check which dataset the run actually scored.",
+            file=sys.stderr,
+        )
+        return 4
     if shortfall > 0:
         frac = stats["admitted"] / expected_calls
         if frac < args.min_complete and not args.allow_incomplete:
@@ -898,10 +926,14 @@ def main() -> int:
         args.output_dir / "row_contrasts.csv", index=False)
     ranks.to_csv(args.output_dir / "diagonal_ranks.csv", index=False)
 
-    # 3. The pair named in review, both directions.
+    # 3. The pair named in review, both directions. Same estimable discipline as
+    # the row contrasts: cell_difference returns NaN CIs for an empty cell, and
+    # NaN comparisons read False -- which would print "excludes 0: no" and be
+    # read as a null result where there is no data at all.
     fhr_rows = []
     for designed, other in ((FHR, PLTW), (PLTW, FHR)):
         d, lo, hi = matrix.cell_difference(designed, designed, other)
+        estimable = bool(np.isfinite(d) and np.isfinite(lo) and np.isfinite(hi))
         fhr_rows.append({
             "comparison": f"{PRINCIPLE_SHORT[designed]}-designed: "
                           f"{PRINCIPLE_SHORT[designed]} minus {PRINCIPLE_SHORT[other]}",
@@ -911,7 +943,8 @@ def main() -> int:
             "difference": d,
             "ci_lower": lo,
             "ci_upper": hi,
-            "excludes_zero": bool(hi < 0 or lo > 0),
+            "estimable": estimable,
+            "excludes_zero": bool(estimable and (hi < 0 or lo > 0)),
         })
     fhr_pltw = pd.DataFrame(fhr_rows)
     fhr_pltw.to_csv(args.output_dir / "fhr_pltw.csv", index=False)
