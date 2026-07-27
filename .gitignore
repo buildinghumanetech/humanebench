@@ -262,3 +262,30 @@ tables/inter_judge_raw.csv
 # scripts/build_discriminant_multilabel_dataset.py, and their sha256s are
 # recorded in data/discriminant/manifest.json, which IS committed.
 data/discriminant/multilabel_*.jsonl
+
+# --- Stripped from history 2026-07-26; kept on disk, never published ---------
+#
+# Internal strategy documents for a paper under anonymous review. They quote
+# confidential peer-review text verbatim with per-reviewer attribution, and
+# carry rebuttal framing. This repo is mirrored to anonymous.4open.science with
+# substring-only redaction, which would scrub the names and leave the strategy
+# intact for the reviewers to read.
+# Anchored to the repo root: a bare filename would match at any depth, and
+# docs/discriminant_validity_design.md is the redacted public version that four
+# modules cite.
+/humanebench_aaai27_revision_plan.md
+/adversarial-conditions.md
+/DECOMP_HANDOFF.md
+/discriminant_validity_design.md
+
+# Working results and reconciliation notes. Numbers reach the repo through
+# tables/; the prose write-ups stay local.
+/results/
+
+# 580 MB archive that GitHub's 100 MB limit rejected, which is what blocked
+# every push of this branch lineage.
+temp/*.zip
+
+# Local backup of .git and of the files stripped above, taken before the
+# history rewrite. Delete once the push has landed.
+_prefilter_backup/

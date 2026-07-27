@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Principle discriminant validity: the designed x measured matrix.
 
-Reviewers R1 and R2 asked whether the eight principles are eight constructs or
-one construct wearing eight labels. Every scenario was *designed* to probe one
+Peer review raised whether the eight principles are eight distinct constructs
+or one construct wearing eight labels. Every scenario was *designed* to probe one
 principle; scoring each response against all eight tells us which principle it
 actually *measures*. Rows are the designed principle, columns the scored one.
 
@@ -32,8 +32,8 @@ WHAT IS REPORTED
    cluster-bootstrap CIs. Negative = the principles discriminate.
    1b. The same, column-centred, which additionally removes per-rubric leniency.
 2. Rank of the diagonal cell within its row, and within its column.
-3. The Foster Healthy Relationships / Prioritize Long-term Wellbeing cells that
-   R1 named, both directions, as a paired difference.
+3. The Foster Healthy Relationships / Prioritize Long-term Wellbeing cells --
+   the pair named in review -- both directions, as a paired difference.
 4. Sanity check against the main run, split into the two questions it conflates:
    (a) vs the main run's own gpt-5.1 severity -- same judge, same prompt, eight
        months apart. A judge-drift test.
@@ -374,11 +374,11 @@ def interpretation_section(
 ) -> list[str]:
     """Apply the interpretation committed to *before* the run, mechanically.
 
-    `discriminant_validity_design.md` section 5 wrote down three outcomes and
+    `docs/discriminant_validity_design.md` section 5 wrote down three outcomes and
     what each licenses, before any data existed. Selecting between them in code
     rather than in prose is the point: it removes the freedom to describe a weak
-    result as a strong one, which is exactly the freedom R3 already suspected the
-    paper of using.
+    result as a strong one, which is exactly the freedom the paper has been
+    suspected of using.
     """
     rows = raw[raw.designed_principle != "pooled"]
     pooled = raw[raw.designed_principle == "pooled"].iloc[0]
@@ -397,7 +397,7 @@ def interpretation_section(
     L = ["## Interpretation, pre-committed\n"]
     L.append(
         "The three outcomes below and what each licenses were written down in "
-        "`discriminant_validity_design.md` section 5 **before the run**. The one "
+        "`docs/discriminant_validity_design.md` section 5 **before the run**. The one "
         "that applies is selected in code from the numbers above, not chosen "
         "afterwards.\n"
     )
@@ -476,15 +476,15 @@ def interpretation_section(
             both = ("both members of that pair are" if named <= set(flat)
                     else "one member of that pair is")
             L.append(
-                f"**R1 nominated Foster Healthy Relationships and Prioritize "
+                f"**The pair named in review -- Foster Healthy Relationships and Prioritize "
                 f"Long-term Wellbeing, and {both} among the flat "
-                "rows.** That is the reviewer's own hypothesis confirmed on the "
-                "reviewer's own example, and it should be said plainly and cited "
+                "rows.** That is the objection confirmed on its own example, and "
+                "it should be said plainly and cited "
                 "as a v2 revision target rather than argued around.\n"
             )
         elif named & set(discriminating) == named:
             L.append(
-                "**The pair R1 nominated -- Foster Healthy Relationships and "
+                "**The pair named in review -- Foster Healthy Relationships and "
                 "Prioritize Long-term Wellbeing -- is not among the flat rows.** "
                 "Both discriminate, so the specific objection is answered "
                 "directly, while other rows are conceded.\n"
@@ -637,7 +637,8 @@ def write_report(
 
     L.append("## 3. Foster Healthy Relationships vs Prioritize Long-term Wellbeing\n")
     L.append(
-        "R1's literal example: is FHR a subset of PLTW? The direct test is "
+        "The literal example raised in review: is FHR a subset of PLTW? The "
+        "direct test is "
         "whether FHR-designed scenarios score differently on FHR than on PLTW, "
         "and the reverse. Paired within the bootstrap replicate.\n"
     )
@@ -885,7 +886,7 @@ def main() -> int:
         args.output_dir / "row_contrasts.csv", index=False)
     ranks.to_csv(args.output_dir / "diagonal_ranks.csv", index=False)
 
-    # 3. The pair R1 named, both directions.
+    # 3. The pair named in review, both directions.
     fhr_rows = []
     for designed, other in ((FHR, PLTW), (PLTW, FHR)):
         d, lo, hi = matrix.cell_difference(designed, designed, other)

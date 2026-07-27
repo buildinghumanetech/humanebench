@@ -3,7 +3,7 @@
 Scores archived *baseline* responses against all eight principles, so the
 principle a scenario was designed for can be compared against the seven it was
 not. No response is generated: this task is judge calls only. See
-``discriminant_validity_design.md`` and
+``docs/discriminant_validity_design.md`` and
 ``scripts/build_discriminant_multilabel_dataset.py``.
 
 Two properties of this file are load-bearing and must not be "tidied":

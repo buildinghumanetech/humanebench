@@ -5,7 +5,7 @@ eight tells us which one it actually *measures*. Rows of the matrix are the
 designed principle, columns the scored one. The claim rides on a *within-row*
 contrast, which is what makes it robust to a general model-quality factor and to
 the judge factor collapse documented by Feuer et al. (arXiv:2509.20293). See
-``discriminant_validity_design.md``.
+``docs/discriminant_validity_design.md``.
 
 This module exists so the dataset builder, the provenance verifier and the
 analysis all render the judge prompt the same way and agree on the frame, the

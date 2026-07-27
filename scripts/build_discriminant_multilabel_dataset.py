@@ -7,7 +7,7 @@ against all eight. Rows of the resulting matrix are the designed principle,
 columns the scored one; the claim rides on the diagonal being distinct from its
 own row, which is a *within-row* contrast and therefore survives a general
 model-quality factor and the judge factor collapse documented by Feuer et al.
-(arXiv:2509.20293). See `discriminant_validity_design.md`.
+(arXiv:2509.20293). See `docs/discriminant_validity_design.md`.
 
 This script generates no model output and makes no API call. It reads the
 archived baseline runs and emits one Inspect dataset per source model, each
