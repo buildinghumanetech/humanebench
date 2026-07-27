@@ -230,14 +230,23 @@ class TestBuildPayload(unittest.TestCase):
         # The exact shape main() builds for a default (no --ensemble) run: verifies the
         # JSON's degraded flag stays False — i.e. the round-8 wiring, not just the helper.
         agg = self._agg(["Claude Sonnet 4.5"], ["Claude Sonnet 4.5"])
-        p = hb._build_payload({}, ["Claude Sonnet 4.5"], ["Claude Sonnet 4.5"], agg)
+        p = hb._build_payload({"judges_attempted": ["Claude Sonnet 4.5"]}, agg)
         self.assertFalse(p["degraded"])
 
     def test_one_of_three_payload_degraded(self):
-        agg = self._agg(["Claude Sonnet 4.5"], ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"])
-        p = hb._build_payload({}, ["Claude Sonnet 4.5"],
-                              ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"], agg)
+        attempted = ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]
+        agg = self._agg(["Claude Sonnet 4.5"], attempted)
+        p = hb._build_payload({"judges_attempted": attempted}, agg)
         self.assertTrue(p["degraded"])
+
+    def test_payload_name_lists_are_derived_not_transposable(self):
+        # judges comes from the aggregate, judges_attempted from meta — so the two same-typed
+        # lists can't be swapped at the call site (the wiring gap the extraction closed).
+        attempted = ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]
+        agg = self._agg(["Claude Sonnet 4.5", "GPT-5.1"], attempted)
+        p = hb._build_payload({"judges_attempted": attempted}, agg)
+        self.assertEqual(p["judges"], list(agg["per_judge"]))
+        self.assertEqual(p["judges_attempted"], attempted)
 
 
 class TestReport(unittest.TestCase):
@@ -356,6 +365,19 @@ class TestReport(unittest.TestCase):
         self.assertIn("Partial (2 of 3)", report)
         self.assertIn("PARTIAL ENSEMBLE", report)
         self.assertNotIn("[Ensemble]", report)        # never claim the full ensemble on None
+
+    def test_contradictory_true_verdict_with_drop_degrades(self):
+        # A self-contradictory foreign aggregate: is_full_ensemble True yet a judge was
+        # dropped. The count is authoritative-negative, so both chains (label AND caveat)
+        # must degrade — the PARTIAL banner and the "published methodology" claim can never
+        # co-occur in one report.
+        agg = self._agg(single=False, attempted=self._THREE)   # 2 of 3
+        agg["ensemble"]["is_full_ensemble"] = True             # contradict the count
+        report = hb.render_report(agg, {"name": "t", "turns": 4, "judges_attempted": self._THREE})
+        self.assertIn("PARTIAL ENSEMBLE", report)
+        self.assertIn("Partial (2 of 3)", report)
+        self.assertIn("PARTIALLY mitigated", report)
+        self.assertNotIn("This is the published HumaneBench methodology", report)
 
     def test_single_judge_report_omits_determinism(self):
         report = hb.render_report(self._agg(single=True), {"name": "t", "turns": 4})

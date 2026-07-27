@@ -270,16 +270,18 @@ def _is_degraded(n_used: int, n_attempted: int) -> bool:
     return n_used < n_attempted
 
 
-def _build_payload(meta: dict, succeeded: list, judge_names: list, agg: dict) -> dict:
-    """Assemble the JSON payload. Canonical degraded/full fields live in aggregate.ensemble
-    (is_full_ensemble / n_judges_used / n_judges_attempted); the top-level keys here are the
-    human-readable judge *name* lists. ``degraded`` goes through the SAME _is_degraded helper
-    render_report uses, so the JSON and the markdown apply one rule and can't drift."""
+def _build_payload(meta: dict, agg: dict) -> dict:
+    """Assemble the JSON payload from just the aggregate and meta, so the name lists can't be
+    transposed at the call site: ``judges`` (names that produced a score) is read straight
+    from the aggregate and ``judges_attempted`` from meta. Canonical degraded/full fields
+    live in aggregate.ensemble (is_full_ensemble / n_judges_used / n_judges_attempted);
+    ``degraded`` goes through the SAME _is_degraded helper render_report uses, so the JSON
+    and the markdown apply one rule and can't drift."""
     ens = agg["ensemble"]
     return {
         "meta": meta,
-        "judges": succeeded,                  # names that actually produced a score
-        "judges_attempted": judge_names,      # names we tried to run
+        "judges": list(agg["per_judge"]),              # names that actually produced a score
+        "judges_attempted": meta.get("judges_attempted", list(agg["per_judge"])),
         "degraded": _is_degraded(ens["n_judges_used"], ens["n_judges_attempted"]),
         "aggregate": agg,
     }
@@ -306,9 +308,9 @@ def render_report(agg: dict, meta: dict) -> str:
     if n_attempted is None:
         n_attempted = len(attempted_names)
     ensemble_attempted = n_attempted > 1
-    # Degraded = a requested judge was dropped (shared helper, same rule as the JSON). A
-    # confirmed-full ensemble is never degraded; a single-judge run (n_used==n_attempted==1)
-    # is not degraded either — it's just not an ensemble.
+    # Degraded = a requested judge was dropped (n_used < n_attempted), verdict-agnostic and
+    # shared with the JSON. A single-judge run (1 of 1) is not degraded — it's just not an
+    # ensemble.
     degraded = _is_degraded(n_used, n_attempted)
     # Label off verdict/degradation: "Partial (N of M)" whenever a drop is known; "Ensemble"
     # only on a confirmed-full verdict; "Multi-judge" for an unverified (verdict-None,
@@ -400,17 +402,20 @@ def render_report(agg: dict, meta: dict) -> str:
                  "not the product's typical behavior. Score 8–10 transcripts across "
                  "different intensities and topics, segmented by scenario, before drawing "
                  "product-level conclusions.")
-    if verdict is True:
-        lines.append("- **Judge bias — mitigated.** This used the cross-family ensemble "
-                     "(Claude + GPT + Gemini), which reduces single-judge temperament and "
-                     "same-family tilt. This is the published HumaneBench methodology.")
-    elif degraded:
+    # Same order as the label/banner chain above (degraded first): a report headed
+    # "Partial (N of M)" must never also carry the confident "published methodology" claim,
+    # even for a self-contradictory foreign aggregate (verdict True with a drop).
+    if degraded:
         lines.append(f"- **Judge bias — only PARTIALLY mitigated.** The cross-family ensemble "
                      f"was requested but only {n_used} of {n_attempted} judges "
                      f"succeeded, so this is a **provisional** score, **not** the published "
                      f"methodology and **not** leaderboard-comparable. Whatever judges ran "
                      f"still carry their own temperament (and same-family tilt if any share "
                      f"the tested product's family). Re-run once all judges are reachable.")
+    elif verdict is True:
+        lines.append("- **Judge bias — mitigated.** This used the cross-family ensemble "
+                     "(Claude + GPT + Gemini), which reduces single-judge temperament and "
+                     "same-family tilt. This is the published HumaneBench methodology.")
     elif ensemble_attempted:
         # verdict is None: several judges ran, but the attempted set wasn't recorded, so we
         # can't confirm this is the full ensemble. Report the mitigation without claiming it.
@@ -709,11 +714,10 @@ def main(argv: list[str] | None = None) -> int:
               f"NOT the full cross-family ensemble. Treat the score as provisional.",
               file=sys.stderr)
 
-    succeeded = list(results.keys())
     agg = aggregate(results, judges_attempted=judge_names)
     meta = {"name": name, "turns": turns, "judges_attempted": judge_names}
     report = render_report(agg, meta)
-    payload = _build_payload(meta, succeeded, judge_names, agg)
+    payload = _build_payload(meta, agg)
 
     if args.json_only:
         print(json.dumps(payload, indent=2))
