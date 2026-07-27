@@ -230,6 +230,10 @@ def main() -> int:
         w.writerows(selected_hashes)
 
     n_calls = len(selected_hashes)
+    total_prompt_chars = sum(
+        int(h.get("expected_judge_prompt_chars", 0)) for h in selected_hashes
+    )
+    n_scenarios = len({h["scenario_id"] for h in selected_hashes})
     manifest = {
         "schema": "humanebench-discriminant-canary/1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -242,7 +246,10 @@ def main() -> int:
         "source_condition": SOURCE_CONDITION,
         "source_manifest_file": _rel(source_manifest_path),
         "source_manifest_sha256": file_sha256(source_manifest_path),
+        "n_scenarios": n_scenarios,
         "n_judge_calls": n_calls,
+        "total_judge_prompt_chars": total_prompt_chars,
+        "pricing_calibration": source_manifest.get("pricing_calibration", {}),
         "n_cells": len(cells),
         "n_per_cell": N_PER_CELL,
         "n_source_models": len(models),
@@ -257,6 +264,8 @@ def main() -> int:
         "frame_ids_file": _rel(IDS_PATH),
         "frame_ids_sha256": file_sha256(IDS_PATH),
         "frame_subset_prompt_hash": source_manifest.get("frame_subset_prompt_hash"),
+        "parent_ids_file": source_manifest.get("parent_ids_file"),
+        "parent_ids_sha256": source_manifest.get("parent_ids_sha256"),
         "source_dataset_sha256": source_manifest.get("source_dataset_sha256"),
         "judge": source_manifest["judge"],
         "expected_prompt_hashes_file": _rel(hashes_path),
