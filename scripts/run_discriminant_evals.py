@@ -7,10 +7,12 @@ archived baseline responses -- so every dollar here is judge tokens.
 
 What this does that a bare `inspect eval` loop does not:
 
-1. **Prices the run against live OpenRouter rates** rather than a remembered
-   figure, using prompt sizes measured from the built datasets and an output
-   length calibrated on the 287 gpt-5.1 judge calls the reported runs already
-   made against these same scenarios.
+1. **Prints a live cost estimate** from prompt sizes measured off the built
+   datasets and an output length calibrated on the 287 gpt-5.1 judge calls the
+   reported runs already made against these scenarios. Informational only:
+   there is deliberately no balance or spend gate in this script. The account
+   is capped on the OpenRouter side, and the in-repo guard this replaced
+   aborted two launches while preventing zero overspends (removed in c574c2a).
 2. **Stops rather than substitutes if gpt-5.1 is not served.** It is the only
    main-run ensemble judge that is not among the three scored models, and using
    it is what makes the diagonal a same-judge replication of the main run. A
@@ -59,12 +61,14 @@ from humanebench.discriminant import (  # noqa: E402
     SOURCE_MODEL_SLUGS,
     SOURCE_MODELS,
 )
+# No balance/usage imports: c574c2a removed the in-repo spend guard after it
+# aborted two launches and prevented zero overspends. The budget control is the
+# OpenRouter-side account cap, which cannot be wrong in our code. Spend is
+# reconstructable from the .eval logs' token usage.
 from run_decomposition_evals import (  # noqa: E402
     _openrouter_get,
     best_eval,
     check_model_availability,
-    get_openrouter_credits,
-    get_openrouter_usage,
     score_census,
 )
 
@@ -116,16 +120,23 @@ def estimate_cost(manifest: dict) -> dict:
     if rates:
         est["est_usd"] = round(in_tokens * rates[0] + out_tokens * rates[1], 2)
     else:
-        # Never guess a price into a spend guard. An unknown rate means the gate
-        # cannot be evaluated, and the operator is told so rather than shown a
-        # number that looks measured.
+        # Informational only -- nothing gates on this number. An unknown rate is
+        # reported as unknown rather than guessed.
         est["est_usd"] = None
     return est
 
 
 # --- preflight ---------------------------------------------------------------
-def preflight(manifest: dict, min_credit_factor: float, require_credit: bool) -> tuple[bool, dict]:
-    """Return ``(ok_to_spend, report)``. Makes no billable call."""
+def preflight(manifest: dict) -> tuple[bool, dict]:
+    """Return ``(ok_to_spend, report)``. Makes no billable call.
+
+    Deliberately contains no balance or credit check. The account is on
+    auto top-up, so the balance is not a ceiling -- it refills on demand -- and
+    a gate reading it would refuse a ~$12 run over a $10 balance that would
+    never have blocked anything. The decomposition runner's in-repo spend guard
+    aborted two launches and prevented zero overspends before c574c2a deleted
+    it; the budget control is the OpenRouter-side account cap.
+    """
     report: dict = {"checked_at": datetime.now(timezone.utc).isoformat()}
     ok = True
 
@@ -169,28 +180,15 @@ def preflight(manifest: dict, min_credit_factor: float, require_credit: bool) ->
         print(f"  note: {len(retired)} source slug(s) no longer served: {retired}")
         print("        harmless -- they label the log header and are never called")
 
-    # 4. Money.
+    # 4. Cost, printed for the operator. Never gated on.
     est = estimate_cost(manifest)
     report["estimate"] = est
-    credits = get_openrouter_credits()
-    report["credits_usd"] = credits
-    if est["est_usd"] is None:
-        print("  ! could not read live pricing; the spend gate cannot be evaluated")
-        ok = False
+    if est["est_usd"] is not None:
+        print(f"  estimate  {est['n_calls']:,} calls  ~${est['est_usd']:.2f} "
+              "(informational; the OpenRouter account cap is the budget control)")
     else:
-        needed = est["est_usd"] * min_credit_factor
-        report["credit_required_usd"] = round(needed, 2)
-        print(f"  estimate  {est['n_calls']:,} calls  ~${est['est_usd']:.2f}  "
-              f"(gate needs ${needed:.2f} at {min_credit_factor}x)")
-        if credits is None:
-            print("  ! OpenRouter balance unreadable")
-            if require_credit:
-                ok = False
-        else:
-            print(f"  credit    ${credits:.2f}")
-            if credits < needed:
-                print("  ! insufficient credit")
-                ok = False
+        print(f"  estimate  {est['n_calls']:,} calls  ~{est['est_input_tokens']:,} in / "
+              f"{est['est_output_tokens']:,} out tokens (live pricing unreadable)")
 
     report["ok"] = ok
     return ok, report
@@ -340,14 +338,10 @@ def main() -> int:
     ap.add_argument("--models", nargs="+", default=list(SOURCE_MODELS),
                     choices=list(SOURCE_MODELS))
     ap.add_argument("--max-workers", type=int, default=3)
-    ap.add_argument("--min-credit-factor", type=float, default=1.2)
     ap.add_argument("--gate-threshold", type=float, default=0.98)
     ap.add_argument("--smoke", action="store_true",
                     help="one sample per model, to prove the path end to end")
     ap.add_argument("--yes", action="store_true", help="run without confirmation")
-    ap.add_argument("--no-require-credit-check", action="store_true",
-                    help="proceed when the balance cannot be read (not when it is "
-                         "readable and too low)")
     ap.add_argument("--force", action="store_true",
                     help="re-run models that already have logs")
     args = ap.parse_args()
@@ -355,8 +349,7 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     manifest = json.loads(MANIFEST_PATH.read_text())
 
-    ok, report = preflight(manifest, args.min_credit_factor,
-                           require_credit=not args.no_require_credit_check)
+    ok, report = preflight(manifest)
     if not ok:
         judge = report.get("judge", {})
         if judge.get("served") is False:
@@ -377,9 +370,10 @@ def main() -> int:
 
     if not args.smoke and not args.yes:
         est = report["estimate"]
-        print(f"\nAbout to spend approximately ${est['est_usd']:.2f} on "
-              f"{est['n_calls']:,} judge calls. Re-run with --yes to proceed, or "
-              "--smoke first.")
+        cost = (f"approximately ${est['est_usd']:.2f}" if est.get("est_usd") is not None
+                else f"~{est['est_input_tokens']:,} input tokens")
+        print(f"\nAbout to spend {cost} on {est['n_calls']:,} judge calls. "
+              "Re-run with --yes to proceed, or --smoke first.")
         return 0
 
     if args.smoke:
@@ -410,12 +404,10 @@ def main() -> int:
     if not todo:
         print("all models already complete; running the gate to confirm")
 
-    usage_before = get_openrouter_usage()
     results: list[dict] = []
     moved: list[str] = []
     if todo:
         launch = build_launch_manifest(manifest, report, todo)
-        launch["usage_before_usd"] = usage_before
         LAUNCH_MANIFEST_PATH.write_text(json.dumps(launch, indent=2) + "\n")
         print(f"\nwrote {LAUNCH_MANIFEST_PATH.relative_to(REPO_ROOT)}")
 
@@ -430,16 +422,14 @@ def main() -> int:
     # is the only thing that reports whether the matrix can be built, so an
     # early return past it would make a partial run look like a clean no-op.
     census = gate(args.models, expected, args.gate_threshold)
-    usage_after = get_openrouter_usage()
     status = {
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "runs": results,
         "archived_superseded": moved,
         "gate": census,
-        "usage_before_usd": usage_before,
-        "usage_after_usd": usage_after,
-        "spend_usd": (round(usage_after - usage_before, 4)
-                      if usage_before is not None and usage_after is not None else None),
+        # Spend is not tracked here: the account is capped on the OpenRouter
+        # side, and the .eval logs carry per-call token usage from which cost is
+        # reconstructable exactly.
     }
     RUN_STATUS_PATH.write_text(json.dumps(status, indent=2) + "\n")
 
@@ -448,8 +438,6 @@ def main() -> int:
         print(f"  {model:22s} {m.get('n_fully_scored', 0):4d}/{expected} "
               f"({m['fraction_scored']:.1%})  {m['status']}"
               + (f"  judge_failures={m['n_judge_failures']}" if m.get("n_judge_failures") else ""))
-    if status["spend_usd"] is not None:
-        print(f"\nspend: ${status['spend_usd']:.2f}")
     print(f"wrote {RUN_STATUS_PATH.relative_to(REPO_ROOT)}")
 
     if not census["passed"]:
