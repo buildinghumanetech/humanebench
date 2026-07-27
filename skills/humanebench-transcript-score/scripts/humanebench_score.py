@@ -208,8 +208,11 @@ def aggregate(judge_results: dict, judges_attempted: list | None = None) -> dict
     ``aggregate.ensemble`` number can't be mistaken for the full cross-family ensemble:
     ``is_full_ensemble`` (``bool | None`` — ``True`` = every requested judge succeeded,
     ``False`` = at least one was dropped, ``None`` = ``judges_attempted`` not supplied so
-    full/partial is unknown), ``n_judges_used`` / ``n_judges_attempted`` (ints — named
-    distinctly from the top-level ``judges_attempted`` name list to avoid a type clash).
+    full/partial is unknown), ``n_judges_used`` / ``n_judges_attempted`` (ints). These nested
+    counts are the aggregate's own raw self-report; for any aggregate this function builds
+    they equal the resolved top-level ``n_judges_*`` in the JSON payload, but a hand-built
+    aggregate can carry a marker that disagrees — the payload's TOP-LEVEL counts (from
+    ``_resolve_counts``, which counts the judges actually present) are the authoritative ones.
     """
     per_judge = {}
     for name, result in judge_results.items():

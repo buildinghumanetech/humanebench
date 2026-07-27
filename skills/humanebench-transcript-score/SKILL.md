@@ -63,9 +63,12 @@ The `--out` JSON alongside the report carries `judges` (the judges that produced
 weren't reliably recorded, so never treat it as always-a-list), the resolved
 `n_judges_used` / `n_judges_attempted` counts (so `degraded` is self-evidencing), a
 `degraded` flag, `meta`, and the full `aggregate` (whose `ensemble` object holds
-`is_full_ensemble` / `n_judges_used` / `n_judges_attempted`). `meta.judges_attempted` mirrors
-the top-level field and is likewise dropped whenever that field is `null`, so read the
-top-level counts rather than `meta` for the N-of-M behind a degraded flag.
+`is_full_ensemble` / `n_judges_used` / `n_judges_attempted`). **The top-level
+`n_judges_used` / `n_judges_attempted` are authoritative** — they count the judges actually
+present; `aggregate.ensemble.n_judges_*` are the aggregate's own raw self-report and equal
+the top-level values for any run this tool produces (a hand-built aggregate could differ).
+`meta.judges_attempted` mirrors the top-level `judges_attempted` and is likewise dropped
+whenever that field is `null`.
 
 ### Path B — score in-session (quick read, no keys)
 

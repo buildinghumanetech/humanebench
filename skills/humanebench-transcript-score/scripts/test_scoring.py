@@ -275,6 +275,10 @@ class TestBuildPayload(unittest.TestCase):
                                ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]}, agg)
         self.assertTrue(p["degraded"])
         self.assertEqual(len(p["judges"]), 2)
+        # Top-level counts are the authoritative resolved values (2 present), NOT the marker.
+        self.assertEqual((p["n_judges_used"], p["n_judges_attempted"]), (2, 3))
+        # The nested marker is echoed raw and documented as such (unverified self-report).
+        self.assertEqual(p["aggregate"]["ensemble"]["n_judges_used"], 3)
 
     def test_payload_untrusted_names_dropped_from_meta_too(self):
         # When judges_attempted is untrusted (wrong membership), it's null at top level AND
@@ -446,10 +450,14 @@ class TestReport(unittest.TestCase):
         # 2-judge aggregate print [Ensemble] / no banner over a 2-column table.
         agg = self._agg(single=False, attempted=self._THREE)   # 2 of 3
         agg["ensemble"]["n_judges_used"] = 3                   # lie: only 2 judges present
+        agg["ensemble"]["is_full_ensemble"] = True             # ...and contradict the verdict
         report = hb.render_report(agg, {"name": "t", "turns": 4, "judges_attempted": self._THREE})
         self.assertIn("PARTIAL ENSEMBLE", report)
         self.assertIn("Partial (2 of 3)", report)
+        # Discriminating now that is_full_ensemble is True too: only counting the real judges
+        # keeps this off the [Ensemble] / "published methodology" branch.
         self.assertNotIn("[Ensemble]", report)
+        self.assertNotIn("This is the published HumaneBench methodology", report)
 
     def test_single_judge_report_omits_determinism(self):
         report = hb.render_report(self._agg(single=True), {"name": "t", "turns": 4})
