@@ -94,6 +94,7 @@ def bootstrap_domain_interaction(
     domain: str,
     n_bootstrap: int = N_BOOTSTRAP,
     seed: int = BOOTSTRAP_SEED,
+    min_per_side: int = MIN_SCENARIOS_PER_SIDE,
 ) -> tuple[float, float, float, int, int]:
     """Bootstrap CI for one pair within one domain."""
     rng = np.random.default_rng(seed)
@@ -106,7 +107,7 @@ def bootstrap_domain_interaction(
     ]["scenario_id"].unique())
 
     na, nb = len(a_scenarios), len(b_scenarios)
-    if na < MIN_SCENARIOS_PER_SIDE or nb < MIN_SCENARIOS_PER_SIDE:
+    if na < min_per_side or nb < min_per_side:
         return float("nan"), float("nan"), float("nan"), na, nb
 
     def _build_cell_scores(designed, scenarios, principles_scored):
@@ -181,7 +182,8 @@ def main() -> int:
             pa, pb = PRINCIPLES[i], PRINCIPLES[j]
             for domain in domains:
                 point, lo, hi, na, nb = bootstrap_domain_interaction(
-                    long, pa, pb, domain, args.n_bootstrap, args.seed)
+                    long, pa, pb, domain, args.n_bootstrap, args.seed,
+                    args.min_per_side)
                 if np.isnan(point):
                     continue
                 rows.append({
