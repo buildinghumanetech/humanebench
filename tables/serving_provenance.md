@@ -24,10 +24,10 @@ Scanned **45 runs** across conditions: baseline, good_persona, bad_persona.
 | llama-3.1-405b-instruct | Google 48%, Together 34%, Hyperbolic 18% | 3 |  66%, (none) 34% |
 | llama-4-maverick | Friendli 24%, DeepInfra 23%, Novita 20%, Google 18%, Together 9%, Groq 2%, +2 more | 8 | (none) 67%,  29%, fastcoe 2%, +2 more |
 
-**6 of 15 models were served by more than one provider.** Those cells are a mixture of serving stacks rather than a single system. This is a property of the reported runs, not something introduced later, and it is visible to anyone who opens the released logs.
+**6 of 15 models were served by more than one provider** at a share of at least 0.5%. Those cells are a mixture of serving stacks rather than a single system. This is a property of the runs scanned here (baseline, good_persona, bad_persona), not something introduced later, and it is visible to anyone who opens the released logs.
 
 - `llama-4-maverick`: 8 providers — Friendli 24%, DeepInfra 23%, Novita 20%, Google 18%, Together 9%, Groq 2%, +2 more
-- `deepseek-v3.1-terminus`: 5 providers — DeepInfra 30%, Novita 28%, SiliconFlow 25%, AtlasCloud 16%, SambaNova 0%
+- `deepseek-v3.1-terminus`: 4 providers — DeepInfra 30%, Novita 28%, SiliconFlow 25%, AtlasCloud 16%, SambaNova 0%
 - `claude-opus-4.1`: 3 providers — Google 90%, Anthropic 7%, Amazon Bedrock 3%
 - `llama-3.1-405b-instruct`: 3 providers — Google 48%, Together 34%, Hyperbolic 18%
 - `gemini-2.0-flash-001`: 2 providers — Google AI Studio 69%, Google 31%

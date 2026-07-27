@@ -20,15 +20,12 @@ Scanned **44 runs** across conditions: decomp_b_xml_objective, decomp_c_prose, d
 | gpt-5.1 | OpenAI 100%, Azure 0% | 2 | (none) 100% |
 | llama-4-maverick | DeepInfra 34%, DigitalOcean 23%, Novita 19%, Parasail 13%, Google 11% | 5 | (none) 100% |
 
-**7 of 11 models were served by more than one provider.** Those cells are a mixture of serving stacks rather than a single system. This is a property of the reported runs, not something introduced later, and it is visible to anyone who opens the released logs.
+**2 of 11 models were served by more than one provider** at a share of at least 0.5%. Those cells are a mixture of serving stacks rather than a single system. This is a property of the runs scanned here (decomp_b_xml_objective, decomp_c_prose, decomp_d_okr, decomp_e_abtest), not something introduced later, and it is visible to anyone who opens the released logs.
 
 - `deepseek-v3.1-terminus`: 5 providers — Novita 26%, SiliconFlow 25%, AtlasCloud 20%, StreamLake 17%, DeepInfra 13%
 - `llama-4-maverick`: 5 providers — DeepInfra 34%, DigitalOcean 23%, Novita 19%, Parasail 13%, Google 11%
-- `claude-opus-4.1`: 2 providers — Amazon Bedrock 100%, Google 0%
-- `claude-sonnet-4`: 2 providers — Amazon Bedrock 100%, Google 0%
-- `gpt-4.1`: 2 providers — OpenAI 100%, Azure 0%
-- `gpt-5`: 2 providers — OpenAI 100%, Azure 0%
-- `gpt-5.1`: 2 providers — OpenAI 100%, Azure 0%
+
+Excluded from that count: `claude-opus-4.1`, `claude-sonnet-4`, `gpt-4.1`, `gpt-5`, `gpt-5.1` — a second provider appears but serves under 0.5% of calls. Recorded here rather than silently folded either way.
 
 ## Judge calls
 

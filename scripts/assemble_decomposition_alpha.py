@@ -46,13 +46,29 @@ from humanebench import decomposition as dc  # noqa: E402
 # prompt's response text drives every judge's score for that prompt.
 PRIMARY_SPEC = "cluster_input_id"
 
+# Coverage below this is flagged as an incomplete scan. Matches the launcher's
+# and the manifest's admission gate, so one number governs everywhere.
+COVERAGE_OK = 0.98
 
-def read_condition(directory: Path) -> dict | None:
+
+def read_condition(directory: Path, expected_items: int) -> dict | None:
+    """Read one condition's agreement CSV, or None if it is not there.
+
+    `expected_items` is what a complete scan of that condition would produce
+    (models x analysable scenarios). It is carried through to the output rather
+    than checked here, because a short scan is a caveat to publish, not an error
+    to raise -- but the caveat must be published. Treating "the file exists" as
+    "the condition is complete" would let an interrupted scan appear in the
+    table as that condition's alpha with nothing marking it.
+    """
     path = directory / "inter_judge_agreement.csv"
     if not path.is_file():
         return None
     row = pd.read_csv(path).iloc[0]
+    n_items = int(row["n_items_included"])
     return {
+        "expected_items": expected_items,
+        "coverage": n_items / expected_items if expected_items else float("nan"),
         "n_items": int(row["n_items_included"]),
         "alpha_ord": float(row["alpha_ord"]),
         "alpha_ord_lo": float(row[f"alpha_ord_{PRIMARY_SPEC}_ci_lower"]),
@@ -79,9 +95,13 @@ def main() -> None:
                     / "alpha_by_condition.md")
     args = ap.parse_args()
 
+    n_models = len(dc.MODELS)
     found, missing = {}, []
     for cond in dc.CONDITIONS:
-        stats = read_condition(args.alpha_root / f"alpha_{cond.task_type}")
+        stats = read_condition(
+            args.alpha_root / f"alpha_{cond.task_type}",
+            expected_items=n_models * cond.expected_analysis_samples(),
+        )
         if stats is None:
             missing.append(cond.label)
         else:
@@ -113,17 +133,34 @@ def main() -> None:
             "estimated.\n"
         )
 
-    L.append("| Condition | n scored items | scenarios | α ordinal [95% CI] "
-             "| α binary [95% CI] | sign-disagreement | design effect |")
-    L.append("|---|---:|---:|---|---|---:|---:|")
+    L.append("| Condition | n scored items | of expected | scenarios "
+             "| α ordinal [95% CI] | α binary [95% CI] | sign-disagreement "
+             "| design effect |")
+    L.append("|---|---:|---:|---:|---|---|---:|---:|")
     for label, s in found.items():
         L.append(
-            f"| {label} | {s['n_items']:,} | {s['n_clusters']:,} | "
+            f"| {label} | {s['n_items']:,} | {s['coverage']:.1%} | "
+            f"{s['n_clusters']:,} | "
             f"{s['alpha_ord']:.3f} [{s['alpha_ord_lo']:.3f}, {s['alpha_ord_hi']:.3f}] | "
             f"{s['alpha_bin']:.3f} [{s['alpha_bin_lo']:.3f}, {s['alpha_bin_hi']:.3f}] | "
             f"{s['sign_disagreement']:.1%} | {s['design_effect']:.2f} |"
         )
     L.append("")
+    L.append(
+        "`of expected` is the scan's coverage of "
+        f"{n_models} models × the condition's analysable scenarios. It is "
+        "printed because the assembler reads whatever CSV it finds: without it, "
+        "an interrupted scan would appear here as that condition's α with "
+        "nothing to distinguish it from a complete one.\n"
+    )
+    short = [(k, s) for k, s in found.items() if s["coverage"] < COVERAGE_OK]
+    if short:
+        L.append(
+            "**Incomplete scans — read these rows as provisional:** "
+            + "; ".join(f"{k} at {s['coverage']:.1%}" for k, s in short)
+            + f". Anything below {COVERAGE_OK:.0%} of expected is not a "
+            "condition-level α.\n"
+        )
 
     if args.by_persona_csv.is_file():
         ref = pd.read_csv(args.by_persona_csv)
@@ -145,32 +182,51 @@ def main() -> None:
             )
         L.append("")
 
-        # The one comparison the table supports, stated as a range rather than
-        # as a test: no CI exists on the per-persona rows to test against.
+        # No test is available here and the file must not imply one. The
+        # reference rows carry no CI, and they cover fifteen models where these
+        # cover eleven, so the only honest move is to place each condition's
+        # INTERVAL against the reference points and say what that does and does
+        # not settle. An earlier version compared point estimates alone and
+        # concluded "between the two" while every interval overlapped baseline.
         lo = min(s["alpha_ord"] for s in found.values())
         hi = max(s["alpha_ord"] for s in found.values())
         by_persona = dict(zip(ref["persona"], ref["alpha_ord"]))
         base = by_persona.get("baseline")
         anchor = by_persona.get(dc.ANCHOR_PERSONA)
         if base is not None and anchor is not None:
-            between = base <= lo and hi <= anchor
+            overlaps_base = [k for k, s in found.items()
+                             if s["alpha_ord_lo"] <= base <= s["alpha_ord_hi"]]
+            below_anchor = [k for k, s in found.items()
+                            if s["alpha_ord_hi"] < anchor]
             L.append(
-                f"The decomposition conditions run α_ordinal "
-                f"{lo:.3f}–{hi:.3f}, against {base:.3f} for baseline and "
-                f"{anchor:.3f} for the adversarial persona"
-                + (
-                    " — between the two, which is where an arm that lands "
-                    "between them on the score itself would be expected to sit. "
-                    "Judges agree most where responses are unambiguous, and the "
-                    "objective-only arms are less unambiguous than A. This is "
-                    "consistent with the attenuation the score contrasts "
-                    "measure; it is a description of the same fact through a "
-                    "second channel, not independent evidence for it."
-                    if between else
-                    ". No ordering claim is made: the observed range does not "
-                    "sit cleanly between the two reference conditions."
-                )
-                + "\n"
+                f"The decomposition conditions run α_ordinal {lo:.3f}–{hi:.3f} "
+                f"by point estimate, against {base:.3f} for baseline and "
+                f"{anchor:.3f} for the adversarial persona.\n"
+            )
+            L.append(
+                f"- **Against the adversarial persona:** "
+                f"{len(below_anchor)} of {len(found)} conditions have an upper "
+                f"CI bound below {anchor:.3f}. Judges agree markedly less on "
+                "the objective-only arms than on the arm whose responses are "
+                "flagrantly bad."
+            )
+            L.append(
+                f"- **Against baseline:** {len(overlaps_base)} of {len(found)} "
+                f"conditions have a CI that *contains* {base:.3f}. **These "
+                "arms are not distinguishable from baseline on agreement**, so "
+                "the tidy reading — that they sit strictly between the two — is "
+                "not supported. What the intervals support is the weaker claim: "
+                "at or near baseline agreement, and clearly below the "
+                "adversarial arm."
+            )
+            L.append("")
+            L.append(
+                "Neither bullet is a test. The reference rows carry no interval "
+                "at all and cover fifteen models against these eleven, so they "
+                "are a backdrop, not a comparator. Read all of this as a "
+                "description of the same attenuation the score contrasts "
+                "measure, seen through a second channel — not as independent "
+                "evidence for it.\n"
             )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

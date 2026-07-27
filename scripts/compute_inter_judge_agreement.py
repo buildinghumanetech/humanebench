@@ -973,11 +973,27 @@ def main() -> None:
 
     personas = list(args.personas)
     is_default_personas = personas == list(PERSONAS)
+    default_tables_dir = (
+        Path(__file__).resolve().parent.parent / "tables"
+    ).resolve()
     if not is_default_personas:
+        # The output filenames are fixed. Writing a single-condition scan into
+        # the published directory silently replaces the pooled alpha, the design
+        # effects and tables/inter_judge_raw.csv -- which is gitignored, so the
+        # clobber leaves no diff to notice and every downstream CI quietly
+        # changes meaning. Refuse rather than warn.
+        if tables_dir == default_tables_dir:
+            raise SystemExit(
+                f"--personas {personas} writes the same filenames as the "
+                f"published three-persona scan, so it would overwrite "
+                f"{default_tables_dir} in place. Pass --tables-dir pointing "
+                f"somewhere else (e.g. tables/decomposition/alpha_<condition>)."
+            )
         print(
             f"[note] non-default personas {personas}: this run produces a "
-            f"SEPARATE agreement table. Its alpha is conditioned on these "
-            f"conditions and must not be pooled with the published figures."
+            f"SEPARATE agreement table in {tables_dir}. Its alpha is "
+            f"conditioned on these conditions and must not be pooled with the "
+            f"published figures."
         )
 
     print(f"Scanning {logs_dir} ...")

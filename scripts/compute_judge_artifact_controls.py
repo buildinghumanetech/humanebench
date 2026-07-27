@@ -54,7 +54,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from humanebench.bootstrap import PERSONAS  # noqa: E402
+from humanebench.decomposition import JUDGE_MODELS  # noqa: E402
 from humanebench.excluded import load_excluded_ids  # noqa: E402
+
+# Size of the scoring ensemble. A distinct-slug count above this is a rename,
+# not a larger ensemble -- see the judge-slug block in main().
+N_ENSEMBLE_JUDGES = len(JUDGE_MODELS)
 
 GLOBAL_RULES = "GLOBAL RULES (Apply to ALL Principles):"
 CONV_START = "=== CONVERSATION START ==="
@@ -283,6 +288,10 @@ def main() -> None:
     # severity table, and would silently drop that condition from part B.
     scored_personas = set(scores["persona"])
     unscored = [p for p in args.personas if p not in scored_personas]
+    # Personas the published scan covers that this invocation did not ask for.
+    # Naming them matters because the reader's reference point is the published
+    # table: a row that is simply absent looks like a row that vanished.
+    not_requested = [p for p in PERSONAS if p not in args.personas]
     resp_df = resp_df.merge(scores, on=["persona", "model", "sample_id"], how="inner")
     resp_df["positive"] = resp_df["score"] > 0
 
@@ -334,11 +343,33 @@ def main() -> None:
     else:
         L.append(f"- Only {n_conditions} condition inspected, so scaffold "
                  "invariance across conditions is **not tested here**.\n")
-    n_judges = blind_df["judge_model"].replace("", pd.NA).nunique()
-    L.append(f"- Distinct ensemble judges whose prompts were hashed: "
+    judge_slugs = blind_df["judge_model"].replace("", pd.NA).dropna()
+    n_judges = judge_slugs.nunique()
+    L.append(f"- Distinct ensemble judge **slugs** whose prompts were hashed: "
              f"**{n_judges}**. (Counting judge *events* would overstate this: a "
              "judge whose response fails to parse is retried, and each retry is "
              "another event.)\n")
+    # A slug count above the ensemble size is not a bigger ensemble. When it
+    # happens it is a provider rename, and it matters which conditions fall on
+    # which side of it: if the split lines up with a contrast, every difference
+    # that contrast measures also spans the rename.
+    if n_judges > N_ENSEMBLE_JUDGES:
+        by_slug = (blind_df[blind_df["judge_model"].astype(bool)]
+                   .groupby("judge_model")["persona"].apply(lambda s: sorted(set(s))))
+        L.append(
+            f"  That is **more than the {N_ENSEMBLE_JUDGES} judges in the "
+            "ensemble**, and the excess is a slug rename between runs, not an "
+            "extra judge. Which conditions each slug scored:\n"
+        )
+        for slug, personas_seen in by_slug.items():
+            L.append(f"  - `{slug}` — {', '.join(personas_seen)}")
+        L.append("")
+        L.append(
+            "  Where that split coincides with a reported contrast, the "
+            "contrast spans the rename as well as the condition change. State "
+            "it; the underlying model is the same, but a reader is entitled to "
+            "see that the judge identifier moved.\n"
+        )
     L.append(f"- Judge system message, over every prompt inspected: `{sys_msgs}`.\n")
     L.append(f"- Message roles sent to the judge: `{roles}` — the evaluated "
              "model's **system message is never included**.\n")
@@ -372,10 +403,17 @@ def main() -> None:
     )
     L.append(
         f"Denominator: responses carrying a full ensemble score. Of the "
-        f"{n_before:,} responses on disk, {n_excluded_rows:,} answer the "
-        f"{n_excluded_ids} scenarios flagged out of analysis (across "
-        f"{n_runs} runs) and {n_judge_fail:,} lost their judge scores, "
-        f"leaving {len(resp_df):,}.\n"
+        f"{n_before:,} responses scanned, "
+        + (f"{n_unscored_rows:,} belong to conditions with no severity table "
+           f"(listed below), " if n_unscored_rows else "")
+        + f"{n_excluded_rows:,} answer scenarios flagged out of analysis and "
+        f"{n_judge_fail:,} lost their judge scores, leaving {len(resp_df):,}.\n"
+    )
+    L.append(
+        f"The flagged-scenario count covers {n_excluded_ids} distinct scenarios "
+        f"across {n_runs} runs. It is **not** their product: conditions scored "
+        "on the frozen subsample contain only some of the flagged items, so the "
+        "count is the rows actually present, not an expectation.\n"
     )
     if unscored:
         L.append(
@@ -386,15 +424,25 @@ def main() -> None:
             "counted as judge failures. The blinding result above does cover "
             "them.\n"
         )
-    L.append("| condition | responses | " + " | ".join(
+    if not_requested:
+        L.append(
+            f"**Not scanned on this invocation: {', '.join(not_requested)}.** "
+            "Present in the published version of this table; absent here "
+            "because it was not passed to `--personas`, not because anything "
+            "was dropped.\n"
+        )
+    L.append("| condition | models | scenarios | responses | " + " | ".join(
         f"disclose ({k})" for k in LEXICONS) + " | mean chars | median chars |")
-    L.append("| --- | ---: |" + " ---: |" * (len(LEXICONS) + 2))
+    L.append("| --- | ---: | ---: | ---: |" + " ---: |" * (len(LEXICONS) + 2))
+    shapes = set()
     for persona in [p for p in args.personas if p in set(resp_df.persona)]:
         sub = resp_df[resp_df.persona == persona]
+        n_models, n_scen = sub.model.nunique(), sub.sample_id.nunique()
+        shapes.add((n_models, n_scen))
         cells = " | ".join(
             f"{sub[f'discloses_{k}'].sum():,} ({sub[f'discloses_{k}'].mean():.2%})"
             for k in LEXICONS)
-        L.append(f"| {persona} | {len(sub):,} | {cells} | "
+        L.append(f"| {persona} | {n_models} | {n_scen:,} | {len(sub):,} | {cells} | "
                  f"{sub['n_chars'].mean():,.0f} | {sub['n_chars'].median():,.0f} |")
     L.append("")
     L.append(
@@ -404,6 +452,50 @@ def main() -> None:
         "with it. They are judge-visible characters — for reasoning models, the "
         "`text` blocks only.\n"
     )
+    if len(shapes) > 1:
+        # The published conditions cover fifteen models and the full dataset;
+        # the decomposition arms cover eleven, and three of them cover the
+        # frozen 200. Reading a length or disclosure difference straight down
+        # the column compares different populations, which is exactly the
+        # wrong-construct move these controls exist to prevent. So rather than
+        # only warn, compute the matched-cohort version and print it: a caveat a
+        # reader has to act on themselves is a caveat that gets skipped.
+        L.append(
+            "**The rows above are not a like-for-like column.** They differ in "
+            f"model cohort and scenario frame — {len(shapes)} distinct (models, "
+            "scenarios) shapes appear, because four of the fifteen reported "
+            "models were retired before the decomposition ran and the wording "
+            "arms score the frozen 200-scenario subsample. A difference read "
+            "straight down a column mixes a condition effect with a cohort and "
+            "frame change.\n"
+        )
+        common = set.intersection(*(
+            set(resp_df[resp_df.persona == p].model)
+            for p in resp_df.persona.unique()))
+        matched = resp_df[resp_df.model.isin(common)]
+        L.append(
+            f"### Same table, restricted to the {len(common)} models every "
+            "scanned condition covers\n"
+        )
+        L.append(
+            "Cohort is now constant down the column. The scenario frame still "
+            "is not: a full-dataset arm and a subsample arm remain different "
+            "populations of scenarios. Compare rows of equal `scenarios` "
+            "freely; across unequal ones, only in the direction the frame "
+            "change cannot explain.\n"
+        )
+        L.append("| condition | scenarios | responses | " + " | ".join(
+            f"disclose ({k})" for k in LEXICONS) + " | mean chars | median chars |")
+        L.append("| --- | ---: | ---: |" + " ---: |" * (len(LEXICONS) + 2))
+        for persona in [p for p in args.personas if p in set(matched.persona)]:
+            sub = matched[matched.persona == persona]
+            cells = " | ".join(
+                f"{sub[f'discloses_{k}'].sum():,} ({sub[f'discloses_{k}'].mean():.2%})"
+                for k in LEXICONS)
+            L.append(f"| {persona} | {sub.sample_id.nunique():,} | {len(sub):,} | "
+                     f"{cells} | {sub['n_chars'].mean():,.0f} | "
+                     f"{sub['n_chars'].median():,.0f} |")
+        L.append("")
     L.append(
         "**The two lexicons disagree by roughly 4x on the adversarial arm and "
         "compress the contrast against baseline from about 3.8x to about 1.2x, "
