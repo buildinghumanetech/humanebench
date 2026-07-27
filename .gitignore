@@ -1,5 +1,10 @@
 # HELM Integration - Downloaded data and caches
+# gcs_safety_cache/ was tracked by accident: 3,812 raw HELM JSONs, ~520 MB,
+# roughly 90% of the repo's tracked bytes, referenced by no code (the scraper
+# reads the sibling gcs_cache/). Untracked 2026-07-27; the blobs stay in
+# history until a post-deadline history filter removes them.
 helm_integration/data/gcs_cache/
+helm_integration/data/gcs_safety_cache/
 helm_integration/data/helm_raw_data.json
 helm_integration/data/helm_aggregate_scores.json
 
