@@ -286,6 +286,29 @@ class TestBuildPayload(unittest.TestCase):
         self.assertNotIn("judges_attempted", p["meta"])
         self.assertEqual(p["meta"]["name"], "t")       # other meta keys survive
 
+    def test_payload_degraded_is_self_evidencing(self):
+        # Even when the names are scrubbed as untrusted, the N and M behind `degraded` survive
+        # as top-level counts, so a consumer can still render/audit "N of M".
+        agg = self._agg(["Claude Sonnet 4.5", "GPT-5.1"],
+                        ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"])
+        p = hb._build_payload({"judges_attempted": ["X", "Y", "Z"]}, agg)   # untrusted -> scrubbed
+        self.assertIsNone(p["judges_attempted"])
+        self.assertTrue(p["degraded"])
+        self.assertEqual((p["n_judges_used"], p["n_judges_attempted"]), (2, 3))
+
+    def test_marker_less_untrusted_names_still_self_evidencing(self):
+        # The case round 12 left with no recoverable M: marker-less aggregate + untrusted
+        # names. n_attempted came from meta's (now-scrubbed) list, but the promoted top-level
+        # counts keep degraded auditable.
+        agg = self._agg(["A", "B"], ["A", "B"])
+        agg["ensemble"].pop("n_judges_attempted")
+        agg["ensemble"].pop("n_judges_used")
+        p = hb._build_payload({"judges_attempted": ["X", "Y", "Z"]}, agg)   # wrong membership
+        self.assertIsNone(p["judges_attempted"])
+        self.assertNotIn("judges_attempted", p["meta"])
+        self.assertTrue(p["degraded"])
+        self.assertEqual((p["n_judges_used"], p["n_judges_attempted"]), (2, 3))
+
 
 class TestReport(unittest.TestCase):
     def _agg(self, single=True, attempted=None):
@@ -416,6 +439,17 @@ class TestReport(unittest.TestCase):
         self.assertIn("Partial (2 of 3)", report)
         self.assertIn("PARTIALLY mitigated", report)
         self.assertNotIn("This is the published HumaneBench methodology", report)
+
+    def test_render_counts_scorers_not_inflated_marker(self):
+        # Render side of the round-12 fix: deleting `n_used = len(judges)` made the table's
+        # `ensemble` flag depend on _resolve_counts. An inflated n_judges_used must NOT let a
+        # 2-judge aggregate print [Ensemble] / no banner over a 2-column table.
+        agg = self._agg(single=False, attempted=self._THREE)   # 2 of 3
+        agg["ensemble"]["n_judges_used"] = 3                   # lie: only 2 judges present
+        report = hb.render_report(agg, {"name": "t", "turns": 4, "judges_attempted": self._THREE})
+        self.assertIn("PARTIAL ENSEMBLE", report)
+        self.assertIn("Partial (2 of 3)", report)
+        self.assertNotIn("[Ensemble]", report)
 
     def test_single_judge_report_omits_determinism(self):
         report = hb.render_report(self._agg(single=True), {"name": "t", "turns": 4})

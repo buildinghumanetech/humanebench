@@ -274,20 +274,20 @@ def _resolve_counts(agg: dict, meta: dict) -> tuple[int, int]:
     """(n_used, n_attempted) for an aggregate, tolerating marker-less/foreign aggregates the
     same way render_report and _build_payload both need. n_used is the number of judges
     ACTUALLY present (``len(per_judge)``) — counted, never read from the ``n_judges_used``
-    marker, which a foreign aggregate can inflate to hide a drop; the marker is only a
-    fallback when per_judge is absent. n_attempted comes from the aggregate's marker, or
-    meta's recorded requested-judge count when the aggregate carries none. Shared so both
-    consumers resolve counts identically (and neither KeyErrors on a marker-less aggregate)."""
+    marker, which a foreign aggregate can inflate to hide a drop. n_attempted comes from the
+    aggregate's marker, or meta's recorded requested-judge count when the aggregate carries
+    none. Shared so both consumers resolve counts identically (and neither KeyErrors on a
+    marker-less aggregate)."""
     ens = agg.get("ensemble", {})
     per_judge = agg.get("per_judge", {})
-    n_used = len(per_judge) if per_judge else ens.get("n_judges_used", 0)
+    n_used = len(per_judge)
     n_attempted = ens.get("n_judges_attempted")
     if n_attempted is None:
         n_attempted = len(meta.get("judges_attempted", per_judge))
     return n_used, n_attempted
 
 
-def _trusted_attempted_names(agg: dict, meta: dict, n_attempted: int) -> "list | None":
+def _trusted_attempted_names(agg: dict, meta: dict, n_attempted: int) -> "list[str] | None":
     """meta's recorded requested-judge names IF trustworthy, else None. Trustworthy = the
     list covers the judges that actually scored AND has the right cardinality; otherwise it
     could be the *succeeded* judges (or a stale list) masquerading as the requested set, so
@@ -313,7 +313,9 @@ def _build_payload(meta: dict, agg: dict) -> dict:
     judges posing as the requested set. When the list is untrusted it is also dropped from
     the echoed ``meta`` so a scraper can't recover the rejected value one level down. Counts
     and the degraded flag go through the SAME _resolve_counts / _is_degraded helpers
-    render_report uses, so the JSON and markdown resolve them identically and can't drift."""
+    render_report uses, so the JSON and markdown resolve them identically and can't drift. The
+    resolved counts are promoted to the top level so ``degraded`` is self-evidencing (the N
+    and M behind it survive even when the names are scrubbed for being untrusted)."""
     n_used, n_attempted = _resolve_counts(agg, meta)
     trusted = _trusted_attempted_names(agg, meta, n_attempted)
     if trusted is None and "judges_attempted" in meta:
@@ -322,6 +324,8 @@ def _build_payload(meta: dict, agg: dict) -> dict:
         "meta": meta,
         "judges": list(agg["per_judge"]),              # names that actually produced a score
         "judges_attempted": trusted,
+        "n_judges_used": n_used,
+        "n_judges_attempted": n_attempted,
         "degraded": _is_degraded(n_used, n_attempted),
         "aggregate": agg,
     }
@@ -340,9 +344,11 @@ def render_report(agg: dict, meta: dict) -> str:
     # the aggregate declined to claim a full ensemble (is_full_ensemble is None), the report
     # must not assert one either. meta only supplies the display *names* for the banner.
     verdict = ens.get("is_full_ensemble")  # True | False | None
-    n_used, n_attempted = _resolve_counts(agg, meta)   # shared with _build_payload; n_used ==
-    ensemble = n_used > 1                               # len(judges), so the banner and the
-    ensemble_attempted = n_attempted > 1               # table can't split on the count
+    # n_used == len(judges) (shared with _build_payload), so the banner and the table can't
+    # split on the count.
+    n_used, n_attempted = _resolve_counts(agg, meta)
+    ensemble = n_used > 1
+    ensemble_attempted = n_attempted > 1
     # Degraded = a requested judge was dropped (n_used < n_attempted), verdict-agnostic and
     # shared with the JSON. A single-judge run (1 of 1) is not degraded — it's just not an
     # ensemble.

@@ -60,9 +60,12 @@ scripts/requirements.txt` first; `--ensemble` additionally needs the `openai` an
 
 The `--out` JSON alongside the report carries `judges` (the judges that produced a score),
 `judges_attempted` (**`list | null`** — the requested-judge names, or `null` when they
-weren't reliably recorded, so never treat it as always-a-list), a `degraded` flag, and the
-full `aggregate` (whose `ensemble` object holds `is_full_ensemble` / `n_judges_used` /
-`n_judges_attempted`).
+weren't reliably recorded, so never treat it as always-a-list), the resolved
+`n_judges_used` / `n_judges_attempted` counts (so `degraded` is self-evidencing), a
+`degraded` flag, `meta`, and the full `aggregate` (whose `ensemble` object holds
+`is_full_ensemble` / `n_judges_used` / `n_judges_attempted`). `meta.judges_attempted` mirrors
+the top-level field and is likewise dropped whenever that field is `null`, so read the
+top-level counts rather than `meta` for the N-of-M behind a degraded flag.
 
 ### Path B — score in-session (quick read, no keys)
 
