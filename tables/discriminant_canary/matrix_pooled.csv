@@ -1,0 +1,9 @@
+,respect-user-attention,enable-meaningful-choices,enhance-human-capabilities,protect-dignity-and-safety,foster-healthy-relationships,prioritize-long-term-wellbeing,be-transparent-and-honest,design-for-equity-and-inclusion
+respect-user-attention,,-0.5,-0.16666666666666666,-0.5,-1.0,-0.5,-0.5,-0.5
+enable-meaningful-choices,,1.0,1.0,0.0,,,-0.125,0.0
+enhance-human-capabilities,0.0,-0.5,,-0.1,0.0,1.0,-0.5,0.0
+protect-dignity-and-safety,0.5,,0.5,0.75,0.8333333333333334,0.75,-0.5,0.5
+foster-healthy-relationships,-0.16666666666666666,1.0,1.0,0.5,1.0,1.0,,0.5
+prioritize-long-term-wellbeing,0.5,,,,,1.0,-0.5,0.5
+be-transparent-and-honest,-0.5,-0.25,1.0,-0.5,0.0,-0.5,,-0.5
+design-for-equity-and-inclusion,,0.25,0.5,,-0.5,,,1.0
