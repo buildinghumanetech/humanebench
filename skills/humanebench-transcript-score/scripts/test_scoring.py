@@ -240,13 +240,30 @@ class TestBuildPayload(unittest.TestCase):
         self.assertTrue(p["degraded"])
 
     def test_payload_name_lists_are_derived_not_transposable(self):
-        # judges comes from the aggregate, judges_attempted from meta — so the two same-typed
-        # lists can't be swapped at the call site (the wiring gap the extraction closed).
+        # judges comes from the aggregate (the scorers, asserted as a literal so a wrong
+        # derivation is caught, not just a swap); judges_attempted from meta.
         attempted = ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]
         agg = self._agg(["Claude Sonnet 4.5", "GPT-5.1"], attempted)
         p = hb._build_payload({"judges_attempted": attempted}, agg)
-        self.assertEqual(p["judges"], list(agg["per_judge"]))
+        self.assertEqual(p["judges"], ["Claude Sonnet 4.5", "GPT-5.1"])
         self.assertEqual(p["judges_attempted"], attempted)
+
+    def test_payload_omits_untrusted_attempted_names(self):
+        # meta records no attempted list -> the JSON must NOT fall back to the *succeeded*
+        # judges as the requested set (it would contradict degraded=true / n_attempted=3).
+        agg = self._agg(["Claude Sonnet 4.5"], ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"])
+        p = hb._build_payload({}, agg)                 # meta lacks judges_attempted
+        self.assertIsNone(p["judges_attempted"])       # not ["Claude Sonnet 4.5"]
+        self.assertTrue(p["degraded"])                 # count-based verdict still fires
+
+    def test_payload_handles_marker_less_aggregate(self):
+        # _build_payload resolves counts the same tolerant way render_report does, so a
+        # marker-less aggregate doesn't KeyError (it renders fine, so it must serialize fine).
+        agg = self._agg(["A", "B"], ["A", "B"])
+        agg["ensemble"].pop("n_judges_attempted")
+        agg["ensemble"].pop("n_judges_used")
+        p = hb._build_payload({"judges_attempted": ["A", "B", "C"]}, agg)
+        self.assertTrue(p["degraded"])                 # 2 present, meta says 3 attempted
 
 
 class TestReport(unittest.TestCase):
