@@ -56,6 +56,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from humanebench import provenance as prov  # noqa: E402
 from humanebench.bootstrap import PRINCIPLES  # noqa: E402
 from humanebench.discriminant import (  # noqa: E402
+    CONDITIONS,
     FRAME_JSONL,
     GLOBAL_RULES,
     HASHES_PATH,
@@ -68,6 +69,7 @@ from humanebench.discriminant import (  # noqa: E402
     PER_PRINCIPLE,
     SOURCE_MODELS,
     scaffold_text,
+    scoring_template,
 )
 
 GREEN, RED, YELLOW, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
@@ -237,12 +239,13 @@ def _cells_without_judge_row(
     return {(s, m) for s in ids for m in models} - present
 
 
-def load_run_samples(logs_dir: Path, models: list[str]) -> tuple[dict, list[str]]:
+def load_run_samples(logs_dir: Path, models: list[str],
+                     log_condition: str = LOG_CONDITION) -> tuple[dict, list[str]]:
     """``({model: [sample, ...]}, missing_models)`` for the discriminant run."""
     by_model: dict[str, list[dict]] = {}
     missing: list[str] = []
     for model in models:
-        model_dir = logs_dir / LOG_CONDITION / model
+        model_dir = logs_dir / log_condition / model
         paths = sorted(p for p in model_dir.glob("*.eval")) if model_dir.is_dir() else []
         if not paths:
             missing.append(model)
@@ -275,40 +278,55 @@ def main() -> int:
                          "judge failure from a missing archive")
     ap.add_argument("--blinding-csv", type=Path,
                     default=REPO_ROOT / "tables" / "judge_blinding_check.csv")
+    ap.add_argument("--condition", default="discriminant",
+                    choices=sorted(CONDITIONS),
+                    help="which condition to verify (default: discriminant)")
     args = ap.parse_args()
 
-    if not MANIFEST_PATH.exists():
-        print(f"ERROR: {MANIFEST_PATH} not found; run "
-              "scripts/build_discriminant_multilabel_dataset.py first", file=sys.stderr)
+    cond = CONDITIONS[args.condition]
+    cond_manifest_path = cond.data_dir / "manifest.json"
+    cond_hashes_path = cond.data_dir / "expected_prompt_hashes.csv"
+
+    if not cond_manifest_path.exists():
+        print(f"ERROR: {cond_manifest_path} not found; run "
+              "scripts/build_discriminant_multilabel_dataset.py "
+              f"--condition {args.condition} first", file=sys.stderr)
         return 2
-    manifest = json.loads(MANIFEST_PATH.read_text())
+    manifest = json.loads(cond_manifest_path.read_text())
     r = Report()
 
     # ---- 1. Frame -------------------------------------------------------
     print("Frame:")
-    ids = [ln.strip() for ln in IDS_PATH.read_text().splitlines() if ln.strip()]
+    ids = [ln.strip() for ln in cond.ids_path.read_text().splitlines() if ln.strip()]
     id_set = set(ids)
-    # Read the designed principle from the frame's `target`, not from the id
-    # prefix. The prefix convention holds today; the target is the definition.
     designed = {}
-    with FRAME_JSONL.open() as fh:
+    with cond.frame_jsonl.open() as fh:
         for line in fh:
             if line.strip():
                 row = json.loads(line)
                 designed[row["id"]] = row["target"]
     per_principle = Counter(designed.get(i) for i in ids)
-    r.check(len(ids) == PER_PRINCIPLE * len(PRINCIPLES) and len(id_set) == len(ids),
+    n_expected_ids = cond.per_principle * len(PRINCIPLES)
+    r.check(len(ids) == n_expected_ids and len(id_set) == len(ids),
             f"{len(ids)} unique scenario ids")
-    r.check(set(per_principle.values()) == {PER_PRINCIPLE},
-            f"{PER_PRINCIPLE} scenarios per principle across all {len(PRINCIPLES)}")
-    parent = {ln.strip() for ln in PARENT_IDS_PATH.read_text().splitlines() if ln.strip()}
-    r.check(id_set <= parent,
-            f"nested inside the frozen {len(parent)} ({PARENT_IDS_PATH.name})")
-    r.check(manifest["parent_ids_sha256"] == prov.file_sha256(PARENT_IDS_PATH),
-            "parent frame unchanged since the draw")
-    r.check(manifest["frame_ids_sha256"] == prov.file_sha256(IDS_PATH),
+    r.check(set(per_principle.values()) == {cond.per_principle},
+            f"{cond.per_principle} scenarios per principle across all {len(PRINCIPLES)}")
+    if cond.parent_ids_path is not None:
+        parent = {ln.strip() for ln in cond.parent_ids_path.read_text().splitlines()
+                  if ln.strip()}
+        r.check(id_set <= parent,
+                f"nested inside the frozen {len(parent)} ({cond.parent_ids_path.name})")
+        if manifest.get("parent_ids_sha256"):
+            r.check(manifest["parent_ids_sha256"] == prov.file_sha256(cond.parent_ids_path),
+                    "parent frame unchanged since the draw")
+    else:
+        original_ids = {ln.strip()
+                        for ln in IDS_PATH.read_text().splitlines() if ln.strip()}
+        r.check(not (id_set & original_ids),
+                f"expansion ids disjoint from the original {len(original_ids)}")
+    r.check(manifest["frame_ids_sha256"] == prov.file_sha256(cond.ids_path),
             "frame ids file unchanged since the manifest was written")
-    r.check(manifest["expected_prompt_hashes_sha256"] == prov.file_sha256(HASHES_PATH),
+    r.check(manifest["expected_prompt_hashes_sha256"] == prov.file_sha256(cond_hashes_path),
             "expected-prompt-hash table unchanged since the manifest was written")
 
     # Restrict expectations to the models under verification. Without this, a
@@ -319,7 +337,7 @@ def main() -> int:
     expected: dict[tuple[str, str, str], str] = {}
     diagonal_keys: set[tuple[str, str, str]] = set()
     n_rows_total = 0
-    for row in csv.DictReader(HASHES_PATH.open()):
+    for row in csv.DictReader(cond_hashes_path.open()):
         n_rows_total += 1
         if row["source_model"] not in model_set:
             continue
@@ -333,8 +351,9 @@ def main() -> int:
                if len(expected) != n_rows_total else ""))
 
     # ---- 2. Scaffolds ---------------------------------------------------
+    cond_template = scoring_template(cond)
     print("\nRubric scaffolds (reused verbatim?):")
-    if args.blinding_csv.exists():
+    if cond.compare_to_november and args.blinding_csv.exists():
         archived_scaffolds: dict[str, set[str]] = defaultdict(set)
         for row in csv.DictReader(args.blinding_csv.open()):
             archived_scaffolds[row["principle"]].add(row["scaffold_sha256"])
@@ -346,12 +365,25 @@ def main() -> int:
         r.check(not mismatched,
                 f"all {len(PRINCIPLES)} scaffold hashes identical to the reported runs"
                 + (f" (differs: {mismatched})" if mismatched else ""))
-    else:
+    elif cond.compare_to_november:
         r.skip(f"{args.blinding_csv.name} absent; run "
                "scripts/compute_judge_artifact_controls.py to enable this check")
+    else:
+        mismatched = []
+        for p in PRINCIPLES:
+            h = hashlib.sha256(scaffold_text(p, template=cond_template).encode()).hexdigest()
+            scaffold = scaffold_text(p, template=cond_template)
+            import re as _re
+            rule_nums = _re.findall(r"^(\d+)\. ", scaffold, _re.MULTILINE)
+            if sorted(rule_nums) != ["1", "2"]:
+                mismatched.append(f"{p}: expected rules 1,2, got {rule_nums}")
+        r.check(not mismatched,
+                f"all {len(PRINCIPLES)} variant scaffolds self-consistent "
+                f"(exactly 2 numbered rules)"
+                + (f" (issues: {mismatched})" if mismatched else ""))
 
     # ---- run logs -------------------------------------------------------
-    by_model, missing = load_run_samples(args.logs_dir, args.models)
+    by_model, missing = load_run_samples(args.logs_dir, args.models, cond.name)
     if missing:
         print(f"\n{YELLOW}The discriminant run has not produced logs for: "
               f"{missing}{RESET}")
@@ -441,17 +473,18 @@ def main() -> int:
               "provenance issue")
 
     print("\nDiagonal vs the reported November runs:")
-    # Cells the reported run genuinely never sent to this judge: an earlier
-    # ensemble judge failed, so the scorer early-returned before reaching it.
-    # These are the only legitimate gaps, and they are checkable rather than
-    # assumed -- read from the reported run's own per-judge severity table.
-    known_missing_comparators = _cells_without_judge_row(
-        args.raw_csv, id_set, args.models)
-    archived, archive_problems = archived_diagonal_prompts(
-        args.logs_dir, id_set, args.models)
-    for problem in archive_problems:
-        r.fail(f"archived baseline unusable -- {problem}")
-    if not archived and not archive_problems:
+    if not cond.compare_to_november:
+        print("        (skipped for this condition — instrument was changed)")
+    else:
+        known_missing_comparators = _cells_without_judge_row(
+            args.raw_csv, id_set, args.models)
+        archived, archive_problems = archived_diagonal_prompts(
+            args.logs_dir, id_set, args.models)
+        for problem in archive_problems:
+            r.fail(f"archived baseline unusable -- {problem}")
+    if not cond.compare_to_november:
+        pass
+    elif not archived and not archive_problems:
         r.skip("baseline logs unavailable; diagonal byte-equality not tested")
     elif archived:
         diff = [k for k in sorted(diagonal_keys)
@@ -498,7 +531,8 @@ def main() -> int:
             f"{len(PRINCIPLES)} principles"
             + (f" ({len(bad_coverage)} incomplete)" if bad_coverage else ""))
     r.check(scaffold_hashes_seen == {
-        hashlib.sha256(scaffold_text(p).encode()).hexdigest() for p in PRINCIPLES},
+        hashlib.sha256(scaffold_text(p, template=cond_template).encode()).hexdigest()
+        for p in PRINCIPLES},
         f"{len(scaffold_hashes_seen)} distinct scaffolds in the run -- one per "
         "principle, no prompt naming two")
 
@@ -533,7 +567,7 @@ def main() -> int:
     # run the gate passed and the analysis accepted -- three stages, three
     # different verdicts on the same log. Surplus stays a hard failure: more
     # samples than the frame is a wrong-dataset run, not an incomplete one.
-    expected_per_model = manifest["n_scenarios"] * manifest["n_principles"]
+    expected_per_model = manifest["n_judge_calls"] // manifest["n_source_models"]
     for model, samples in sorted(by_model.items()):
         n_full = n_fail = n_offscale = n_nan = 0
         for sample in samples:

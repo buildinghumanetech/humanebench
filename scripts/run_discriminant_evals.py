@@ -67,6 +67,7 @@ except AttributeError:  # pragma: no cover - very old interpreters
 
 from humanebench import provenance as prov  # noqa: E402
 from humanebench.discriminant import (  # noqa: E402
+    CONDITIONS,
     DATA_DIR,
     JUDGE_MODEL,
     JUDGE_SCORE_ATTEMPTS,
@@ -140,7 +141,7 @@ def estimate_cost(manifest: dict) -> dict:
 
 
 # --- preflight ---------------------------------------------------------------
-def preflight(manifest: dict) -> tuple[bool, dict]:
+def preflight(manifest: dict, cond=None) -> tuple[bool, dict]:
     """Return ``(ok_to_spend, report)``. Makes no billable call.
 
     Deliberately contains no balance or credit check. The account is on
@@ -150,6 +151,8 @@ def preflight(manifest: dict) -> tuple[bool, dict]:
     aborted two launches and prevented zero overspends before c574c2a deleted
     it; the budget control is the OpenRouter-side account cap.
     """
+    if cond is None:
+        cond = CONDITIONS["discriminant"]
     report: dict = {"checked_at": datetime.now(timezone.utc).isoformat()}
     ok = True
 
@@ -173,7 +176,7 @@ def preflight(manifest: dict) -> tuple[bool, dict]:
     # 1. Datasets exist and match the manifest they were built with.
     datasets_ok = True
     for model in SOURCE_MODELS:
-        path = DATA_DIR / f"multilabel_{model}.jsonl"
+        path = cond.data_dir / f"multilabel_{model}.jsonl"
         recorded = manifest["per_model"].get(model, {})
         actual = prov.file_sha256(path) if path.exists() else None
         good = actual is not None and actual == recorded.get("dataset_file_sha256")
@@ -236,8 +239,11 @@ def _judge_alternatives() -> list[str]:
 
 
 # --- launch ------------------------------------------------------------------
-def build_launch_manifest(manifest: dict, preflight_report: dict, models: list[str]) -> dict:
+def build_launch_manifest(manifest: dict, preflight_report: dict, models: list[str],
+                          cond=None) -> dict:
     """Immutable record of what is about to run, written before the first call."""
+    if cond is None:
+        cond = CONDITIONS["discriminant"]
     return {
         "schema": "humanebench-discriminant-launch/1",
         "launched_at": datetime.now(timezone.utc).isoformat(),
@@ -262,13 +268,15 @@ def build_launch_manifest(manifest: dict, preflight_report: dict, models: list[s
         "parent_ids_file": manifest["parent_ids_file"],
         "parent_ids_sha256": manifest["parent_ids_sha256"],
         "source_dataset_sha256": manifest["source_dataset_sha256"],
-        "dataset_manifest_sha256": prov.file_sha256(MANIFEST_PATH),
+        "dataset_manifest_sha256": prov.file_sha256(cond.data_dir / "manifest.json"),
         "expected_prompt_hashes_sha256": manifest["expected_prompt_hashes_sha256"],
         "preflight": preflight_report,
     }
 
 
-def _log_matches_current_config(model: str, path: Path) -> str | None:
+def _log_matches_current_config(
+    model: str, path: Path, condition: str = "discriminant",
+) -> str | None:
     """None if ``path`` was produced by the current config, else the reason.
 
     ``inspect eval-retry`` replays the task configuration recorded IN THE LOG,
@@ -292,6 +300,11 @@ def _log_matches_current_config(model: str, path: Path) -> str | None:
     task_args = ev.get("task_args") or {}
     if task_args.get("source_model") not in (None, model):
         return f"logged source_model {task_args.get('source_model')!r} != {model!r}"
+    logged_cond = task_args.get("condition")
+    if logged_cond not in (None, condition):
+        return f"logged condition {logged_cond!r} != {condition!r}"
+    if logged_cond is None and condition != "discriminant":
+        return f"logged condition is absent (pre-condition log) != {condition!r}"
     return None
 
 
@@ -303,7 +316,8 @@ def _fmt_dir(path: Path) -> str:
 
 
 def run_one(model: str, log_dir: Path, limit: int | None = None,
-            retry_path: Path | None = None) -> dict:
+            retry_path: Path | None = None,
+            condition: str = "discriminant") -> dict:
     """One eval for one source model: fresh, or `eval-retry` on a partial log.
 
     The retry path matters because every dollar here is judge tokens: a run
@@ -320,6 +334,7 @@ def run_one(model: str, log_dir: Path, limit: int | None = None,
         cmd = [
             "inspect", "eval", TASK_FILE,
             "-T", f"source_model={model}",
+            "-T", f"condition={condition}",
             f"--model={SOURCE_MODEL_SLUGS[model]}",
             f"--log-dir={log_dir}",
         ]
@@ -462,13 +477,22 @@ def main() -> int:
     ap.add_argument("--yes", action="store_true", help="run without confirmation")
     ap.add_argument("--force", action="store_true",
                     help="re-run models that already have logs")
+    ap.add_argument("--condition", default="discriminant",
+                    choices=sorted(CONDITIONS),
+                    help="which condition to launch (default: discriminant)")
     args = ap.parse_args()
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    manifest = json.loads(MANIFEST_PATH.read_text())
-    log_root = args.logs_dir / LOG_CONDITION
+    cond = CONDITIONS[args.condition]
+    cond_out_dir = REPO_ROOT / "provenance" / cond.name
+    cond_manifest_path = cond.data_dir / "manifest.json"
+    cond_launch_manifest_path = cond_out_dir / "LAUNCH_MANIFEST.json"
+    cond_run_status_path = cond_out_dir / "run_status.json"
 
-    ok, report = preflight(manifest)
+    cond_out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = json.loads(cond_manifest_path.read_text())
+    log_root = args.logs_dir / cond.name
+
+    ok, report = preflight(manifest, cond)
     if not ok:
         judge = report.get("judge", {})
         if judge.get("served") is False:
@@ -495,11 +519,12 @@ def main() -> int:
               "Re-run with --yes to proceed, or --smoke first.")
         return 0
 
-    smoke_log_dir = args.logs_dir / f"{LOG_CONDITION}_smoke"
+    smoke_log_dir = args.logs_dir / f"{cond.name}_smoke"
     if args.smoke:
         if smoke_log_dir.exists():
             shutil.rmtree(smoke_log_dir)
-        results = [run_one(m, smoke_log_dir / m, limit=1) for m in args.models]
+        results = [run_one(m, smoke_log_dir / m, limit=1, condition=args.condition)
+                   for m in args.models]
         # Returncode alone is not a smoke pass: `inspect eval` exits 0 even when
         # every judge call fails and the scorer records NaN. The smoke exists to
         # prove the judge path end to end, so demand at least one fully scored
@@ -524,6 +549,7 @@ def main() -> int:
     # current config (eval-retry replays the config recorded in the log); a
     # stale log is archived and the model re-run fresh.
     expected = manifest["n_scenarios"] * manifest["n_principles"]
+    expected_per_model = manifest["n_judge_calls"] // manifest["n_source_models"]
     plan: list[tuple[str, Path | None]] = []  # (model, retry_path or None)
     for model in args.models:
         model_dir = log_root / model
@@ -532,12 +558,12 @@ def main() -> int:
             plan.append((model, None))
             continue
         scored = score_census(path)["n_fully_scored"]
-        if scored >= expected * args.gate_threshold:
-            print(f"skip {model}: {scored}/{expected} already scored")
+        if scored >= expected_per_model * args.gate_threshold:
+            print(f"skip {model}: {scored}/{expected_per_model} already scored")
             continue
-        reason = _log_matches_current_config(model, path)
+        reason = _log_matches_current_config(model, path, args.condition)
         if reason is None:
-            print(f"resume {model}: {scored}/{expected} scored; eval-retry on "
+            print(f"resume {model}: {scored}/{expected_per_model} scored; eval-retry on "
                   "the partial log")
             plan.append((model, path))
         else:
@@ -551,20 +577,18 @@ def main() -> int:
     moved: list[str] = []
     if plan:
         todo = [m for m, _p in plan]
-        launch = build_launch_manifest(manifest, report, todo)
-        # The launch manifest is immutable per launch, not per file: a resume
-        # must not clobber the record of what the original launch started.
-        if LAUNCH_MANIFEST_PATH.exists():
+        launch = build_launch_manifest(manifest, report, todo, cond)
+        if cond_launch_manifest_path.exists():
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            prior = OUT_DIR / f"LAUNCH_MANIFEST.{stamp}.json"
-            shutil.move(str(LAUNCH_MANIFEST_PATH), str(prior))
+            prior = cond_out_dir / f"LAUNCH_MANIFEST.{stamp}.json"
+            shutil.move(str(cond_launch_manifest_path), str(prior))
             print(f"archived prior launch manifest -> {prior.name}")
-        LAUNCH_MANIFEST_PATH.write_text(json.dumps(launch, indent=2) + "\n")
-        print(f"\nwrote {LAUNCH_MANIFEST_PATH.relative_to(REPO_ROOT)}")
+        cond_launch_manifest_path.write_text(json.dumps(launch, indent=2) + "\n")
+        print(f"\nwrote {cond_launch_manifest_path.relative_to(REPO_ROOT)}")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_workers) as pool:
             futures = {
-                pool.submit(run_one, m, log_root / m, None, retry_path): m
+                pool.submit(run_one, m, log_root / m, None, retry_path, args.condition): m
                 for m, retry_path in plan
             }
             for fut in concurrent.futures.as_completed(futures):
@@ -582,7 +606,7 @@ def main() -> int:
     # The gate runs unconditionally, including when nothing needed running. It
     # is the only thing that reports whether the matrix can be built, so an
     # early return past it would make a partial run look like a clean no-op.
-    census = gate(args.models, expected, args.gate_threshold, log_root)
+    census = gate(args.models, expected_per_model, args.gate_threshold, log_root)
     status = {
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "runs": results,
@@ -592,14 +616,14 @@ def main() -> int:
         # side, and the .eval logs carry per-call token usage from which cost is
         # reconstructable exactly.
     }
-    RUN_STATUS_PATH.write_text(json.dumps(status, indent=2) + "\n")
+    cond_run_status_path.write_text(json.dumps(status, indent=2) + "\n")
 
     print("\n== completeness ==")
     for model, m in census["models"].items():
-        print(f"  {model:22s} {m.get('n_fully_scored', 0):4d}/{expected} "
+        print(f"  {model:22s} {m.get('n_fully_scored', 0):4d}/{expected_per_model} "
               f"({m['fraction_scored']:.1%})  {m['status']}"
               + (f"  judge_failures={m['n_judge_failures']}" if m.get("n_judge_failures") else ""))
-    print(f"wrote {RUN_STATUS_PATH.relative_to(REPO_ROOT)}")
+    print(f"wrote {cond_run_status_path.relative_to(REPO_ROOT)}")
 
     if not census["passed"]:
         print("\nGATE FAILED: at least one model is short of the threshold. Report "

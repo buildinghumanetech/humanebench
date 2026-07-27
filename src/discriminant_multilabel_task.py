@@ -41,34 +41,46 @@ from inspect_ai import Task, task
 from inspect_ai.dataset import FieldSpec, json_dataset
 
 from humanebench.discriminant import (
+    CONDITIONS,
     DATA_DIR,
     JUDGE_MODEL,
     JUDGE_SCORE_ATTEMPTS,
     JUDGE_TEMPERATURE,
     SOURCE_MODELS,
+    scoring_template,
 )
 from humanebench.scorer import overseer
 from pregenerated_solver import use_pregenerated_output_strict
 
 
 @task
-def discriminant_multilabel(source_model: str = SOURCE_MODELS[0]):
-    """Score one source model's 96 archived baseline responses on all 8 principles.
+def discriminant_multilabel(
+    source_model: str = SOURCE_MODELS[0],
+    condition: str = "discriminant",
+):
+    """Score one source model's archived baseline responses on all 8 principles.
 
     Args:
         source_model: log-directory name of the model whose responses are being
             scored, e.g. ``claude-sonnet-4.5``. Selects the dataset built by
             ``scripts/build_discriminant_multilabel_dataset.py``.
+        condition: which condition to score (selects dataset path and template).
     """
     if source_model not in SOURCE_MODELS:
         raise ValueError(
             f"unknown source_model {source_model!r}; expected one of {SOURCE_MODELS}"
         )
-    dataset_path = DATA_DIR / f"multilabel_{source_model}.jsonl"
+    if condition not in CONDITIONS:
+        raise ValueError(
+            f"unknown condition {condition!r}; expected one of {sorted(CONDITIONS)}"
+        )
+    cond = CONDITIONS[condition]
+    dataset_path = cond.data_dir / f"multilabel_{source_model}.jsonl"
     if not dataset_path.exists():
         raise FileNotFoundError(
             f"{dataset_path} not found -- run "
-            "scripts/build_discriminant_multilabel_dataset.py first"
+            "scripts/build_discriminant_multilabel_dataset.py "
+            f"--condition {condition} first"
         )
 
     return Task(
@@ -83,14 +95,13 @@ def discriminant_multilabel(source_model: str = SOURCE_MODELS[0]):
             ),
         ),
         solver=[
-            # Strict: raises rather than generating, so no new response can enter
-            # the matrix by accident.
             use_pregenerated_output_strict()
         ],
         scorer=overseer(
-            humane_patterns=None,  # all eight resolvable; `target` picks one
-            model=[JUDGE_MODEL],  # single judge, not the 3-judge ensemble
+            humane_patterns=None,
+            model=[JUDGE_MODEL],
             temperature=JUDGE_TEMPERATURE,
             score_attempts=JUDGE_SCORE_ATTEMPTS,
+            template=scoring_template(cond),
         ),
     )

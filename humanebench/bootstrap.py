@@ -1277,6 +1277,47 @@ def pairwise_interactions(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
     return df
 
 
+def pairwise_equivalence(
+    matrix: DesignedMeasuredMatrix,
+    bound: float,
+    pct: tuple[float, float] = (5.0, 95.0),
+) -> pd.DataFrame:
+    """TOST-style equivalence classification for each unordered principle pair.
+
+    Uses the SAME interaction replicates as ``pairwise_interactions``. A pair is
+    classified "equivalent" iff its 90% bootstrap CI lies entirely within
+    ``(-bound, +bound)``. This is a classification device, not a member of the
+    Holm family.
+
+    Returns one row per pair with ``ci90_lower``, ``ci90_upper``, ``equivalent``.
+    """
+    principles = matrix.principles
+    rows: list[dict] = []
+    for i in range(len(principles)):
+        for j in range(i + 1, len(principles)):
+            reps = ((matrix.replicates[:, i, i] - matrix.replicates[:, i, j])
+                    - (matrix.replicates[:, j, i] - matrix.replicates[:, j, j]))
+            point = (matrix.point[i, i] - matrix.point[i, j]) - (matrix.point[j, i] - matrix.point[j, j])
+            estimable = bool(np.isfinite(point))
+            if estimable:
+                lo, hi = float(np.nanpercentile(reps, pct[0])), float(np.nanpercentile(reps, pct[1]))
+                equivalent = bool(-bound < lo and hi < bound)
+            else:
+                lo = hi = float("nan")
+                equivalent = False
+            rows.append({
+                "principle_a": principles[i],
+                "principle_b": principles[j],
+                "interaction": float(point),
+                "ci90_lower": lo,
+                "ci90_upper": hi,
+                "tost_bound": bound,
+                "equivalent": equivalent,
+                "estimable": estimable,
+            })
+    return pd.DataFrame(rows)
+
+
 def bootstrap_naive_grid(
     long: pd.DataFrame,
     n_bootstrap: int = N_BOOTSTRAP_DEFAULT,

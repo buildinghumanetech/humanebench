@@ -87,6 +87,7 @@ from humanebench.bootstrap import (  # noqa: E402
     N_BOOTSTRAP_DEFAULT,
     PRINCIPLES,
     bootstrap_designed_measured_matrix,
+    pairwise_equivalence,
     pairwise_interactions,
 )
 from humanebench.discriminant import PRINCIPLE_SHORT  # noqa: E402
@@ -166,10 +167,13 @@ def classify_failure(row: pd.Series) -> tuple[str, str]:
             "overlap.")
 
 
-def build(long: pd.DataFrame, n_bootstrap: int, seed: int) -> pd.DataFrame:
+def build(long: pd.DataFrame, n_bootstrap: int, seed: int,
+          tost_bound: float | None = None) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     matrix = bootstrap_designed_measured_matrix(
         long, n_bootstrap=n_bootstrap, seed=seed)
-    return pairwise_interactions(matrix)
+    pw = pairwise_interactions(matrix)
+    tost = pairwise_equivalence(matrix, tost_bound) if tost_bound is not None else None
+    return pw, tost
 
 
 def replicate_sensitivity(convention: pd.DataFrame,
@@ -619,10 +623,22 @@ def main() -> int:
                     default=REPO_ROOT / "results" / "discriminant_pairwise.md")
     ap.add_argument("--n-bootstrap", type=int, default=N_BOOTSTRAP_PAIRWISE)
     ap.add_argument("--seed", type=int, default=BOOTSTRAP_SEED)
+    ap.add_argument("--tost-bound", type=float, default=None,
+                    help="TOST equivalence bound; when set, add ci90/equivalent "
+                         "columns. Default None preserves the published output format.")
     args = ap.parse_args()
     out_dir = args.output_dir or args.tables_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     args.report.parent.mkdir(parents=True, exist_ok=True)
+
+    published_tables = REPO_ROOT / "tables" / "discriminant"
+    published_report = REPO_ROOT / "results" / "discriminant_pairwise.md"
+    if (args.tables_dir != published_tables
+            and args.report == published_report):
+        print("ERROR: --tables-dir is not the published tables but --report "
+              "still points at the published report. Pass --report explicitly.",
+              file=sys.stderr)
+        return 1
 
     long_path = args.tables_dir / "matrix_long.csv"
     if not long_path.exists():
@@ -640,9 +656,8 @@ def main() -> int:
     print(f"{len(long):,} judged calls, {long.scenario_id.nunique()} scenarios, "
           f"{long.source_model.nunique()} models")
 
-    # Convention run first, so the deviation is measured rather than assumed.
-    convention = build(long, N_BOOTSTRAP_DEFAULT, args.seed)
-    pw = build(long, args.n_bootstrap, args.seed)
+    convention, _ = build(long, N_BOOTSTRAP_DEFAULT, args.seed)
+    pw, tost = build(long, args.n_bootstrap, args.seed, args.tost_bound)
     sens = replicate_sensitivity(convention, pw)
 
     n_conv_sig = int((convention["p_holm"] < ALPHA).sum())
@@ -657,6 +672,11 @@ def main() -> int:
     pw.loc[pw["significant"], ["failure_class", "failure_reason"]] = ""
     print(f"B={args.n_bootstrap:,}: {int(pw['significant'].sum())}/{len(pw)} "
           "after Holm")
+
+    if tost is not None:
+        tost_cols = tost[["principle_a", "principle_b", "ci90_lower", "ci90_upper",
+                          "tost_bound", "equivalent"]].copy()
+        pw = pw.merge(tost_cols, on=["principle_a", "principle_b"], how="left")
 
     fails = pw[~pw["significant"]].sort_values("interaction", key=abs).copy()
     inv = involvement(pw)
