@@ -145,8 +145,13 @@ def iter_source_files(src: Path, exclude: list[str], rel_base: str) -> list[tupl
             )
 
     if src.is_file():
+        # Exclude globs filter directory walks; they do not veto an entry that
+        # names one file. Several files are excluded from their directory
+        # precisely so an explicit entry can ship them differently -- gzipped,
+        # or from the aux root instead of the repo. To drop such a file, delete
+        # its entry rather than adding a pattern.
         check_link(src, rel_base)
-        return [] if is_excluded(rel_base, exclude) else [(src, rel_base)]
+        return [(src, rel_base)]
     out = []
     for p in sorted(src.rglob("*")):
         rel = f"{rel_base}/{p.relative_to(src).as_posix()}"
@@ -157,6 +162,35 @@ def iter_source_files(src: Path, exclude: list[str], rel_base: str) -> list[tupl
             continue
         out.append((p, rel))
     return out
+
+
+def git_ignored(root: Path, paths: list[Path]) -> set[Path]:
+    """Which of `paths` does git deliberately not track?
+
+    A directory entry in the manifest is a walk of the working tree, not of the
+    index, so it picks up whatever happens to be sitting there -- and what is
+    sitting there differs between checkouts. Building from a tree that had run
+    the analysis shipped a 22 MB gitignored table (a duplicate of the one this
+    manifest ships gzipped) and a stray .log, neither of which existed in the
+    tree the package was developed in. The repository's own judgement about
+    what does not belong in version control is the best available signal that
+    a file was never meant to travel, so it is honoured here unless an entry
+    opts in with allow_ignored.
+    """
+    if not paths:
+        return set()
+    proc = subprocess.run(
+        ["git", "-C", str(root), "check-ignore", "--stdin", "-z"],
+        input="\0".join(str(p) for p in paths),
+        capture_output=True, text=True,
+    )
+    if proc.returncode not in (0, 1):   # 1 == nothing ignored
+        raise BuildError(
+            f"git check-ignore failed in {root}: {proc.stderr.strip()}. The "
+            f"build cannot tell which files the repository excludes, so it "
+            f"cannot guarantee none of them ship."
+        )
+    return {Path(p) for p in proc.stdout.split("\0") if p}
 
 
 def stage(manifest: dict, repo: Path, aux: Path, stage_dir: Path) -> list[str]:
@@ -203,6 +237,28 @@ def stage(manifest: dict, repo: Path, aux: Path, stage_dir: Path) -> list[str]:
             continue
 
         found = iter_source_files(src, exclude, rel_base)
+
+        # Only directory walks are checked. An explicit file entry is a
+        # deliberate decision already, and several of them (the discriminant
+        # JSONLs, the decomposition tables) are gitignored on purpose.
+        if src.is_dir() and not entry.get("allow_ignored"):
+            ignored = git_ignored(root, [p for p, _ in found])
+            if ignored:
+                listing = "\n  ".join(
+                    f"{p.relative_to(root)} ({p.stat().st_size:,} bytes)"
+                    for p in sorted(ignored)
+                )
+                raise BuildError(
+                    f"manifest entry {entry['src']!r} would ship "
+                    f"{len(ignored)} file(s) the repository deliberately does "
+                    f"not track:\n  {listing}\n\n"
+                    f"These exist only in the tree the build ran from, so the "
+                    f"package would differ depending on where it was built. "
+                    f"Exclude them, name them as explicit include entries, or "
+                    f'set "allow_ignored": true on this entry if shipping '
+                    f"untracked content here is intended."
+                )
+
         if not found and not entry.get("allow_empty"):
             # A directory that exists but yields nothing is the failure mode
             # the inclusion design is supposed to rule out: the aux checkout

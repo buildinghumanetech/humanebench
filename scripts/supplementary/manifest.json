@@ -1,90 +1,200 @@
 {
   "description": "What goes into the anonymous supplementary package, and what must not. Read by scripts/build_supplementary.py. The package is built by INCLUSION: nothing reaches the zip unless it is named here, so adding a file to the repo can never silently publish it.",
   "zip_root_readme": "scripts/supplementary/README_supplementary.md",
-
   "include": [
-    {"src": "requirements.txt", "why": "pinned environment"},
-    {"src": "pytest.ini", "why": "test markers used by the README's pytest command"},
-    {"src": "LICENSE", "why": "replaced by a scrub rule with an SPDX-only notice"},
-    {"src": "PROVENANCE.md", "why": "how the runs bind to the frozen dataset, and how to check it"},
-
-    {"src": "baseline_scores.csv", "why": "per-principle scores with CIs, baseline persona"},
-    {"src": "good_persona_scores.csv", "why": "per-principle scores with CIs, prosocial persona"},
-    {"src": "bad_persona_scores.csv", "why": "per-principle scores with CIs, adversarial persona"},
-    {"src": "steerability_comparison.csv", "why": "the headline table: score per persona, deltas, robustness status"},
-    {"src": "respect-user-attention_steerability.csv", "why": "per-principle steerability behind the principle candlestick figure"},
-    {"src": "longitudinal_comparison.csv", "why": "the frontier-model-over-time comparison"},
-
-    {"src": "humanebench", "why": "the library: scorer, bootstrap, provenance, exclusions"},
-    {"src": "src", "why": "Inspect task definitions the runs were launched from"},
-    {"src": "scripts", "why": "every analysis script behind a paper table or figure"},
-    {"src": "tests", "why": "unit tests; a reviewer can run them without API access"},
-    {"src": "rubrics", "why": "the scoring rubric the judges were given"},
-    {"src": "docs", "why": "design notes referenced by the methods section"},
-
-    {"src": "data", "why": "the 800-scenario benchmark and the golden validation set"},
-    {"src": "data/discriminant", "root": "aux",
-     "why": "multi-label judgements behind the discriminant-validity section; gitignored in the repo for size"},
-
-    {"src": "data_generation",
-     "why": "generation pipeline plus the principle-embedding cache the similarity analysis reads"},
-
-    {"src": "tables", "why": "every derived table the paper cites"},
-    {"src": "tables/decomposition", "root": "aux",
-     "why": "goal-vs-tactics decomposition outputs"},
-
-    {"src": "tables/decomposition/response_disclosure_rates.csv", "root": "aux",
-     "dst": "tables/decomposition/response_disclosure_rates.csv.gz",
-     "transform": "gzip",
-     "why": "4.0 MB -> 0.29 MB. Gitignored in the repo as bulky and regeneratable, which is true there and false here: the package ships no decomposition logs, so a reviewer who cannot read this table cannot check the judge-artifact control at all. Compressed rather than dropped."},
-    {"src": "tables/decomposition/alpha_decomp_b_xml_objective/inter_judge_raw.csv", "root": "aux",
-     "dst": "tables/decomposition/alpha_decomp_b_xml_objective/inter_judge_raw.csv.gz",
-     "transform": "gzip",
-     "why": "6.0 MB -> 0.16 MB. Per-judge severities for condition B; without it the per-condition alpha is unverifiable from the package."},
-    {"src": "tables/decomposition/alpha_decomp_c_prose/inter_judge_raw.csv", "root": "aux",
-     "dst": "tables/decomposition/alpha_decomp_c_prose/inter_judge_raw.csv.gz",
-     "transform": "gzip",
-     "why": "condition C, same rationale"},
-    {"src": "tables/decomposition/alpha_decomp_d_okr/inter_judge_raw.csv", "root": "aux",
-     "dst": "tables/decomposition/alpha_decomp_d_okr/inter_judge_raw.csv.gz",
-     "transform": "gzip",
-     "why": "condition D, same rationale"},
-    {"src": "tables/decomposition/alpha_decomp_e_abtest/inter_judge_raw.csv", "root": "aux",
-     "dst": "tables/decomposition/alpha_decomp_e_abtest/inter_judge_raw.csv.gz",
-     "transform": "gzip",
-     "why": "condition E, same rationale"},
-    {"src": "tables/inter_judge_raw_regenerated.csv",
-     "dst": "tables/inter_judge_raw_regenerated.csv.gz",
-     "transform": "gzip",
-     "expect_sha256_prefix": "a795b54366c37894",
-     "why": "22 MB of per-judge severities, the input that replaces the undistributable logs. Gzipped to 0.6 MB; the hash prefix is asserted so a silently regenerated table cannot ship in its place."},
-
-    {"src": "provenance", "why": "per-run hashes and the independent verifier's inputs"},
-    {"src": "provenance/discriminant", "root": "aux",
-     "why": "provenance for the discriminant runs"},
-
-    {"src": "figures", "why": "paper figures plus their alt text"},
-
-    {"src": "helm_integration/README.md", "why": "how the HELM capability scores were obtained"},
-    {"src": "helm_integration/helm_scraper.py", "why": "HELM scraper"},
-    {"src": "helm_integration/calculate_percentiles.py", "why": "HELM percentile computation"},
-    {"src": "helm_integration/data/helm_aggregate_scores.json",
-     "why": "input to compute_helm_power.py (the section 4.6 MDE)"},
-    {"src": "helm_integration/data/helm_raw_data.json",
-     "why": "per-benchmark HELM scores behind the aggregate"},
-
-    {"src": "results/rubric_appendix.md", "root": "aux", "dst": "results/rubric_appendix.md",
-     "why": "the rubric appendix; paper content"},
-    {"src": "results/decomposition_precommitment.md", "root": "aux",
-     "dst": "results/decomposition_precommitment.md",
-     "why": "the interpretation pre-commitment, written before any decomposition run existed. Methodology evidence, and written in a public register."}
+    {
+      "src": "requirements.txt",
+      "why": "pinned environment"
+    },
+    {
+      "src": "pytest.ini",
+      "why": "test markers used by the README's pytest command"
+    },
+    {
+      "src": "LICENSE",
+      "why": "replaced by a scrub rule with an SPDX-only notice"
+    },
+    {
+      "src": "PROVENANCE.md",
+      "why": "how the runs bind to the frozen dataset, and how to check it"
+    },
+    {
+      "src": "baseline_scores.csv",
+      "why": "per-principle scores with CIs, baseline persona"
+    },
+    {
+      "src": "good_persona_scores.csv",
+      "why": "per-principle scores with CIs, prosocial persona"
+    },
+    {
+      "src": "bad_persona_scores.csv",
+      "why": "per-principle scores with CIs, adversarial persona"
+    },
+    {
+      "src": "steerability_comparison.csv",
+      "why": "the headline table: score per persona, deltas, robustness status"
+    },
+    {
+      "src": "respect-user-attention_steerability.csv",
+      "why": "per-principle steerability behind the principle candlestick figure"
+    },
+    {
+      "src": "longitudinal_comparison.csv",
+      "why": "the frontier-model-over-time comparison"
+    },
+    {
+      "src": "humanebench",
+      "why": "the library: scorer, bootstrap, provenance, exclusions"
+    },
+    {
+      "src": "src",
+      "why": "Inspect task definitions the runs were launched from"
+    },
+    {
+      "src": "scripts",
+      "why": "every analysis script behind a paper table or figure"
+    },
+    {
+      "src": "tests",
+      "why": "unit tests; a reviewer can run them without API access"
+    },
+    {
+      "src": "rubrics",
+      "why": "the scoring rubric the judges were given"
+    },
+    {
+      "src": "docs",
+      "why": "design notes referenced by the methods section"
+    },
+    {
+      "src": "data",
+      "why": "the 800-scenario benchmark and the golden validation set"
+    },
+    {
+      "src": "data/discriminant",
+      "root": "aux",
+      "why": "tracked discriminant inputs (prompt hashes, run manifest); the gitignored multilabel JSONLs are named individually below"
+    },
+    {
+      "src": "data/discriminant/multilabel_llama-4-maverick.jsonl",
+      "root": "aux",
+      "why": "multi-label judgements behind the discriminant-validity section. Gitignored for size and because they embed archived responses, so it is named explicitly rather than swept up by a directory walk that would behave differently in another checkout."
+    },
+    {
+      "src": "data/discriminant/multilabel_gemini-2.5-pro.jsonl",
+      "root": "aux",
+      "why": "multi-label judgements behind the discriminant-validity section. Gitignored for size and because they embed archived responses, so it is named explicitly rather than swept up by a directory walk that would behave differently in another checkout."
+    },
+    {
+      "src": "data/discriminant/multilabel_claude-sonnet-4.5.jsonl",
+      "root": "aux",
+      "why": "multi-label judgements behind the discriminant-validity section. Gitignored for size and because they embed archived responses, so it is named explicitly rather than swept up by a directory walk that would behave differently in another checkout."
+    },
+    {
+      "src": "data_generation",
+      "why": "generation pipeline plus the principle-embedding cache the similarity analysis reads"
+    },
+    {
+      "src": "tables",
+      "why": "every derived table the paper cites"
+    },
+    {
+      "src": "tables/decomposition",
+      "root": "aux",
+      "why": "goal-vs-tactics decomposition outputs"
+    },
+    {
+      "src": "tables/decomposition/response_disclosure_rates.csv",
+      "root": "aux",
+      "dst": "tables/decomposition/response_disclosure_rates.csv.gz",
+      "transform": "gzip",
+      "why": "4.0 MB -> 0.29 MB. Gitignored in the repo as bulky and regeneratable, which is true there and false here: the package ships no decomposition logs, so a reviewer who cannot read this table cannot check the judge-artifact control at all. Compressed rather than dropped."
+    },
+    {
+      "src": "tables/decomposition/alpha_decomp_b_xml_objective/inter_judge_raw.csv",
+      "root": "aux",
+      "dst": "tables/decomposition/alpha_decomp_b_xml_objective/inter_judge_raw.csv.gz",
+      "transform": "gzip",
+      "why": "6.0 MB -> 0.16 MB. Per-judge severities for condition B; without it the per-condition alpha is unverifiable from the package."
+    },
+    {
+      "src": "tables/decomposition/alpha_decomp_c_prose/inter_judge_raw.csv",
+      "root": "aux",
+      "dst": "tables/decomposition/alpha_decomp_c_prose/inter_judge_raw.csv.gz",
+      "transform": "gzip",
+      "why": "condition C, same rationale"
+    },
+    {
+      "src": "tables/decomposition/alpha_decomp_d_okr/inter_judge_raw.csv",
+      "root": "aux",
+      "dst": "tables/decomposition/alpha_decomp_d_okr/inter_judge_raw.csv.gz",
+      "transform": "gzip",
+      "why": "condition D, same rationale"
+    },
+    {
+      "src": "tables/decomposition/alpha_decomp_e_abtest/inter_judge_raw.csv",
+      "root": "aux",
+      "dst": "tables/decomposition/alpha_decomp_e_abtest/inter_judge_raw.csv.gz",
+      "transform": "gzip",
+      "why": "condition E, same rationale"
+    },
+    {
+      "src": "tables/inter_judge_raw_regenerated.csv",
+      "dst": "tables/inter_judge_raw_regenerated.csv.gz",
+      "transform": "gzip",
+      "expect_sha256_prefix": "a795b54366c37894",
+      "why": "22 MB of per-judge severities, the input that replaces the undistributable logs. Gzipped to 0.6 MB; the hash prefix is asserted so a silently regenerated table cannot ship in its place."
+    },
+    {
+      "src": "provenance",
+      "why": "per-run hashes and the independent verifier's inputs"
+    },
+    {
+      "src": "provenance/discriminant",
+      "root": "aux",
+      "why": "provenance for the discriminant runs"
+    },
+    {
+      "src": "figures",
+      "why": "paper figures plus their alt text"
+    },
+    {
+      "src": "helm_integration/README.md",
+      "why": "how the HELM capability scores were obtained"
+    },
+    {
+      "src": "helm_integration/helm_scraper.py",
+      "why": "HELM scraper"
+    },
+    {
+      "src": "helm_integration/calculate_percentiles.py",
+      "why": "HELM percentile computation"
+    },
+    {
+      "src": "helm_integration/data/helm_aggregate_scores.json",
+      "why": "input to compute_helm_power.py (the section 4.6 MDE)"
+    },
+    {
+      "src": "helm_integration/data/helm_raw_data.json",
+      "why": "per-benchmark HELM scores behind the aggregate"
+    },
+    {
+      "src": "results/rubric_appendix.md",
+      "root": "aux",
+      "dst": "results/rubric_appendix.md",
+      "why": "the rubric appendix; paper content"
+    },
+    {
+      "src": "results/decomposition_precommitment.md",
+      "root": "aux",
+      "dst": "results/decomposition_precommitment.md",
+      "why": "the interpretation pre-commitment, written before any decomposition run existed. Methodology evidence, and written in a public register."
+    }
   ],
-
   "exclude": [
     "__pycache__/**",
     "*.pyc",
     "*.bak",
-
     "COMMENT: every dotfile, at every level. data_generation/.env holds live API",
     "COMMENT: credentials and is gitignored, so it exists only in a working tree --",
     "COMMENT: which is precisely the tree the final build runs in. Naming individual",
@@ -92,29 +202,25 @@
     "COMMENT: have a name nobody listed. Dotfiles are excluded as a class and any that",
     "COMMENT: belong in the package are added back as explicit include entries.",
     ".*",
-
     "**/.ipynb_checkpoints/**",
-
     "scripts/build_supplementary.py",
     "scripts/supplementary/**",
     "scripts/publish_figures_to_website.sh",
     "scripts/deprecated/**",
     "scripts/human_judging_analysis/cache/**",
     "scripts/human_judging_analysis/output/**",
-
     "helm_integration/data/gcs_cache/**",
     "helm_integration/data/gcs_safety_cache/**",
     "helm_integration/output/**",
-
     "provenance/DEPOSIT_README.md",
-
     "data_generation/embeddings_cache/**",
-
     "tables/inter_judge_raw_regenerated.csv",
     "tables/decomposition/response_disclosure_rates.csv",
-    "tables/decomposition/alpha_*/inter_judge_raw.csv"
+    "tables/decomposition/alpha_*/inter_judge_raw.csv",
+    "data/discriminant/multilabel_*.jsonl",
+    "tables/inter_judge_raw.csv",
+    "data_generation/malformed_outputs.log"
   ],
-
   "exclude_why": {
     "scripts/build_supplementary.py + scripts/supplementary/**": "the packaging machinery names every string it removes, so shipping it would undo the redaction it performs",
     "scripts/publish_figures_to_website.sh": "deploys to the organisation's website",
@@ -126,6 +232,9 @@
     ".github/ (never listed)": "CODEOWNERS names the organisation",
     "anonymization_redaction_list.txt (never listed)": "it is itself the densest list of identifying terms in the repo",
     "paper_notes/, results/*.md beyond the two named, temp/, logs/, dist/ (never listed)": "internal working material",
-    "tables/inter_judge_raw_regenerated.csv": "excluded from the directory copy because a separate entry ships it gzipped; without this the 22 MB original would ride along beside its own 0.6 MB compression"
+    "tables/inter_judge_raw_regenerated.csv": "excluded from the directory copy because a separate entry ships it gzipped; without this the 22 MB original would ride along beside its own 0.6 MB compression",
+    "data/discriminant/multilabel_*.jsonl": "shipped, but via explicit per-file entries rather than the directory walk",
+    "tables/inter_judge_raw.csv": "gitignored 22 MB duplicate of inter_judge_raw_regenerated.csv, which ships gzipped at 0.6 MB. Present only in a tree that has run the analysis, so a build there silently shipped both copies",
+    "data_generation/malformed_outputs.log": "stray gitignored run log holding malformed model outputs; no paper claim depends on it"
   }
 }
