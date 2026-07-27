@@ -91,6 +91,35 @@ from humanebench.provenance import DATASET_PATH, file_sha256  # noqa: E402
 SENTINEL = "\x00__HUMANEBENCH_RESPONSE_SLOT_9f3c__\x00"
 
 
+def _rel(path: Path) -> str:
+    """Repo-relative where possible; absolute otherwise.
+
+    ``--logs-dir`` may point outside the checkout -- a git worktree reading the
+    main clone's archived logs, for instance -- and a bare ``relative_to`` raises
+    there, aborting the build after the expensive extraction work is done.
+    """
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _rel_log(path: Path, logs_dir: Path) -> str:
+    """A log path as ``logs/<persona>/<model>/<file>``, wherever the logs live.
+
+    This goes into the committed manifest, so it must not depend on the
+    operator's directory layout. Falling back to an absolute path would write
+    a home directory into a published file -- the exact local-path leak
+    ``anonymization_redaction_list.txt`` exists to catch -- and would also make
+    the manifest differ between a checkout and a worktree that reads the same
+    archives.
+    """
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(Path("logs") / path.relative_to(logs_dir))
+
+
 class ExtractionError(RuntimeError):
     """The archived judge prompt did not match the re-rendered template."""
 
@@ -279,7 +308,7 @@ def build_model(
             })
 
     provenance = {
-        "source_eval": str(path.relative_to(REPO_ROOT)),
+        "source_eval": _rel_log(path, logs_dir),
         "source_eval_sha256": file_sha256(path),
         "n_responses": len(responses),
         "response_sha256": hashlib.sha256(
@@ -308,11 +337,11 @@ def main() -> int:
         out = args.output_dir / f"multilabel_{model}.jsonl"
         out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
         all_hashes.extend(hashes)
-        prov["dataset_file"] = str(out.relative_to(REPO_ROOT))
+        prov["dataset_file"] = _rel(out)
         prov["dataset_file_sha256"] = file_sha256(out)
         prov["n_rows"] = len(rows)
         per_model[model] = prov
-        print(f"  {model:22s} {len(rows):4d} rows -> {out.relative_to(REPO_ROOT)}")
+        print(f"  {model:22s} {len(rows):4d} rows -> {_rel(out)}")
 
     hashes_path = args.output_dir / "expected_prompt_hashes.csv"
     with hashes_path.open("w", newline="") as fh:
@@ -342,7 +371,7 @@ def main() -> int:
             "measured_on_n_calls": 287,
             "source": "logs/baseline/<model>/*.eval, gpt-5.1 judge events",
         },
-        "frame_ids_file": str(IDS_PATH.relative_to(REPO_ROOT)),
+        "frame_ids_file": _rel(IDS_PATH),
         "frame_ids_sha256": file_sha256(IDS_PATH),
         "frame_subset_prompt_hash": summary["subset_prompt_hash"],
         "parent_ids_file": summary.get("parent_ids_file"),
@@ -357,7 +386,7 @@ def main() -> int:
                 "scored models, so the diagonal is a same-judge replication"
             ),
         },
-        "expected_prompt_hashes_file": str(hashes_path.relative_to(REPO_ROOT)),
+        "expected_prompt_hashes_file": _rel(hashes_path),
         "expected_prompt_hashes_sha256": file_sha256(hashes_path),
         "per_model": per_model,
     }
@@ -366,7 +395,7 @@ def main() -> int:
     print(f"\n{n_calls:,} judge calls will be made "
           f"({len(frame)} scenarios x {len(PRINCIPLES)} principles x {len(args.models)} models)")
     print(f"all {len(frame) * len(args.models)} archived judge prompts round-tripped byte-exactly")
-    print(f"wrote {hashes_path.relative_to(REPO_ROOT)} and manifest.json")
+    print(f"wrote {_rel(hashes_path)} and manifest.json")
     return 0
 
 

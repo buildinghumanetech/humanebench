@@ -98,12 +98,24 @@ ORDINAL_LEVELS = (-1.0, -0.5, 0.5, 1.0)
 JUDGE_SHORT = "gpt-5.1"
 
 
-def _rel(path: Path) -> str:
-    """Repo-relative where possible; absolute otherwise (e.g. --logs-dir elsewhere)."""
+def _rel(path: Path, logs_dir: Path | None = None) -> str:
+    """A path for the report: repo-relative, or ``logs/...`` for out-of-tree logs.
+
+    Never an absolute path. The report names its input logs, and `--logs-dir` may
+    point outside the checkout (a worktree reading the main clone's archives), so
+    an absolute fallback would print a home directory into a document that gets
+    pasted into the paper -- the local-path leak
+    ``anonymization_redaction_list.txt`` exists to catch.
+    """
     try:
         return str(path.relative_to(REPO_ROOT))
     except ValueError:
-        return str(path)
+        if logs_dir is not None:
+            try:
+                return str(Path("logs") / path.relative_to(logs_dir))
+            except ValueError:
+                pass
+        return path.name
 
 
 def _n_scored(path: Path) -> int:
@@ -154,7 +166,7 @@ def load_run_scores(logs_dir: Path, models: list[str]) -> tuple[pd.DataFrame, di
         if not paths:
             continue
         path = select_eval(paths)
-        stats["files"].append(_rel(path))
+        stats["files"].append(_rel(path, logs_dir))
         for sample in prov.iter_eval_samples(path):
             stats["samples_seen"] += 1
             meta = (sample.get("metadata") or {}).get("metadata") or {}
