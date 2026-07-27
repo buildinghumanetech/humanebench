@@ -58,20 +58,22 @@ def git(*args: str) -> str | None:
     return out.stdout.strip()
 
 
-def main_worktree_root() -> Path | None:
-    """Path of the repository's primary worktree.
-
-    Attestations are run from whichever worktree is convenient, but the stored
-    path must be the same string either way, so it is always resolved against
-    the primary worktree.
-    """
+def worktree_roots() -> list[Path]:
+    """Every worktree of this repository, primary first."""
     listing = git("worktree", "list", "--porcelain")
     if not listing:
-        return None
-    for line in listing.splitlines():
-        if line.startswith("worktree "):
-            return Path(line[len("worktree "):])
-    return None
+        return []
+    return [
+        Path(line[len("worktree "):])
+        for line in listing.splitlines()
+        if line.startswith("worktree ")
+    ]
+
+
+def main_worktree_root() -> Path | None:
+    """Path of the repository's primary worktree."""
+    roots = worktree_roots()
+    return roots[0] if roots else None
 
 
 def logical_path(target: Path, override: str | None) -> str:
@@ -86,13 +88,27 @@ def logical_path(target: Path, override: str | None) -> str:
         return Path(override).as_posix()
 
     resolved = target.resolve()
-    for root in (main_worktree_root(), REPO_ROOT):
-        if root is None:
-            continue
+    # Most specific root wins. This repository keeps its worktrees INSIDE the
+    # primary worktree (.claude/worktrees/<name>), so the primary root is a
+    # prefix of every other one. Taking the first match stored
+    # ".claude/worktrees/repo-packaging/results/..." for a document whose
+    # logical path is "results/...", which then made attest() append a
+    # duplicate entry instead of amending, and --verify resolve that entry
+    # against the primary root, find nothing, print SKIP and exit 0 -- the tool
+    # reporting success on a document it had never hashed.
+    candidates = [r.resolve() for r in worktree_roots()] + [REPO_ROOT]
+    best: str | None = None
+    best_depth = -1
+    for root in candidates:
         try:
-            return resolved.relative_to(root.resolve()).as_posix()
+            rel = resolved.relative_to(root)
         except ValueError:
             continue
+        depth = len(root.parts)
+        if depth > best_depth:
+            best, best_depth = rel.as_posix(), depth
+    if best is not None:
+        return best
     raise SystemExit(
         f"{target} is outside the repository; pass --as <repo-relative-path> "
         "to say where it logically lives. Absolute paths are not stored."

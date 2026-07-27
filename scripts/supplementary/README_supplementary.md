@@ -54,7 +54,9 @@ results/
 
 ## Environment
 
-Python 3.11 or newer.
+Developed and run on **Python 3.13.3**. The syntactic floor is 3.10 (several
+modules use `X | None` annotations that are evaluated at runtime), but only
+3.13 was tested.
 
 ```bash
 python -m venv venv && source venv/bin/activate
@@ -63,6 +65,17 @@ pytest -m unit          # no network, no API keys
 ```
 
 Run every command below from the root of this package.
+
+**Write recomputed tables somewhere else.** Several scripts emit files whose
+names match the ones shipped in `tables/`, and two of them read those same
+files as input. Left to the defaults they would overwrite the published numbers
+you are trying to compare against — so the commands below direct output to
+`reproduced/`, and you diff that against `tables/`:
+
+```bash
+mkdir -p reproduced
+diff tables/inter_judge_agreement.csv reproduced/inter_judge_agreement.csv
+```
 
 ## Reproducing the paper
 
@@ -102,10 +115,15 @@ python scripts/compute_cohort_principle_cis.py
 
 ```bash
 python scripts/compute_inter_judge_agreement.py \
-    --raw-csv tables/inter_judge_raw_regenerated.csv.gz
-# -> tables/inter_judge_agreement.{md,csv}
+    --raw-csv tables/inter_judge_raw_regenerated.csv.gz \
+    --tables-dir reproduced/
+# -> reproduced/inter_judge_agreement.{md,csv}
 #    + _by_persona / _by_principle / _by_model
 #    + the 48-scenario human slice and the golden-24 set
+# --tables-dir is required here: this pass reads
+# tables/inter_judge_raw_human_slice.csv and _golden_24.csv, which are also
+# output names, so the default would consume its own inputs. The script
+# refuses rather than letting that happen.
 ```
 
 All three passes run without logs. The human slice and golden-24 sets ship
@@ -124,8 +142,9 @@ many samples were included.
 
 ```bash
 python scripts/compute_loo_sensitivity.py \
-    --raw-csv tables/inter_judge_raw_regenerated.csv.gz
-# -> tables/loo_sensitivity.md, loo_model_scores.csv,
+    --raw-csv tables/inter_judge_raw_regenerated.csv.gz \
+    --output-dir reproduced/
+# -> reproduced/loo_sensitivity.md, loo_model_scores.csv,
 #    loo_cohort_counts.csv, loo_alpha.csv
 ```
 
@@ -159,7 +178,8 @@ python scripts/compute_interprinciple_correlation.py
 
 ```bash
 python scripts/compute_discriminant_validity.py \
-    --raw-csv tables/inter_judge_raw_regenerated.csv.gz
+    --raw-csv tables/inter_judge_raw_regenerated.csv.gz \
+    --output-dir reproduced/
 # -> tables/discriminant/*.csv
 ```
 
@@ -200,11 +220,9 @@ the correlation is underpowered, and the script reports by how much.
 
 ### Serving provenance
 
-```bash
-python scripts/compute_serving_provenance.py --csv-out tables/
-```
-
-Regenerating this needs the logs. The results ship as
+Regenerating this needs the logs, which are not included, so there is no
+command to run here — the script exits non-zero rather than overwriting the
+shipped tables with empty ones. The results ship as
 `tables/serving_provenance.md` plus the per-call rows behind it:
 `serving_provenance_responses.csv` (36,000 generation calls, one per
 scenario x model x persona) and `serving_provenance_judges.csv`. Six of the

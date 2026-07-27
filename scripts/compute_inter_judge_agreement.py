@@ -255,6 +255,27 @@ def load_long_table_from_csv(
             f"{sorted(off_scale['severity'].unique())[:5]}"
         )
 
+    # Re-establish the strict-ensemble invariant. collect_long_table drops any
+    # sample without the full judge complement, so every uid it emits carries
+    # exactly one row per judge -- and the alpha computation, the cluster
+    # bootstrap and the flip rule all assume it. Reading a CSV bypasses that
+    # check entirely, and the sidecar cross-check below cannot see the
+    # difference: it compares unique sample_uids, which is unchanged when a uid
+    # loses one of its three judge rows. The pivot would then quietly introduce
+    # NaN cells while still counting the uid, and publish a different alpha.
+    per_uid = df.groupby("sample_uid")["judge_name"].nunique()
+    n_judges = df["judge_name"].nunique()
+    ragged = per_uid[per_uid != n_judges]
+    if not ragged.empty:
+        raise ValueError(
+            f"{path} is ragged: {len(ragged):,} of {len(per_uid):,} sample_uids "
+            f"carry fewer than the {n_judges} judges present in the file "
+            f"(e.g. {list(ragged.index[:3])}). Every scored sample must have the "
+            f"full judge complement; a partial table yields an alpha that is "
+            f"not comparable to the published one. Re-export it rather than "
+            f"filtering rows out of this one."
+        )
+
     n_uids_before = df["sample_uid"].nunique()
     if exclude:
         df = df[~df["sample_id"].isin(exclude)].reset_index(drop=True)
@@ -275,10 +296,20 @@ def load_long_table_from_csv(
     # script, for instance), so there is nothing to reconcile.
     sidecar = None if stats_key is None else load_collector_stats(stats_path, stats_key)
     if stats_key is not None and sidecar is None:
-        print(
-            f"[warn] no stats entry for '{stats_key}' in {stats_path}; the "
-            f"provenance counts in the outputs will describe {path.name} "
-            f"itself, not the log scan that produced it."
+        # Not a warning. Without the sidecar the counts written into
+        # inter_judge_agreement.csv and its .md -- samples scanned, samples
+        # excluded for lacking individual scores, eval files read -- would be
+        # this CSV's own dimensions, published in the same columns and format
+        # as real log-scan provenance and indistinguishable from it. A run
+        # would report 35,416 scanned with 0 excluded instead of 36,000 with
+        # 44, understating the denominator while claiming a clean scan. A line
+        # on stdout does not travel with the artifact; refusing does.
+        raise ValueError(
+            f"no stats entry for '{stats_key}' in {stats_path}. That file "
+            f"carries the log-scan counts the published tables report; without "
+            f"it this run would print its own row counts in their place. Ship "
+            f"the sidecar alongside {path.name}, or regenerate both from the "
+            f"logs with --write-raw-stats."
         )
     elif sidecar is not None:
         declared = sidecar.get("samples_included")
@@ -1121,6 +1152,19 @@ def main() -> None:
             "--write-raw-stats records counts from a log scan; it cannot be "
             "combined with --raw-csv, which has no log scan to record"
         )
+    if args.include_excluded and args.raw_csv is not None:
+        # The shipped table was written after exclusion, so there is nothing to
+        # re-admit. Left alone, this flag would print "Including all items",
+        # return the 35,416 filtered rows, pass the sidecar check (which
+        # compares the same number to itself), and publish an alpha identical
+        # to the main run -- reading as proof that the 12 excluded items change
+        # nothing, from a sensitivity analysis that never ran.
+        parser.error(
+            "--include-excluded needs the .eval logs: it re-admits samples the "
+            "raw CSV was already filtered of, so from --raw-csv it would "
+            "silently reproduce the filtered result and read as a robustness "
+            "check that had been performed. Re-run with --logs-dir."
+        )
     collected_stats: dict[str, dict] = {}
 
     tables_dir = args.tables_dir.expanduser().resolve()
@@ -1144,6 +1188,26 @@ def main() -> None:
 
     raw_stats_path = args.raw_csv_stats.expanduser().resolve()
     if args.raw_csv is not None:
+        # write_outputs writes tables/inter_judge_raw{,_human_slice,_golden_24}.csv,
+        # which are exactly the files the CSV mode reads as inputs. Run with the
+        # default --tables-dir, the run consumes its own inputs and overwrites
+        # the shipped tables a reviewer was going to diff against -- after which
+        # nothing is left to detect a discrepancy with. Refuse instead.
+        collisions = [
+            p for p in (args.raw_csv, args.raw_csv_human_slice, args.raw_csv_golden)
+            if p is not None
+            and p.expanduser().resolve().parent == tables_dir
+        ]
+        if collisions:
+            raise SystemExit(
+                "refusing to write outputs into the directory holding the input "
+                "tables:\n  "
+                + "\n  ".join(str(p) for p in collisions)
+                + f"\n\nThis run would overwrite them, and the published tables "
+                f"in {tables_dir} that you would compare against. Pass "
+                f"--tables-dir pointing somewhere else, e.g.\n"
+                f"  --tables-dir reproduced/"
+            )
         raw_csv = args.raw_csv.expanduser().resolve()
         print(f"Reading {raw_csv} (no .eval logs needed) ...")
         long_df, stats = load_long_table_from_csv(

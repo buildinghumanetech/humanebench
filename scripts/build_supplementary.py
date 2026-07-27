@@ -107,10 +107,13 @@ def is_excluded(rel: str, patterns: list[str]) -> bool:
     """Match a staged-relative POSIX path against the manifest's exclude globs.
 
     Each pattern is tried against the whole path and against every path
-    prefix, so `scripts/deprecated/**` excludes the directory itself as well
-    as its contents.
+    suffix, so `scripts/deprecated/**` excludes the directory itself as well
+    as its contents, and a bare pattern like `.*` or `*.pyc` matches at any
+    depth without needing a `**/` prefix.
     """
     for pat in patterns:
+        if pat.startswith("COMMENT:"):
+            continue
         if fnmatch.fnmatch(rel, pat):
             return True
         # `a/b/**` should also drop `a/b` itself.
@@ -125,15 +128,32 @@ def is_excluded(rel: str, patterns: list[str]) -> bool:
 
 
 def iter_source_files(src: Path, exclude: list[str], rel_base: str) -> list[tuple[Path, str]]:
-    """Yield (absolute source, staged-relative path) for one manifest entry."""
+    """Yield (absolute source, staged-relative path) for one manifest entry.
+
+    Symlinks are rejected here, at the source. Checking for them in the stage
+    was pointless: shutil.copyfile dereferences a link and copies the target's
+    bytes, so by then there is no link left to find and the target's contents
+    are already inside the package. This is the only point where the question
+    "does this path leave the tree we meant to publish?" can still be asked.
+    """
+    def check_link(p: Path, rel: str) -> None:
+        if p.is_symlink():
+            raise BuildError(
+                f"{rel} is a symlink to {os.readlink(p)}. Copying it would "
+                f"silently pull that target's contents into the package; "
+                f"resolve it deliberately or exclude it."
+            )
+
     if src.is_file():
+        check_link(src, rel_base)
         return [] if is_excluded(rel_base, exclude) else [(src, rel_base)]
     out = []
     for p in sorted(src.rglob("*")):
-        if not p.is_file():
-            continue
         rel = f"{rel_base}/{p.relative_to(src).as_posix()}"
         if is_excluded(rel, exclude):
+            continue
+        check_link(p, rel)
+        if not p.is_file():
             continue
         out.append((p, rel))
     return out
@@ -183,6 +203,18 @@ def stage(manifest: dict, repo: Path, aux: Path, stage_dir: Path) -> list[str]:
             continue
 
         found = iter_source_files(src, exclude, rel_base)
+        if not found and not entry.get("allow_empty"):
+            # A directory that exists but yields nothing is the failure mode
+            # the inclusion design is supposed to rule out: the aux checkout
+            # has the folder, its contents moved, and the package ships without
+            # a cited artifact while every gate passes. Only gate_freshness
+            # covers one such entry; the rest had nothing behind them.
+            raise BuildError(
+                f"manifest entry {entry['src']!r} (root={entry.get('root', 'repo')}) "
+                f"exists at {src} but contributes no files after exclusions. A "
+                f"cited artifact would silently not ship. Fix the source, or set "
+                f'"allow_empty": true on the entry if emptiness is legitimate.'
+            )
         if not found:
             skipped.append(entry["src"])
         for abs_src, rel in found:
@@ -198,8 +230,8 @@ def stage(manifest: dict, repo: Path, aux: Path, stage_dir: Path) -> list[str]:
     staged.append("README.md")
 
     if skipped:
-        print(f"  {YELLOW}note{RESET}  entries that matched no files after "
-              f"exclusions: {', '.join(skipped)}")
+        print(f"  {YELLOW}note{RESET}  entries declared allow_empty that "
+              f"contributed nothing: {', '.join(skipped)}")
 
     # Later entries may overwrite earlier ones; report the distinct set.
     return sorted(set(staged))
@@ -246,6 +278,38 @@ def scrub_manifest_json(path: Path) -> int:
             "The Zenodo deposit", "The archived deposit"
         )
         changed += 1
+
+    # Assert the outcome, not the arithmetic. A fixed hit count here is wrong
+    # by construction: the count is 45 + one per decomposition run + 2, so it
+    # moves every time provenance is rebuilt -- and rebuilding provenance is
+    # exactly what the freshness gate requires of the final build. Pinning the
+    # number made the two requirements mutually exclusive and would have failed
+    # the deadline build outright. What actually matters is that nothing
+    # identifying survives, so that is what gets checked.
+    residue = []
+
+    def walk(node, where="$"):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if "zenodo" in k.lower():
+                    residue.append(f"{where}.{k} (key)")
+                walk(v, f"{where}.{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                walk(v, f"{where}[{i}]")
+        elif isinstance(node, str):
+            low = node.lower()
+            if node.startswith("/") and "/users/" in low:
+                residue.append(f"{where} = {node[:60]}")
+            elif "zenodo" in low or "10.5281/" in low:
+                residue.append(f"{where} = {node[:60]}")
+
+    walk(data)
+    if residue:
+        raise BuildError(
+            "provenance/MANIFEST.json still carries identifying values after "
+            "scrubbing:\n  " + "\n  ".join(residue[:10])
+        )
 
     with open(path, "w") as fh:
         json.dump(data, fh, indent=2)
@@ -330,12 +394,16 @@ def scrub(rules: dict, stage_dir: Path) -> list[str]:
             hits = 1
 
         elif op == "manifest_json":
+            # No expect_hits: the count scales with the number of runs in the
+            # manifest, so pinning it guarantees a false failure the next time
+            # provenance is rebuilt. scrub_manifest_json asserts the outcome.
             hits = scrub_manifest_json(target)
-            if hits != expect:
+            if expect is not None:
                 raise BuildError(
-                    f"{rule['path']}: rewrote {hits} values, expected {expect}. "
-                    f"The manifest's shape changed; check what moved before "
-                    f"changing this number."
+                    f"{rule['path']}: this rule must not declare expect_hits. "
+                    f"Its hit count is a function of how many runs the manifest "
+                    f"holds and changes whenever provenance is regenerated; it "
+                    f"verifies its own outcome instead."
                 )
 
         elif op == "golden_rater_names":
@@ -378,8 +446,25 @@ def load_scan_terms(redaction_list: Path) -> list[str]:
     return terms
 
 
+def scannable_bytes(p: Path) -> bytes:
+    """The bytes a content gate should actually inspect.
+
+    A gzipped entry read raw is DEFLATE noise: no term can match it, so the
+    keyword gate reported PASS on the single largest data file in the package
+    without ever seeing a byte of it. Compressed entries are inflated here so
+    they are scanned on their real contents. Everything else is returned as-is.
+    """
+    if p.suffix == ".gz":
+        try:
+            with gzip.open(p, "rb") as fh:
+                return fh.read()
+        except OSError as exc:
+            raise BuildError(f"{p.name} is not readable as gzip: {exc}") from None
+    return p.read_bytes()
+
+
 def gate_keywords(stage_dir: Path, terms: list[str]) -> list[str]:
-    """Every staged byte, binaries included, against every term."""
+    """Every staged byte, binaries and compressed entries included."""
     failures = []
     lowered = [(t, t.lower().encode()) for t in terms]
     for p in sorted(stage_dir.rglob("*")):
@@ -388,7 +473,7 @@ def gate_keywords(stage_dir: Path, terms: list[str]) -> list[str]:
         rel = p.relative_to(stage_dir).as_posix()
         if any(fnmatch.fnmatch(rel, w) for w in SCAN_WHITELIST):
             continue
-        blob = p.read_bytes().lower()
+        blob = scannable_bytes(p).lower()
         hits = sorted({t for t, needle in lowered if needle in blob})
         if hits:
             failures.append(f"{rel}: {', '.join(hits)}")
@@ -454,6 +539,15 @@ def gate_figure_metadata(stage_dir: Path, terms: list[str]) -> list[str]:
     return failures
 
 
+# Dotfiles that may appear in the package, named one at a time. Anything else
+# beginning with a dot fails the build. The exclude glob already drops them;
+# this is the independent check, because the file that motivated it
+# (data_generation/.env, live API credentials) is invisible in the worktree
+# where development builds run and present in the checkout where the final
+# build runs -- so no amount of dev-build evidence could have caught it.
+ALLOWED_DOTFILES: set[str] = set()
+
+
 def gate_structure(stage_dir: Path) -> list[str]:
     failures = []
     for p in sorted(stage_dir.rglob("*")):
@@ -466,10 +560,15 @@ def gate_structure(stage_dir: Path) -> list[str]:
         if not p.is_file():
             continue
         name = p.name
-        if name.startswith(".git"):
-            failures.append(f"{rel}: git metadata")
-        if name == ".DS_Store" or "__pycache__" in rel.split("/"):
-            failures.append(f"{rel}: build/OS junk")
+        dotted = [seg for seg in rel.split("/") if seg.startswith(".")]
+        if dotted and rel not in ALLOWED_DOTFILES:
+            failures.append(
+                f"{rel}: hidden file or directory ({', '.join(dotted)}). Dotfiles "
+                f"are excluded as a class because credentials hide among them; "
+                f"add it to ALLOWED_DOTFILES only if it is genuinely publishable"
+            )
+        if "__pycache__" in rel.split("/"):
+            failures.append(f"{rel}: build junk")
         size = p.stat().st_size
         if size > MAX_FILE_BYTES:
             failures.append(f"{rel}: {size / 1e6:.1f} MB exceeds the "

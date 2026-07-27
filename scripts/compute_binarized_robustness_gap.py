@@ -39,6 +39,7 @@ from humanebench.bootstrap import (  # noqa: E402
     bootstrap_persona_deltas,
     load_long_scores,
 )
+from humanebench.tables import resolve_table  # noqa: E402
 
 # Same warning thresholds as the plan.
 SPEARMAN_WARN = 0.85    # below this → "rank ordering not preserved"
@@ -289,6 +290,7 @@ def main() -> None:
     args = parser.parse_args()
 
     print(f"Loading inter-judge raw scores from: {args.judge_raw_csv}")
+    args.judge_raw_csv = resolve_table(args.judge_raw_csv)
     judge_raw_df = pd.read_csv(args.judge_raw_csv)
     print(f"  loaded {len(judge_raw_df)} per-judge rows")
 

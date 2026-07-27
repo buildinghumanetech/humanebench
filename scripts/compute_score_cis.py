@@ -36,6 +36,7 @@ from humanebench.bootstrap import (  # noqa: E402
     bootstrap_persona_deltas,
     load_long_scores,
 )
+from humanebench.tables import resolve_table  # noqa: E402
 
 DEFAULT_RAW = REPO_ROOT / "tables" / "inter_judge_raw_regenerated.csv"
 DEFAULT_OUT = REPO_ROOT / "tables"
@@ -81,6 +82,31 @@ def _without_ci_columns(df):
                             if c.endswith(("_ci_lower", "_ci_upper"))])
 
 
+def _require_full_cohort(path: Path, df, cells_df) -> None:
+    """Refuse to augment a published CSV from a raw table that covers less of it.
+
+    Clearing the stale CI columns is only safe when the incoming data can
+    repopulate all of them. Merged `how="left"` from a narrower raw table --
+    one decomposition condition, a single-persona export, a debugging slice --
+    every model outside that table keeps its point estimate and silently loses
+    its interval to NaN. These four CSVs are tracked published artifacts, and
+    `--augment-existing-csvs` is on by default, so this needs no flag to fire.
+    """
+    have = set(cells_df["model"].unique())
+    want = set(df["model"].unique())
+    missing = sorted(want - have)
+    if missing:
+        raise SystemExit(
+            f"{path.name} covers {len(want)} models but the supplied raw table "
+            f"has only {len(have)}; {len(missing)} would lose their confidence "
+            f"intervals to empty cells while keeping their point estimates "
+            f"({', '.join(missing[:4])}{' ...' if len(missing) > 4 else ''}).\n"
+            f"Re-run against the full-cohort table, or pass "
+            f"--no-augment-existing-csvs to compute the CI tables without "
+            f"touching the published CSVs."
+        )
+
+
 def _augment_persona_csv(path: Path, persona: str, cells_df) -> None:
     """Add *_ci_lower / *_ci_upper columns to {persona}_scores.csv in place.
 
@@ -90,7 +116,9 @@ def _augment_persona_csv(path: Path, persona: str, cells_df) -> None:
     import pandas as pd
     if not path.exists():
         return
-    df = _without_ci_columns(pd.read_csv(path))
+    df = pd.read_csv(path)
+    _require_full_cohort(path, df, cells_df)
+    df = _without_ci_columns(df)
     sub = cells_df[cells_df["persona"] == persona].copy()
     sub = sub.rename(columns={"principle": "_principle"})
     for principle in PRINCIPLES_TUPLE:
@@ -123,7 +151,9 @@ def _augment_steerability_csv(path: Path, cells_df, deltas_df) -> None:
     import pandas as pd
     if not path.exists():
         return
-    df = _without_ci_columns(pd.read_csv(path))
+    df = pd.read_csv(path)
+    _require_full_cohort(path, df, cells_df)
+    df = _without_ci_columns(df)
     for persona in ("baseline", "good_persona", "bad_persona"):
         ci = cells_df[(cells_df["persona"] == persona)
                       & (cells_df["principle"] == "HumaneScore")][
@@ -168,7 +198,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=BOOTSTRAP_SEED)
     parser.add_argument(
         "--augment-existing-csvs",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=True,
         help="Also patch CI columns into existing baseline_scores.csv / "
              "good_persona_scores.csv / bad_persona_scores.csv / "
@@ -179,8 +209,9 @@ def main() -> None:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading {args.raw_csv} ...")
-    long = load_long_scores(args.raw_csv)
+    print(f"Loading {resolve_table(args.raw_csv)} ...")
+    raw_csv = resolve_table(args.raw_csv)
+    long = load_long_scores(raw_csv)
     print(f"  {len(long):,} per-sample rows across "
           f"{long['model'].nunique()} models, {long['persona'].nunique()} personas")
 

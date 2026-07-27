@@ -60,12 +60,18 @@
   ],
 
   "exclude": [
-    "**/__pycache__/**",
-    "**/*.pyc",
-    "**/.DS_Store",
-    "**/.git*",
-    "**/*.bak",
-    "**/.claude/**",
+    "__pycache__/**",
+    "*.pyc",
+    "*.bak",
+
+    "COMMENT: every dotfile, at every level. data_generation/.env holds live API",
+    "COMMENT: credentials and is gitignored, so it exists only in a working tree --",
+    "COMMENT: which is precisely the tree the final build runs in. Naming individual",
+    "COMMENT: dotfiles to exclude is the wrong shape: the next secret to appear will",
+    "COMMENT: have a name nobody listed. Dotfiles are excluded as a class and any that",
+    "COMMENT: belong in the package are added back as explicit include entries.",
+    ".*",
+
     "**/.ipynb_checkpoints/**",
 
     "scripts/build_supplementary.py",

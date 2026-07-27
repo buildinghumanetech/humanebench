@@ -70,6 +70,7 @@ from humanebench.bootstrap import (  # noqa: E402
     bootstrap_cell_scores,
     bootstrap_persona_deltas,
 )
+from humanebench.tables import resolve_table  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -1482,7 +1483,7 @@ def main() -> None:
 
     print("Loading per-judge severities ...")
     long = load_per_judge_long(
-        args.raw_csv.expanduser().resolve() if args.logs_dir is None else None,
+        resolve_table(args.raw_csv.expanduser()) if args.logs_dir is None else None,
         args.logs_dir.expanduser().resolve() if args.logs_dir else None,
         args.include_excluded,
     )

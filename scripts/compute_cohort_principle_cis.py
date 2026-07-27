@@ -28,6 +28,7 @@ from humanebench.bootstrap import (  # noqa: E402
     load_long_scores,
 )
 from scripts.generate_tables import MODEL_ORDER  # noqa: E402
+from humanebench.tables import resolve_table  # noqa: E402
 
 DEFAULT_RAW = REPO_ROOT / "tables" / "inter_judge_raw_regenerated.csv"
 DEFAULT_OUT = REPO_ROOT / "tables"
@@ -57,8 +58,9 @@ def main() -> None:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading {args.raw_csv} ...")
-    long = load_long_scores(args.raw_csv)
+    print(f"Loading {resolve_table(args.raw_csv)} ...")
+    raw_csv = resolve_table(args.raw_csv)
+    long = load_long_scores(raw_csv)
     available_models = set(long["model"].unique())
     missing = [m for m in MODEL_ORDER if m not in available_models]
     if missing:

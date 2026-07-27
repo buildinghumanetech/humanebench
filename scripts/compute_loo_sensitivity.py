@@ -73,6 +73,7 @@ from humanebench.bootstrap import (  # noqa: E402
     cohort_flip_stats,
 )
 from humanebench.excluded import load_excluded_ids  # noqa: E402
+from humanebench.tables import resolve_table  # noqa: E402
 
 # Report order: full ensemble, then the three drops, then the single judges as
 # a lower bound on how far the scoring rule can be degraded.
@@ -257,11 +258,17 @@ def _fmt(v, nd=3):
 
 
 def write_report(out: Path, scores: pd.DataFrame, counts: pd.DataFrame,
-                 alphas: pd.DataFrame, n_bootstrap: int, seed: int) -> None:
+                 alphas: pd.DataFrame, n_bootstrap: int, seed: int,
+                 source: str = "the 45 `.eval` logs") -> None:
     L: list[str] = []
     L.append("# Leave-one-judge-out sensitivity\n")
     L.append(
-        f"Recomputed from the 45 `.eval` logs with each judge dropped in turn. "
+        # `source` rather than a fixed phrase: under --raw-csv this script
+        # never opens an .eval file, and the package contains none. Hardcoding
+        # "the 45 .eval logs" made the report assert a provenance the run did
+        # not have, in the one document whose job is to establish that the flip
+        # survives every judge drop.
+        f"Recomputed from {source} with each judge dropped in turn. "
         f"CIs are {n_bootstrap:,} shared-scenario cluster bootstrap replicates "
         f"(seed {seed}): one scenario resample per replicate, carried across "
         f"all 15 models x 3 personas, so cohort counts carry the correlation "
@@ -399,16 +406,18 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     if args.raw_csv is not None:
-        raw_csv = args.raw_csv.expanduser().resolve()
+        raw_csv = resolve_table(args.raw_csv.expanduser())
         print(f"Reading {raw_csv} (no .eval logs needed) ...")
         long, stats = load_long_table_from_csv(
             raw_csv, exclude_ids=load_excluded_ids()
         )
+        source = f"`{raw_csv.name}`, the per-judge table those logs produced"
     else:
         logs_dir = (args.logs_dir or REPO_ROOT / "logs").expanduser().resolve()
         print(f"Scanning {logs_dir} ...")
         long, stats = collect_long_table(logs_dir,
                                          exclude_ids=load_excluded_ids())
+        source = f"the {stats['files_scanned']} `.eval` logs"
     print(f"  {stats['samples_included']:,} scored items, {len(long):,} judge rows")
     long = common_item_set(long)
 
@@ -419,7 +428,7 @@ def main() -> None:
     counts.to_csv(args.output_dir / "loo_cohort_counts.csv", index=False)
     alphas.to_csv(args.output_dir / "loo_alpha.csv", index=False)
     write_report(args.output_dir / "loo_sensitivity.md", scores, counts, alphas,
-                 args.n_bootstrap, args.seed)
+                 args.n_bootstrap, args.seed, source=source)
 
     print("\nFlip count by config:")
     for config in CONFIG_ORDER:

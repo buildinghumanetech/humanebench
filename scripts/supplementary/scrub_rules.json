@@ -56,8 +56,7 @@
     {
       "path": "provenance/MANIFEST.json",
       "op": "manifest_json",
-      "expect_hits": 47,
-      "why": "45 dataset_location values are absolute paths under a home directory that carries the author's username; the DOI and the deposit note name the archive service. Rewritten by walking the parsed JSON, never by regex over the text -- a regex here would silently corrupt a 47 KB record of hashes."
+      "why": "Every dataset_location is an absolute path under a home directory carrying the author's username; the DOI and the deposit note name the archive service. Rewritten by walking the parsed JSON, never by regex over the text -- a regex here would silently corrupt a 47 KB record of hashes. Deliberately carries NO expect_hits: the count is 45 reported runs + one per decomposition run + 2, so it moves whenever provenance is regenerated, which the freshness gate requires of the final build. A pinned count made the two requirements contradictory. The handler asserts the outcome instead -- no absolute path, no DOI, no archive name survives."
     },
 
     {

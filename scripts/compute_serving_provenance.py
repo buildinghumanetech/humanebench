@@ -257,6 +257,20 @@ def main() -> int:
     print(f"models served by >1 provider: {len(multi)}/{len(per_model_gen)}")
 
     if args.csv_out is not None:
+        if n_runs == 0:
+            # The supplementary package ships no logs/, so the README's own
+            # documented command finds nothing. Writing anyway truncated the
+            # 36,000-row responses table and the judges table to bare headers
+            # and exited 0 -- destroying the per-call evidence behind the
+            # multi-provider claim, in the act of trying to reproduce it.
+            print(
+                "\n[skip] --csv-out: no runs were scanned, so there is nothing "
+                "to export. Refusing to overwrite the shipped per-call tables "
+                "with empty ones. Point --logs-dir at the .eval logs to "
+                "regenerate them.",
+                file=sys.stderr,
+            )
+            return 1
         write_call_tables(args.csv_out, gen_rows or [], judge_pairs or Counter())
     return 0
 

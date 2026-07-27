@@ -45,7 +45,12 @@ PERSONAS: tuple[str, ...] = ("baseline", "good_persona", "bad_persona")
 
 
 def load_long_scores(raw_csv: Path | str) -> pd.DataFrame:
-    """Read `tables/inter_judge_raw.csv` and collapse 3 judge rows per sample.
+    """Read a per-judge long table and collapse 3 judge rows per sample.
+
+    In the repository that table is `tables/inter_judge_raw_regenerated.csv`;
+    in the supplementary package it is the same file gzipped, which pandas
+    reads transparently. Callers should route their default through
+    `humanebench.tables.resolve_table` so either form works.
 
     The raw CSV is already exclusion-filtered upstream by
     `scripts/compute_inter_judge_agreement.py` (it loads
