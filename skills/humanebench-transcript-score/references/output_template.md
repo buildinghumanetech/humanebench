@@ -31,8 +31,11 @@ between judges are a finding — call them out.)
 ### HumaneScore
 
 Heading forms, matching the script's output: `### HumaneScore` for a single judge,
-`### HumaneScore [Ensemble]` when every requested judge succeeded, and
-`### HumaneScore [Partial (N of M)]` for a degraded run.
+`### HumaneScore [Ensemble]` when every requested judge succeeded,
+`### HumaneScore [Partial (N of M)]` for a degraded run (a judge was dropped), and
+`### HumaneScore [Multi-judge]` when several judges ran but the requested-judge set
+wasn't recorded — so full-vs-partial can't be verified and the full ensemble is not
+claimed.
 
 **`<mean of the 8 principle scores, e.g. 0.13>`** — `<band label>`
 

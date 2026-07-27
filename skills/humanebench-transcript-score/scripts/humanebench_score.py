@@ -276,12 +276,17 @@ def render_report(agg: dict, meta: dict) -> str:
     if n_attempted is None:
         n_attempted = len(attempted_names)
     ensemble_attempted = n_attempted > 1
-    degraded = verdict is False and n_used < n_attempted
-    # Label straight off the verdict: a true "Ensemble" only when the aggregate confirms
-    # nothing was dropped; "Partial (N of M)" when it confirms a drop; and a hedged
-    # "Multi-judge" when the attempted set wasn't recorded, so a copied headline number
-    # can never masquerade as the full published ensemble.
-    if verdict is False and degraded:
+    # The verdict is authoritative when the aggregate recorded one. When it didn't
+    # (verdict None — e.g. a marker-less/legacy aggregate), the attempted count recovered
+    # from meta is the only evidence of a drop, so honor it rather than silently losing the
+    # provisional warning. A confident "full Ensemble" is still NEVER claimed on a None
+    # verdict — that path can only reach "Partial" or the hedged "Multi-judge".
+    degraded = verdict is False or (verdict is None and n_used < n_attempted)
+    # Label off the verdict/degradation: "Partial (N of M)" whenever a drop is known;
+    # "Ensemble" only on a confirmed-full verdict; "Multi-judge" for an unverified
+    # (verdict-None, nothing-known-dropped) run, so a copied headline can never masquerade
+    # as the full published ensemble.
+    if degraded:
         agg_col = f"Partial ({n_used} of {n_attempted})"
     elif verdict is True:
         agg_col = "Ensemble"
@@ -500,9 +505,10 @@ def _is_temperature_400(e: Exception) -> bool:
     status = getattr(e, "status_code", None)
     if status is None:
         status = getattr(e, "code", None)
-    # Only a genuine numeric status is decisive: a real int (not a bool, which would coerce
-    # 400->False) or a bare digit string. Anything else (a slug like "unsupported_value", a
-    # float, a padded string) is not a status -> fall through to the message check.
+    # Only a genuine numeric status is decisive: a real int (not a bool — True/False would
+    # coerce to 1/0 and never equal 400, masking the message check) or a bare digit string.
+    # Anything else (a slug like "unsupported_value", a float) is not a status -> fall
+    # through to the message check.
     if isinstance(status, bool):
         pass
     elif isinstance(status, int):
@@ -679,13 +685,14 @@ def main(argv: list[str] | None = None) -> int:
     report = render_report(agg, meta)
     # Canonical fields for the degraded/full question live in aggregate.ensemble
     # (is_full_ensemble / n_judges_used / n_judges_attempted). The top-level keys here are
-    # the human-readable judge *name* lists; `degraded` is derived from the aggregate so the
-    # two never contradict.
+    # the human-readable judge *name* lists; `degraded` is derived from the aggregate's
+    # verdict (not a parallel count comparison) so the JSON and the markdown never contradict.
+    # main() always supplies judges_attempted, so the verdict here is concrete (never None).
     payload = {
         "meta": meta,
         "judges": succeeded,                 # names that actually produced a score
         "judges_attempted": judge_names,      # names we tried to run
-        "degraded": agg["ensemble"]["n_judges_used"] < agg["ensemble"]["n_judges_attempted"],
+        "degraded": agg["ensemble"]["is_full_ensemble"] is False,
         "aggregate": agg,
     }
 

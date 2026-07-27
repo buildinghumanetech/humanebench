@@ -275,6 +275,29 @@ class TestReport(unittest.TestCase):
         self.assertNotIn("(partial (2 of 3))", report.lower())      # no nested parens
         self.assertNotIn("This is the published HumaneBench methodology", report)
 
+    def test_partial_banner_omits_names_when_count_mismatches(self):
+        # 2 of 3 (verdict False) but meta doesn't record the requested names -> attempted_names
+        # falls back to the 2 *succeeded* judges, which must NOT be listed as the "requested"
+        # set. The banner drops the parenthetical rather than misrepresenting who was asked.
+        agg = self._agg(single=False, attempted=self._THREE)   # verdict False, marker attempted=3
+        report = hb.render_report(agg, {"name": "t", "turns": 4})   # meta lacks judges_attempted
+        self.assertIn("PARTIAL ENSEMBLE", report)
+        self.assertIn("Partial (2 of 3)", report)
+        self.assertIn("requested judges produced a score", report)  # parenthetical suppressed
+        self.assertNotIn("requested judges (", report)
+
+    def test_marker_less_aggregate_honors_meta_attempted_count(self):
+        # A legacy/marker-less aggregate (no is_full_ensemble / n_judges_attempted) rendered
+        # with meta listing 3 attempted but only 2 judges present must STILL warn PARTIAL: the
+        # verdict is None, so meta's count is the only evidence of a drop and must not be lost.
+        agg = self._agg(single=False)                 # 2 judges, verdict None
+        agg["ensemble"].pop("is_full_ensemble")
+        agg["ensemble"].pop("n_judges_attempted")
+        report = hb.render_report(agg, {"name": "t", "turns": 4, "judges_attempted": self._THREE})
+        self.assertIn("Partial (2 of 3)", report)
+        self.assertIn("PARTIAL ENSEMBLE", report)
+        self.assertNotIn("[Ensemble]", report)        # never claim the full ensemble on None
+
     def test_single_judge_report_omits_determinism(self):
         report = hb.render_report(self._agg(single=True), {"name": "t", "turns": 4})
         self.assertNotIn("Determinism", report)   # Claude judge is always pinned
