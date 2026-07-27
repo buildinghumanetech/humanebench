@@ -109,20 +109,47 @@ def latest_eval(model_dir: Path) -> Path | None:
     return evals[-1] if evals else None
 
 
-def best_eval(model_dir: Path, exclude: set[str] | None = None) -> Path | None:
+def best_eval(model_dir: Path, exclude: set[str] | None = None,
+              cond: "dc.Condition | None" = None) -> Path | None:
     """The .eval holding the most usable data, tie-broken by newest.
 
     "Newest" is the wrong criterion on its own: a re-run that dies early leaves
     a fresh but truncated file next to a complete one from a previous night.
-    Selecting on scored-sample count keeps the run that actually has the data,
-    which is what the gate and the analysis need.
+    Selecting on scored-sample count keeps the run that actually has the data.
+
+    When ``cond`` is given, logs from a stale config are excluded outright --
+    otherwise a big log written under an old prompt or dataset outranks a
+    smaller correct one, and the gate would attest the wrong experiment.
+
+    A truncated or corrupt archive (what a SIGKILLed launch can leave behind)
+    scores as zero rather than crashing discovery: one bad file must not make
+    an entire cell unreadable.
     """
     evals = sorted(p for p in model_dir.glob("*.eval") if p.is_file())
+    if cond is not None:
+        model_full = next((m for m in dc.MODELS if m.split("/")[-1] == model_dir.name), None)
+        if model_full is not None:
+            kept = []
+            for p in evals:
+                reason = _log_matches_current_config(cond, model_full, p)
+                if reason is None:
+                    kept.append(p)
+                else:
+                    print(f"  [{model_dir.name}] ignoring {p.name}: {reason}")
+            evals = kept
     if not evals:
         return None
     if len(evals) == 1:
         return evals[0]
-    return max(evals, key=lambda p: (score_census(p, exclude)["n_fully_scored"], p.name))
+
+    def usable(p: Path) -> int:
+        try:
+            return score_census(p, exclude)["n_fully_scored"]
+        except Exception as exc:
+            print(f"  [{model_dir.name}] unreadable {p.name}: {exc!r}; treating as empty")
+            return -1
+
+    return max(evals, key=lambda p: (usable(p), p.name))
 
 
 def score_census(eval_path: Path, exclude: set[str] | None = None) -> dict:
@@ -195,12 +222,19 @@ def gate_condition(cond: dc.Condition, models: list[str], threshold: float) -> d
     wrong_frame: list[str] = []
     for model in models:
         model_dir = cond.log_dir / model.split("/")[-1]
-        path = best_eval(model_dir, exclude) if model_dir.is_dir() else None
+        path = best_eval(model_dir, exclude, cond=cond) if model_dir.is_dir() else None
         if path is None:
             report["models"][model] = {"status": "missing", "fraction_scored": 0.0}
             worst = 0.0
             continue
-        census = score_census(path, exclude=exclude)
+        try:
+            census = score_census(path, exclude=exclude)
+        except Exception as exc:
+            report["models"][model] = {"status": "unreadable", "error": repr(exc),
+                                       "fraction_scored": 0.0,
+                                       "eval_file": str(path.relative_to(REPO_ROOT))}
+            worst = 0.0
+            continue
         frac = census["n_fully_scored"] / denom if denom else 0.0
         # Two-sided. A one-sided `frac >= threshold` attests a run that scored
         # MORE than the expected frame as complete -- which is exactly what a
@@ -236,7 +270,7 @@ def provider_census(cond: dc.Condition, models: list[str]) -> dict:
     out: dict = {}
     for model in models:
         model_dir = cond.log_dir / model.split("/")[-1]
-        path = best_eval(model_dir) if model_dir.is_dir() else None
+        path = best_eval(model_dir, cond=cond) if model_dir.is_dir() else None
         if path is None:
             continue
         counts: Counter = Counter()
@@ -275,7 +309,7 @@ def archive_superseded(cond: dc.Condition, models: list[str],
         evals = sorted(p for p in model_dir.glob("*.eval") if p.is_file())
         if len(evals) <= 1:
             continue
-        keep = best_eval(model_dir, exclude)
+        keep = best_eval(model_dir, exclude, cond=cond)
         attic = model_dir / "attic"
         attic.mkdir(exist_ok=True)
         for path in evals:
@@ -293,7 +327,7 @@ def retry_incomplete(cond: dc.Condition, models: list[str], max_workers: int) ->
         model_dir = cond.log_dir / model.split("/")[-1]
         if not model_dir.is_dir():
             continue
-        path = best_eval(model_dir)
+        path = best_eval(model_dir, cond=cond)
         if path is None:
             continue
         census = score_census(path)
@@ -517,34 +551,31 @@ def _run_one(cond: dc.Condition, model: str) -> dict:
     and re-pays for the ones that already finished. Resuming per *model* makes
     a kill cost only the samples that had not been generated yet.
 
-    Paths are resolved against the repo root because run_evaluation builds a
-    relative "src/<task>_task.py" and does not pin cwd itself.
+    The subprocess cwd is pinned to the repo root explicitly; os.chdir is
+    process-global and would race across the worker threads.
     """
     short = model.split("/")[-1]
     log_dir = cond.log_dir / short
-    prev = os.getcwd()
-    try:
-        os.chdir(REPO_ROOT)
-        path, have = _resumable(cond, model)
+    path, have = _resumable(cond, model)
 
-        if path is not None and have >= cond.expected_samples:
-            print(f"  [{datetime.now().strftime('%H:%M:%S')}] [{short}] already "
-                  f"complete ({have} samples); skipping", flush=True)
-            return {"task_type": cond.task_type, "model": model, "success": True,
-                    "resumed": False, "skipped_complete": True}
+    if path is not None and have >= cond.expected_samples:
+        print(f"  [{datetime.now().strftime('%H:%M:%S')}] [{short}] already "
+          f"complete ({have} samples); skipping", flush=True)
+        return {"task_type": cond.task_type, "model": model, "success": True,
+            "resumed": False, "skipped_complete": True}
 
-        if path is not None and have > 0:
-            print(f"  [{datetime.now().strftime('%H:%M:%S')}] [{short}] resuming "
-                  f"from {have}/{cond.expected_samples} samples", flush=True)
-            cmd = ["inspect", "eval-retry", str(path),
-                   f"--log-dir={path.parent}", "--max-connections=10"]
-            rc = subprocess.run(cmd, cwd=REPO_ROOT).returncode
-            return {"task_type": cond.task_type, "model": model,
-                    "success": rc == 0, "resumed": True, "resumed_from": have}
+    if path is not None and have > 0:
+        print(f"  [{datetime.now().strftime('%H:%M:%S')}] [{short}] resuming "
+          f"from {have}/{cond.expected_samples} samples", flush=True)
+        cmd = ["inspect", "eval-retry", str(path),
+           f"--log-dir={path.parent}", "--max-connections=10"]
+        rc = subprocess.run(cmd, cwd=REPO_ROOT).returncode
+        return {"task_type": cond.task_type, "model": model,
+            "success": rc == 0, "resumed": True, "resumed_from": have}
 
-        return run_evaluation(cond.task_type, model, log_dir)
-    finally:
-        os.chdir(prev)
+    # cwd is passed through to the subprocess; os.chdir was a race -- it is
+    # process-global and this function runs on six threads at once.
+    return run_evaluation(cond.task_type, model, log_dir, cwd=REPO_ROOT)
 
 
 def run_condition(
@@ -736,6 +767,10 @@ def main() -> int:
           "(written before the first API call)")
 
     status = load_status()
+    # Keys written by the removed spend guard would otherwise be carried
+    # forward verbatim and read as if they described this run.
+    for stale in ("usage_baseline_usd", "max_spend_usd"):
+        status.pop(stale, None)
     record_event(status, "launch", conditions=[c.task_type for c in selected],
                  n_models=len(models), est_cost_usd=round(total_cost, 2))
     save_status(status)
@@ -784,6 +819,15 @@ def main() -> int:
     print(f"status -> {RUN_STATUS_PATH.relative_to(REPO_ROOT)}")
     done = [t for t, o in status["conditions"].items() if o.get("completeness") == "complete"]
     print(f"complete conditions: {', '.join(done) if done else 'none'}")
+    # Exit status must reflect what happened: a night that stopped on a failed
+    # gate is not a success, and anything chained on $? (build_provenance, a
+    # cron alert, the operator's own check) would otherwise read it as one.
+    not_done = [c.task_type for c in selected
+                if (status["conditions"].get(c.task_type) or {}).get("completeness")
+                != "complete"]
+    if not_done:
+        print(f"INCOMPLETE conditions: {', '.join(not_done)}")
+        return 1
     return 0
 
 

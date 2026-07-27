@@ -232,7 +232,12 @@ def build_manifest(logs_dir: Path) -> dict:
             # run. It is picked up on the next build once complete.
             spec = dc.CONDITIONS_BY_TASK_TYPE.get(condition)
             n_have = sum(1 for _ in prov.iter_eval_samples(path))
-            if spec is not None and n_have < spec.expected_samples:
+            # Completeness here must match the runner's gate (>= 98% fully
+            # scored, not 100% of samples): a run the gate blessed at 799/800
+            # would otherwise be skipped as "in progress" forever and never
+            # enter the manifest.
+            floor = int(0.98 * spec.expected_samples) if spec else 0
+            if spec is not None and n_have < floor:
                 print(f"  skipping {condition}/{model}: in progress "
                       f"({n_have}/{spec.expected_samples})", flush=True)
                 continue
@@ -258,10 +263,14 @@ def build_manifest(logs_dir: Path) -> dict:
     # Deliberately NOT folded into all_pass. That flag is the reported-run
     # provenance claim -- the one the paper rests on -- and it must not go red
     # because a robustness analysis is mid-flight or incomplete. The
-    # decomposition gets its own flag.
-    decomp_ok = all(
-        r["prompt_hash_matches_expected"] and r["triples_byte_identical_to_frozen"]
-        for r in decomp_runs
+    # decomposition gets its own flag -- and that flag is None, not True, when
+    # there is nothing to attest: all() over an empty list is vacuously true,
+    # and "decomposition_all_pass: true" over zero runs would be a provenance
+    # claim about data that does not exist.
+    decomp_ok = (
+        all(r["prompt_hash_matches_expected"] and r["triples_byte_identical_to_frozen"]
+            for r in decomp_runs)
+        if decomp_runs else None
     )
 
     manifest = {
