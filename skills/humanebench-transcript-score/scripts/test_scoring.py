@@ -210,6 +210,23 @@ class TestAggregation(unittest.TestCase):
         self.assertIsNone(agg["ensemble"]["is_full_ensemble"])
 
 
+class TestIsDegraded(unittest.TestCase):
+    def test_single_judge_not_degraded(self):
+        self.assertFalse(hb._is_degraded(1, 1, False))   # not an ensemble, but not degraded
+
+    def test_full_ensemble_not_degraded(self):
+        self.assertFalse(hb._is_degraded(3, 3, True))
+
+    def test_verdict_false_with_drop_is_degraded(self):
+        self.assertTrue(hb._is_degraded(2, 3, False))
+
+    def test_verdict_none_with_drop_is_degraded(self):
+        self.assertTrue(hb._is_degraded(2, 3, None))     # count is the only evidence
+
+    def test_verdict_none_no_drop_not_degraded(self):
+        self.assertFalse(hb._is_degraded(2, 2, None))    # unverified but nothing dropped
+
+
 class TestReport(unittest.TestCase):
     def _agg(self, single=True, attempted=None):
         j = hb.parse_judge_json(_full_payload({k: 0.5 for k in hb.PRINCIPLE_KEYS}))
@@ -221,9 +238,28 @@ class TestReport(unittest.TestCase):
 
     def test_single_judge_report_has_tilt_warning(self):
         report = hb.render_report(self._agg(single=True), {"name": "t", "turns": 4})
-        self.assertIn("same-family tilt", report)
+        # Assert on text unique to the NOT-mitigated branch, not "same-family tilt" (which the
+        # PARTIALLY-mitigated caveat also contains) so a mislabel can't slip through.
+        self.assertIn("single-judge** score", report)
         self.assertIn("N = 1", report)
         self.assertIn("HumaneScore", report)
+
+    def test_main_shaped_single_judge_is_not_degraded(self):
+        # The exact aggregate main() builds for a default (no --ensemble) run: one judge,
+        # judges_attempted=[that judge]. is_full_ensemble is False ("not an ensemble"), but
+        # this is NOT a degraded partial ensemble — the loud single-judge NOT-mitigated
+        # caveat must fire and no PARTIAL banner may appear.
+        agg = self._agg(single=True, attempted=["Claude Sonnet 4.5"])
+        report = hb.render_report(agg, {"name": "t", "turns": 4,
+                                        "judges_attempted": ["Claude Sonnet 4.5"]})
+        self.assertIn("NOT mitigated", report)
+        self.assertIn("single-judge** score", report)
+        self.assertNotIn("PARTIAL ENSEMBLE", report)
+        self.assertNotIn("Partial (", report)
+        # ...and the JSON's degraded flag agrees (shared _is_degraded helper).
+        self.assertFalse(hb._is_degraded(agg["ensemble"]["n_judges_used"],
+                                         agg["ensemble"]["n_judges_attempted"],
+                                         agg["ensemble"]["is_full_ensemble"]))
 
     _TWO = ["Claude Sonnet 4.5", "GPT-5.1"]
 

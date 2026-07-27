@@ -255,6 +255,19 @@ def band_label(score: float) -> str:
     return "net anti-humane"
 
 
+def _is_degraded(n_used: int, n_attempted: int, verdict) -> bool:
+    """True when a requested judge didn't produce a score — the single definition of
+    "degraded", shared by the report and the JSON payload so they can't drift.
+
+    A confirmed-full ensemble (``verdict is True``) is never degraded. Otherwise a drop is
+    evidenced by ``n_used < n_attempted``: ``verdict is False`` confirms it, and a ``None``
+    verdict (attempted set unrecorded) falls back to that same count. A single-judge run
+    (``n_used == n_attempted == 1``, ``verdict False``) is NOT degraded — it's just not an
+    ensemble.
+    """
+    return n_used < n_attempted and verdict is not True
+
+
 def _fmt(score: float) -> str:
     return f"{score:+.2f}"
 
@@ -276,26 +289,26 @@ def render_report(agg: dict, meta: dict) -> str:
     if n_attempted is None:
         n_attempted = len(attempted_names)
     ensemble_attempted = n_attempted > 1
-    # The verdict is authoritative when the aggregate recorded one. When it didn't
-    # (verdict None — e.g. a marker-less/legacy aggregate), the attempted count recovered
-    # from meta is the only evidence of a drop, so honor it rather than silently losing the
-    # provisional warning. A confident "full Ensemble" is still NEVER claimed on a None
-    # verdict — that path can only reach "Partial" or the hedged "Multi-judge".
-    degraded = verdict is False or (verdict is None and n_used < n_attempted)
-    # Label off the verdict/degradation: "Partial (N of M)" whenever a drop is known;
-    # "Ensemble" only on a confirmed-full verdict; "Multi-judge" for an unverified
-    # (verdict-None, nothing-known-dropped) run, so a copied headline can never masquerade
-    # as the full published ensemble.
+    # Degraded = a requested judge was dropped (shared helper, same rule as the JSON). A
+    # confirmed-full ensemble is never degraded; a single-judge run (n_used==n_attempted==1,
+    # verdict False) is not degraded either — it's just not an ensemble.
+    degraded = _is_degraded(n_used, n_attempted, verdict)
+    # Label off verdict/degradation: "Partial (N of M)" whenever a drop is known; "Ensemble"
+    # only on a confirmed-full verdict; "Multi-judge" for an unverified (verdict-None,
+    # nothing-known-dropped) run, so a copied headline can never masquerade as the full
+    # published ensemble. (agg_col is only consumed in the multi-judge branch below.)
     if degraded:
         agg_col = f"Partial ({n_used} of {n_attempted})"
     elif verdict is True:
         agg_col = "Ensemble"
     else:
         agg_col = "Multi-judge"
-    # Only name the attempted judges in the banner when the recorded names actually match
-    # the attempted count; otherwise the parenthetical would list the *succeeded* judges as
-    # if they were the requested set, silently omitting the dropped one.
-    names_match = len(attempted_names) == n_attempted
+    # Only name the attempted judges in the banner when the recorded names both match the
+    # attempted count AND cover the judges that succeeded; otherwise the parenthetical could
+    # list the *succeeded* judges as if they were the requested set, or a stale/mismatched
+    # list, silently misrepresenting who was asked.
+    names_match = (len(attempted_names) == n_attempted
+                   and set(judges) <= set(attempted_names))
     lines = []
     lines.append("## HumaneBench v3.0 — Transcript Evaluation")
     lines.append("")
@@ -685,14 +698,15 @@ def main(argv: list[str] | None = None) -> int:
     report = render_report(agg, meta)
     # Canonical fields for the degraded/full question live in aggregate.ensemble
     # (is_full_ensemble / n_judges_used / n_judges_attempted). The top-level keys here are
-    # the human-readable judge *name* lists; `degraded` is derived from the aggregate's
-    # verdict (not a parallel count comparison) so the JSON and the markdown never contradict.
-    # main() always supplies judges_attempted, so the verdict here is concrete (never None).
+    # the human-readable judge *name* lists; `degraded` goes through the SAME _is_degraded
+    # helper the report uses, so the JSON and the markdown apply one rule and can't drift.
+    _ens = agg["ensemble"]
     payload = {
         "meta": meta,
         "judges": succeeded,                 # names that actually produced a score
         "judges_attempted": judge_names,      # names we tried to run
-        "degraded": agg["ensemble"]["is_full_ensemble"] is False,
+        "degraded": _is_degraded(_ens["n_judges_used"], _ens["n_judges_attempted"],
+                                 _ens["is_full_ensemble"]),
         "aggregate": agg,
     }
 
