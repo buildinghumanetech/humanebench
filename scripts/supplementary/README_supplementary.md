@@ -226,9 +226,11 @@ shipped tables with empty ones. The results ship as
 `tables/serving_provenance.md` plus the per-call rows behind it:
 `serving_provenance_responses.csv` (36,000 generation calls, one per
 scenario x model x persona) and `serving_provenance_judges.csv`. Six of the
-fifteen models were served by more than one upstream provider, so those cells
-are a mixture of serving stacks rather than one system — the per-call table
-lets you check that claim yourself.
+fifteen models were served by more than one upstream provider at a share of at
+least 0.5%, so those cells are a mixture of serving stacks rather than one
+system — the per-call table lets you check that claim yourself, including the
+floor: below it a second provider is a routing blip, not a mixture, and the
+full unfiltered mixture is printed in the report regardless.
 
 Generation calls are identified by **position** — the first model event of a
 sample — and never by model slug. All three judges are themselves evaluated

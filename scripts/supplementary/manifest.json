@@ -32,6 +32,27 @@
     {"src": "tables", "why": "every derived table the paper cites"},
     {"src": "tables/decomposition", "root": "aux",
      "why": "goal-vs-tactics decomposition outputs"},
+
+    {"src": "tables/decomposition/response_disclosure_rates.csv", "root": "aux",
+     "dst": "tables/decomposition/response_disclosure_rates.csv.gz",
+     "transform": "gzip",
+     "why": "4.0 MB -> 0.29 MB. Gitignored in the repo as bulky and regeneratable, which is true there and false here: the package ships no decomposition logs, so a reviewer who cannot read this table cannot check the judge-artifact control at all. Compressed rather than dropped."},
+    {"src": "tables/decomposition/alpha_decomp_b_xml_objective/inter_judge_raw.csv", "root": "aux",
+     "dst": "tables/decomposition/alpha_decomp_b_xml_objective/inter_judge_raw.csv.gz",
+     "transform": "gzip",
+     "why": "6.0 MB -> 0.16 MB. Per-judge severities for condition B; without it the per-condition alpha is unverifiable from the package."},
+    {"src": "tables/decomposition/alpha_decomp_c_prose/inter_judge_raw.csv", "root": "aux",
+     "dst": "tables/decomposition/alpha_decomp_c_prose/inter_judge_raw.csv.gz",
+     "transform": "gzip",
+     "why": "condition C, same rationale"},
+    {"src": "tables/decomposition/alpha_decomp_d_okr/inter_judge_raw.csv", "root": "aux",
+     "dst": "tables/decomposition/alpha_decomp_d_okr/inter_judge_raw.csv.gz",
+     "transform": "gzip",
+     "why": "condition D, same rationale"},
+    {"src": "tables/decomposition/alpha_decomp_e_abtest/inter_judge_raw.csv", "root": "aux",
+     "dst": "tables/decomposition/alpha_decomp_e_abtest/inter_judge_raw.csv.gz",
+     "transform": "gzip",
+     "why": "condition E, same rationale"},
     {"src": "tables/inter_judge_raw_regenerated.csv",
      "dst": "tables/inter_judge_raw_regenerated.csv.gz",
      "transform": "gzip",
@@ -89,7 +110,9 @@
 
     "data_generation/embeddings_cache/**",
 
-    "tables/inter_judge_raw_regenerated.csv"
+    "tables/inter_judge_raw_regenerated.csv",
+    "tables/decomposition/response_disclosure_rates.csv",
+    "tables/decomposition/alpha_*/inter_judge_raw.csv"
   ],
 
   "exclude_why": {

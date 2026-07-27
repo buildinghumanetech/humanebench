@@ -52,6 +52,14 @@
       "replace": "- **Archive DOI:** _(withheld for anonymous review)_",
       "why": "Matches the label build_provenance.py emits after its own scrub, so regenerating this file inside the package reproduces it."
     },
+    {
+      "path": "provenance/MANIFEST.md",
+      "op": "replace",
+      "expect_hits": 1,
+      "find": "_The Zenodo deposit covers the reported runs only; decomposition logs are repo-local until the deposit is updated._",
+      "replace": "_The archived deposit covers the reported runs only; decomposition logs are repo-local until the deposit is updated._",
+      "why": "The same note the manifest_json rule rewrites inside MANIFEST.json, rendered into the markdown. build_provenance.py only emits it when decomposition_runs is non-empty, so it did not exist until the decomposition analysis landed -- the keyword gate caught the new path on the first build after the merge. Wording matches the scrubbed build_provenance.py so regenerating inside the package reproduces it."
+    },
 
     {
       "path": "provenance/MANIFEST.json",
