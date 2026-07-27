@@ -13,7 +13,7 @@ scenario-resamples stratified by principle. Seed and conventions match
 generated under one bootstrap design.
 
 Inputs (read-only):
-  - tables/inter_judge_raw.csv  (produced by compute_inter_judge_agreement.py;
+  - tables/inter_judge_raw_regenerated.csv  (produced by compute_inter_judge_agreement.py;
     already exclusion-filtered upstream)
 
 Outputs (written to --output-dir):
@@ -37,7 +37,7 @@ from humanebench.bootstrap import (  # noqa: E402
     load_long_scores,
 )
 
-DEFAULT_RAW = REPO_ROOT / "tables" / "inter_judge_raw.csv"
+DEFAULT_RAW = REPO_ROOT / "tables" / "inter_judge_raw_regenerated.csv"
 DEFAULT_OUT = REPO_ROOT / "tables"
 
 # Headline CSVs in the repo root that we can augment in-place without
@@ -54,6 +54,33 @@ PRINCIPLES_TUPLE = (
 )
 
 
+def _shown(path: Path) -> str:
+    """Repo-relative path for display, or the full path if it lies outside.
+
+    `--output-dir` may point anywhere; a progress message is no reason to
+    abort a run that has already written its first file.
+    """
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _without_ci_columns(df):
+    """Drop any CI columns a previous run left behind.
+
+    The augment functions merge freshly computed `*_ci_lower` / `*_ci_upper`
+    columns in by model. If the target already carries columns of those names,
+    pandas resolves the collision by suffixing both sides `_x` / `_y`, the
+    canonical names vanish, and the column reorder at the end -- which keeps
+    only names it recognises -- silently drops every confidence interval in
+    the file. Running the script twice therefore used to strip the CIs it
+    added the first time. Clearing them first makes the operation idempotent.
+    """
+    return df.drop(columns=[c for c in df.columns
+                            if c.endswith(("_ci_lower", "_ci_upper"))])
+
+
 def _augment_persona_csv(path: Path, persona: str, cells_df) -> None:
     """Add *_ci_lower / *_ci_upper columns to {persona}_scores.csv in place.
 
@@ -63,7 +90,7 @@ def _augment_persona_csv(path: Path, persona: str, cells_df) -> None:
     import pandas as pd
     if not path.exists():
         return
-    df = pd.read_csv(path)
+    df = _without_ci_columns(pd.read_csv(path))
     sub = cells_df[cells_df["persona"] == persona].copy()
     sub = sub.rename(columns={"principle": "_principle"})
     for principle in PRINCIPLES_TUPLE:
@@ -96,7 +123,7 @@ def _augment_steerability_csv(path: Path, cells_df, deltas_df) -> None:
     import pandas as pd
     if not path.exists():
         return
-    df = pd.read_csv(path)
+    df = _without_ci_columns(pd.read_csv(path))
     for persona in ("baseline", "good_persona", "bad_persona"):
         ci = cells_df[(cells_df["persona"] == persona)
                       & (cells_df["principle"] == "HumaneScore")][
@@ -134,7 +161,7 @@ def _augment_steerability_csv(path: Path, cells_df, deltas_df) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw-csv", type=Path, default=DEFAULT_RAW,
-                        help="Path to inter_judge_raw.csv")
+                        help="Path to the per-judge long table")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUT,
                         help="Directory to write CI CSVs into")
     parser.add_argument("--n-bootstrap", type=int, default=N_BOOTSTRAP_DEFAULT)
@@ -161,14 +188,14 @@ def main() -> None:
     cells = bootstrap_cell_scores(long, n_bootstrap=args.n_bootstrap, seed=args.seed)
     out_cells = args.output_dir / "score_cis_long.csv"
     cells.to_csv(out_cells, index=False)
-    print(f"  wrote {len(cells):,} rows -> {out_cells.relative_to(REPO_ROOT)}")
+    print(f"  wrote {len(cells):,} rows -> {_shown(out_cells)}")
 
     print(f"\nBootstrapping paired persona deltas "
           f"(n={args.n_bootstrap}, seed={args.seed}) ...")
     deltas = bootstrap_persona_deltas(long, n_bootstrap=args.n_bootstrap, seed=args.seed)
     out_deltas = args.output_dir / "persona_delta_cis_long.csv"
     deltas.to_csv(out_deltas, index=False)
-    print(f"  wrote {len(deltas):,} rows -> {out_deltas.relative_to(REPO_ROOT)}")
+    print(f"  wrote {len(deltas):,} rows -> {_shown(out_deltas)}")
 
     if args.augment_existing_csvs:
         print("\nAugmenting existing repo-root CSVs with CI columns ...")
@@ -176,11 +203,11 @@ def main() -> None:
             target = REPO_ROOT / f"{persona}_scores.csv"
             if target.exists():
                 _augment_persona_csv(target, persona, cells)
-                print(f"  patched {target.relative_to(REPO_ROOT)}")
+                print(f"  patched {_shown(target)}")
         steer = REPO_ROOT / "steerability_comparison.csv"
         if steer.exists():
             _augment_steerability_csv(steer, cells, deltas)
-            print(f"  patched {steer.relative_to(REPO_ROOT)}")
+            print(f"  patched {_shown(steer)}")
 
 
 if __name__ == "__main__":

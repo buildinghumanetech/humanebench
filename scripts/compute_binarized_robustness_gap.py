@@ -12,7 +12,7 @@ mean severity is positive — and checking whether the gap survives in BOTH
 ordering AND magnitude.
 
 Inputs (read-only):
-  - tables/inter_judge_raw.csv (35,956 rows: sample_uid, persona, model,
+  - tables/inter_judge_raw_regenerated.csv (35,956 rows: sample_uid, persona, model,
     principle, judge_name, severity)
 
 Outputs (written to tables/):
@@ -279,7 +279,7 @@ def main() -> None:
     parser.add_argument(
         "--judge-raw-csv",
         type=Path,
-        default=Path(__file__).resolve().parent.parent / "tables/inter_judge_raw.csv",
+        default=Path(__file__).resolve().parent.parent / "tables/inter_judge_raw_regenerated.csv",
     )
     parser.add_argument(
         "--tables-dir",
