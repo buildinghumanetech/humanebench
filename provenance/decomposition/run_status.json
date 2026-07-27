@@ -2,9 +2,159 @@
   "schema": "humanebench-decomposition-status/1",
   "conditions": {
     "decomp_b_xml_objective": {
-      "status": "skipped_insufficient_credit",
-      "credit_usd": 10.0,
-      "needed_usd": 388.608
+      "status": "ran",
+      "aborted_midway": true,
+      "started_at": "2026-07-26T22:09:46.303399+00:00",
+      "finished_at": "2026-07-26T23:11:54.621675+00:00",
+      "n_subprocess_failures": 0,
+      "archived": [
+        "logs/decomp_b_xml_objective/claude-opus-4.1/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_LWWNqpPAZMwzCTKYgUPDF2.eval",
+        "logs/decomp_b_xml_objective/claude-sonnet-4/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_YtC8fw87BUFxtkibGw3Ck8.eval",
+        "logs/decomp_b_xml_objective/claude-sonnet-4.5/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_hEHMijq8EMDAZbncobueu3.eval",
+        "logs/decomp_b_xml_objective/deepseek-v3.1-terminus/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_KTKDEg4hhJpkkXC43XagCP.eval",
+        "logs/decomp_b_xml_objective/gemini-2.5-flash/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_7b5f9A2gEJquKctqeTPFRM.eval",
+        "logs/decomp_b_xml_objective/gemini-2.5-pro/2026-07-26T16-50-41-04-00_decomp-b-xml-objective-eval_KbjbGJq5jUp9YVzBUdfMkg.eval"
+      ],
+      "credit_before_usd": 10.410181887999997,
+      "gate": {
+        "task_type": "decomp_b_xml_objective",
+        "threshold": 0.98,
+        "expected_analysis_samples": 788,
+        "models": {
+          "openrouter/anthropic/claude-opus-4.1": {
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/claude-opus-4.1/2026-07-26T18-09-48-04-00_decomp-b-xml-objective-eval_LWWNqpPAZMwzCTKYgUPDF2.eval",
+            "fraction_scored": 0.99873,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 787,
+            "n_judge_failures": 1,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/anthropic/claude-sonnet-4": {
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/claude-sonnet-4/2026-07-26T18-09-48-04-00_decomp-b-xml-objective-eval_YtC8fw87BUFxtkibGw3Ck8.eval",
+            "fraction_scored": 0.99873,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 787,
+            "n_judge_failures": 1,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/anthropic/claude-sonnet-4.5": {
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/claude-sonnet-4.5/2026-07-26T18-09-48-04-00_decomp-b-xml-objective-eval_hEHMijq8EMDAZbncobueu3.eval",
+            "fraction_scored": 0.99873,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 787,
+            "n_judge_failures": 1,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/deepseek/deepseek-v3.1-terminus": {
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/deepseek-v3.1-terminus/2026-07-26T18-09-48-04-00_decomp-b-xml-objective-eval_KTKDEg4hhJpkkXC43XagCP.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 788,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 1
+          },
+          "openrouter/google/gemini-2.5-flash": {
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/gemini-2.5-flash/2026-07-26T18-09-48-04-00_decomp-b-xml-objective-eval_7b5f9A2gEJquKctqeTPFRM.eval",
+            "fraction_scored": 1.0,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 788,
+            "n_judge_failures": 0,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 0
+          },
+          "openrouter/google/gemini-2.5-pro": {
+            "status": "ok",
+            "eval_file": "logs/decomp_b_xml_objective/gemini-2.5-pro/2026-07-26T18-09-48-04-00_decomp-b-xml-objective-eval_KbjbGJq5jUp9YVzBUdfMkg.eval",
+            "fraction_scored": 0.99746,
+            "n_samples": 800,
+            "n_excluded_by_flag": 12,
+            "n_fully_scored": 786,
+            "n_judge_failures": 2,
+            "n_off_scale": 0,
+            "n_nan_with_scores": 3
+          },
+          "openrouter/meta-llama/llama-4-maverick": {
+            "status": "missing",
+            "fraction_scored": 0.0
+          },
+          "openrouter/openai/gpt-4.1": {
+            "status": "missing",
+            "fraction_scored": 0.0
+          },
+          "openrouter/openai/gpt-4o-2024-11-20": {
+            "status": "missing",
+            "fraction_scored": 0.0
+          },
+          "openrouter/openai/gpt-5": {
+            "status": "missing",
+            "fraction_scored": 0.0
+          },
+          "openrouter/openai/gpt-5.1": {
+            "status": "missing",
+            "fraction_scored": 0.0
+          }
+        },
+        "worst_fraction_scored": 0.0,
+        "wrong_frame_models": [],
+        "passed": false,
+        "serving_providers": {
+          "openrouter/anthropic/claude-opus-4.1": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/anthropic/claude-sonnet-4": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/anthropic/claude-sonnet-4.5": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Amazon Bedrock": 1.0
+            }
+          },
+          "openrouter/deepseek/deepseek-v3.1-terminus": {
+            "n_distinct_providers": 5,
+            "shares": {
+              "SiliconFlow": 0.2775,
+              "Novita": 0.2525,
+              "AtlasCloud": 0.1975,
+              "StreamLake": 0.1787,
+              "DeepInfra": 0.0938
+            }
+          },
+          "openrouter/google/gemini-2.5-flash": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Google": 1.0
+            }
+          },
+          "openrouter/google/gemini-2.5-pro": {
+            "n_distinct_providers": 1,
+            "shares": {
+              "Google": 1.0
+            }
+          }
+        }
+      },
+      "completeness": "incomplete"
     }
   },
   "events": [
@@ -39,9 +189,72 @@
       "est_cost_usd": 566.72,
       "usage_baseline_usd": 0.0,
       "max_spend_usd": 800.0
+    },
+    {
+      "at": "2026-07-26T22:02:51.252069+00:00",
+      "event": "launch",
+      "conditions": [
+        "decomp_b_xml_objective",
+        "decomp_c_prose",
+        "decomp_d_okr",
+        "decomp_e_abtest"
+      ],
+      "n_models": 11,
+      "est_cost_usd": 566.72,
+      "usage_baseline_usd": 59.589818112,
+      "max_spend_usd": 800.0
+    },
+    {
+      "at": "2026-07-26T22:09:44.574164+00:00",
+      "event": "launch",
+      "conditions": [
+        "decomp_b_xml_objective",
+        "decomp_c_prose",
+        "decomp_d_okr",
+        "decomp_e_abtest"
+      ],
+      "n_models": 11,
+      "est_cost_usd": 566.72,
+      "usage_baseline_usd": 59.589818112,
+      "max_spend_usd": 800.0
+    },
+    {
+      "at": "2026-07-26T22:09:46.303372+00:00",
+      "event": "credit_low_but_capped",
+      "condition": "decomp_b_xml_objective",
+      "detail": "insufficient credit: $10.41 available, $388.61 needed (1.2x est)",
+      "max_spend_usd": 800.0
+    },
+    {
+      "at": "2026-07-26T22:28:17.767678+00:00",
+      "event": "credit_check",
+      "condition": "decomp_b_xml_objective",
+      "after_models": 1,
+      "credit_usd": 9.897649157000004,
+      "spent_usd": 60.51253273099999
+    },
+    {
+      "at": "2026-07-26T22:28:17.767757+00:00",
+      "event": "credit_abort_midway",
+      "condition": "decomp_b_xml_objective",
+      "credit_usd": 9.897649157000004,
+      "needed_usd": 353.28,
+      "withheld": 5
+    },
+    {
+      "at": "2026-07-26T23:11:57.019334+00:00",
+      "event": "gate_fail",
+      "condition": "decomp_b_xml_objective",
+      "models": [
+        "openrouter/meta-llama/llama-4-maverick",
+        "openrouter/openai/gpt-4.1",
+        "openrouter/openai/gpt-4o-2024-11-20",
+        "openrouter/openai/gpt-5",
+        "openrouter/openai/gpt-5.1"
+      ]
     }
   ],
-  "updated_at": "2026-07-26T20:50:39.544710+00:00",
-  "usage_baseline_usd": 0.0,
+  "updated_at": "2026-07-26T23:11:57.019348+00:00",
+  "usage_baseline_usd": 59.589818112,
   "max_spend_usd": 800.0
 }
