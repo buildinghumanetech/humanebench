@@ -50,6 +50,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
+# Python block-buffers stdout when it is not a terminal, so `| tee run.log`
+# shows nothing for minutes and a hung run is indistinguishable from a buffered
+# one. The decomposition runner learned this the hard way (59cbec8); same fix.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except AttributeError:  # pragma: no cover - very old interpreters
+    pass
+
 from humanebench import provenance as prov  # noqa: E402
 from humanebench.discriminant import (  # noqa: E402
     DATA_DIR,
