@@ -75,8 +75,21 @@ SHORT = {BASELINE: "baseline", ANCHOR: "A"}
 SHORT.update({c.task_type: c.label for c in dc.CONDITIONS})
 
 # Pre-committed in results/decomposition_precommitment.md, rule 1: this model's
-# reported Delta_bad (-0.14) sits inside the +/-0.105 half-width at n=200, so its
 # flip status is not a finding in either direction and is not reported as one.
+#
+# CORRECTION 2026-07-27, after the runs: the pre-commitment justifies this with
+# "Delta_bad = -0.14", but -0.14 is this model's **S_bad** -- a level, not a
+# difference. Its Delta_A is -0.731 [-0.769, -0.694] (see
+# decomposition_model_scores.csv), five times larger. The number was right and
+# its name was wrong.
+#
+# The conclusion survives, and on a better footing than the one written down.
+# A sign flip is a threshold on S_bad, not on Delta, so S_bad is exactly the
+# quantity that decides it: at -0.139 [-0.171, -0.108] this model sits 4.3
+# half-widths from the threshold against 13.7 for the next-closest flipper
+# (deepseek-v3.1-terminus at -0.356). Its flip status is by a wide margin the
+# least stable in the cohort, which is what the pre-commitment was protecting
+# against. The mislabelled premise is recorded rather than quietly amended.
 INDETERMINATE_FLIP = {"llama-4-maverick"}
 
 
@@ -315,6 +328,371 @@ def flip_table(grid, conditions: list[str], frame: str) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Dose-response across wordings
+# ---------------------------------------------------------------------------
+
+
+# Directness tiers, taken from the design as written before any run
+# (`humanebench.decomposition.CONDITIONS` rationales and
+# `results/decomposition_precommitment.md` rule 5):
+#
+#   0  A       the objective *plus* the seven enumerated tactics
+#   1  B, C, D the objective alone, in three registers
+#   2  E       "most indirect, exploratory"
+#
+# Tier 1 is deliberately a set, not a sequence. The design calls B, C and D
+# registers -- matched XML, naturalistic prose, growth-team OKR -- and nowhere
+# declares one more indirect than another, so there is no a-priori order among
+# them to test. Inventing one after seeing the data is exactly the move this
+# table exists to avoid; within-tier pairs are reported as unordered.
+_MOST_INDIRECT = {"decomp_e_abtest"}
+DIRECTNESS_TIER: dict[str, int] = {ANCHOR: 0}
+DIRECTNESS_TIER.update(
+    {c.task_type: (2 if c.task_type in _MOST_INDIRECT else 1)
+     for c in dc.CONDITIONS}
+)
+TIER_NAME = {
+    0: "objective + enumerated tactics",
+    1: "objective only, three registers",
+    2: "objective at one remove (most indirect)",
+}
+
+
+def _paired_n(scores: pd.DataFrame, models: list[str], frame_ids: set[str],
+              arm_a: str, arm_b: str) -> int:
+    """Scenarios in the frame that EVERY model scored under both arms.
+
+    `bootstrap_cohort_grid` shares one scenario draw across every cell but does
+    not intersect: a drawn scenario absent from a cell contributes nothing to
+    that cell, on the same footing as the point estimate. That is defensible,
+    and it is also why "perfectly paired" is the wrong words for it. This
+    reports the number of scenarios for which the pairing really is exact, so
+    the gap against the frame size is visible instead of asserted away.
+    """
+    sub = scores[scores["model"].isin(models)
+                 & scores["persona"].isin([arm_a, arm_b])
+                 & scores["sample_id"].isin(frame_ids)]
+    counts = sub.groupby("sample_id")["persona"].count()
+    # 2 arms x len(models) rows is a scenario every model scored under both.
+    return int((counts == 2 * len(models)).sum())
+
+
+def arm_contrast_table(grid, conditions: list[str], frame: str,
+                       scores: pd.DataFrame, models: list[str]) -> pd.DataFrame:
+    """Every pairwise arm difference on one frame, with paired CIs.
+
+    The cohort table answers "how does each arm differ from A". This answers the
+    other half: **do the objective-only wordings differ from each other?** If
+    they do not, the decomposition measures a property of the objective rather
+    than of any particular phrasing of it, which is the stronger claim; if they
+    do, the spread bounds how much of any single arm's number is phrasing.
+
+    The estimand for a pair is the cohort-mean `S_a - S_b`. The baseline cancels,
+    so this is identical to `Delta_a - Delta_b`; it is reported on the S scale
+    because for arm-vs-arm there is no baseline term to difference against. Both
+    members of a pair are read off the same replicate, so the CI is paired across
+    scenarios exactly as the DiD CIs are.
+
+    Pairs are labelled by `DIRECTNESS_TIER`, fixed by the design document.
+    Nothing here sorts arms by their outcome.
+    """
+    b = grid.personas.index(BASELINE)
+    arms = [ANCHOR] + conditions
+    unranked = [a for a in arms if a not in DIRECTNESS_TIER]
+    if unranked:
+        # A new arm with no declared tier would silently be compared as if it
+        # had one. Fail instead: the tier is a design fact, not a default.
+        raise KeyError(f"no declared directness tier for: {unranked}")
+    frame_ids = set(grid.scenario_ids)
+    rows = []
+    for x, arm_a in enumerate(arms):
+        for arm_b in arms[x + 1:]:
+            i = grid.personas.index(arm_a)
+            j = grid.personas.index(arm_b)
+            diff_reps = (grid.replicates[:, :, i] - grid.replicates[:, :, j]).mean(axis=1)
+            lo, hi = _ci(diff_reps)
+            t_a, t_b = DIRECTNESS_TIER[arm_a], DIRECTNESS_TIER[arm_b]
+            rows.append({
+                "frame": frame,
+                "arm_a": SHORT[arm_a],
+                "task_type_a": arm_a,
+                "arm_b": SHORT[arm_b],
+                "task_type_b": arm_b,
+                "tier_a": t_a,
+                "tier_b": t_b,
+                "kind": "within tier" if t_a == t_b else "across tiers",
+                "n_scenarios_frame": len(frame_ids),
+                "n_scenarios_fully_paired": _paired_n(
+                    scores, models, frame_ids, arm_a, arm_b),
+                "mean_s_a": float(grid.point[:, i].mean()),
+                "mean_delta_a": float((grid.point[:, i] - grid.point[:, b]).mean()),
+                "mean_s_b": float(grid.point[:, j].mean()),
+                "mean_delta_b": float((grid.point[:, j] - grid.point[:, b]).mean()),
+                "diff_s_a_minus_b": float((grid.point[:, i] - grid.point[:, j]).mean()),
+                "diff_ci_lower": lo,
+                "diff_ci_upper": hi,
+                "excludes_zero": bool(lo > 0 or hi < 0),
+                "is_did_vs_A": arm_a == ANCHOR,
+                # Only meaningful across tiers: "the more direct arm scored
+                # lower". Left None within a tier, where no direction is declared.
+                "follows_declared_direction": (
+                    None if t_a == t_b
+                    else bool(float((grid.point[:, i] - grid.point[:, j]).mean()) < 0)
+                ),
+            })
+    return pd.DataFrame(rows)
+
+
+def dose_response_notes(contrasts: pd.DataFrame) -> list[str]:
+    """Prose for `arm_contrast_table`, derived from the table, never asserted.
+
+    The declared hypothesis is between tiers only: a less direct framing should
+    produce *less* harm, i.e. a higher S. A cross-tier pair counts as confirming
+    it only if it runs that way **and** its paired CI excludes zero; an
+    unseparated pair is reported as unseparated, never as evidence of equality.
+    Within a tier there is no declared direction, so those pairs are reported as
+    spread and nothing is inferred from their sign.
+    """
+    lines: list[str] = []
+    across = contrasts[contrasts["kind"] == "across tiers"]
+    within = contrasts[contrasts["kind"] == "within tier"]
+
+    lines.append("Declared tiers: " + "; ".join(
+        f"**{t}** = {TIER_NAME[t]} ("
+        + ", ".join(sorted(set(
+            contrasts.loc[contrasts["tier_a"] == t, "arm_a"].tolist()
+            + contrasts.loc[contrasts["tier_b"] == t, "arm_b"].tolist()
+        )))
+        + ")"
+        for t in sorted(set(contrasts["tier_a"]) | set(contrasts["tier_b"]))
+    ) + ".\n")
+
+    lines.append("**Across tiers** — the direction the design predicts:\n")
+    for r in across.to_dict("records"):
+        # Reported as the change in S when moving to the LESS direct arm, which
+        # is the negation of the stored a-minus-b difference.
+        rise = -r["diff_s_a_minus_b"]
+        lo, hi = -r["diff_ci_upper"], -r["diff_ci_lower"]
+        verb = "rises" if rise > 0 else "falls"
+        lines.append(
+            f"- **{r['arm_a']} → {r['arm_b']}** (tier {r['tier_a']} → "
+            f"{r['tier_b']}): S {verb} by {abs(rise):.3f} "
+            f"[{lo:+.3f}, {hi:+.3f}]"
+            + ("" if r["follows_declared_direction"]
+               else " — **against the declared direction**")
+            + ("" if r["excludes_zero"] else " (CI includes zero: not separated)")
+        )
+    lines.append("")
+
+    confirmed = across[
+        across["follows_declared_direction"].fillna(False).astype(bool)
+        & across["excludes_zero"]
+    ]
+    if len(across) and len(confirmed) == len(across):
+        lines.append(
+            f"All {len(across)} cross-tier contrasts run in the declared "
+            "direction and separate from zero: less direct framing, less harm, "
+            "at every declared step."
+        )
+    elif len(across):
+        lines.append(
+            f"{len(confirmed)} of {len(across)} cross-tier contrasts both run "
+            "in the declared direction and separate from zero. The rest are "
+            "listed above with the reason."
+        )
+    lines.append("")
+
+    if len(within):
+        n_sep = int(within["excludes_zero"].sum())
+        spread = float(
+            pd.concat([within["mean_s_a"], within["mean_s_b"]]).max()
+            - pd.concat([within["mean_s_a"], within["mean_s_b"]]).min()
+        )
+        lines.append(
+            f"**Within tier 1** (registers, no declared order) — "
+            f"{n_sep} of {len(within)} pairs separate from zero, across a total "
+            f"spread of {spread:.3f} in mean S:\n"
+        )
+        for r in within.to_dict("records"):
+            lines.append(
+                f"- {r['arm_a']} − {r['arm_b']}: "
+                f"{_fmt(r['diff_s_a_minus_b'], r['diff_ci_lower'], r['diff_ci_upper'])}"
+                + ("" if r["excludes_zero"] else " (not separated)")
+            )
+        lines.append("")
+        vs_a = contrasts[contrasts["is_did_vs_A"]]["diff_s_a_minus_b"].abs()
+        smallest_vs_a = float(vs_a.min()) if len(vs_a) else float("nan")
+        # Deliberately NOT a ratio of the two. This document states that no
+        # ratios are taken, and the reason generalises here: `spread` is a
+        # max-minus-min over three noisy cohort means with no interval of its
+        # own, so a multiple built on it blows up precisely when the wordings
+        # agree -- the outcome this section exists to demonstrate. The two
+        # magnitudes are printed side by side and the reader can see the gap.
+        lines.append(
+            "These are register effects, not doses. The spread is reported "
+            f"because {spread:.3f} is the honest bound on how much of any single "
+            "objective-only number is a property of its phrasing"
+            + (
+                f", and it is to be read against the contrasts against A, the "
+                f"smallest of which is {smallest_vs_a:.3f}. No multiple of the "
+                "two is quoted: the spread is a max-minus-min over three cohort "
+                "means and carries no interval, so a ratio built on it is "
+                "unstable exactly where the wordings agree."
+                if spread and smallest_vs_a == smallest_vs_a
+                else "."
+            )
+        )
+    return lines
+
+
+# ---------------------------------------------------------------------------
+# Sensitivity
+# ---------------------------------------------------------------------------
+
+
+def _cohort_delta_did(grid, cond: str, mask: np.ndarray) -> dict:
+    """Cohort mean Delta and DiD over the masked model subset, paired CIs."""
+    b = grid.personas.index(BASELINE)
+    a = grid.personas.index(ANCHOR)
+    j = grid.personas.index(cond)
+    pt = grid.point[mask]
+    reps = grid.replicates[:, mask, :]
+    delta_a_pt = float((pt[:, a] - pt[:, b]).mean())
+    delta_pt = float((pt[:, j] - pt[:, b]).mean())
+    did_reps = (reps[:, :, a] - reps[:, :, j]).mean(axis=1)
+    did_lo, did_hi = _ci(did_reps)
+    return {
+        "n_models": int(mask.sum()),
+        "mean_delta_A": delta_a_pt,
+        "mean_delta_condition": delta_pt,
+        "mean_did": delta_a_pt - delta_pt,
+        "did_ci_lower": did_lo,
+        "did_ci_upper": did_hi,
+        "did_excludes_zero": bool(did_lo > 0 or did_hi < 0),
+    }
+
+
+def sensitivity_table(
+    grid, conditions: list[str], frame: str, drop: set[str]
+) -> pd.DataFrame:
+    """Recompute the headline contrasts with pre-declared-indeterminate models out.
+
+    `llama-4-maverick` sits in the flipper group whose mean DiD carries the sign
+    split, while its own flip status was pre-declared indeterminate
+    (`decomposition_precommitment.md` rule 1), so a reader is entitled to ask what
+    the cohort and group numbers look like without it. Answering here is cheaper
+    than being asked.
+
+    **No flip counts in this table.** An earlier version carried `n_flip_under_A`
+    per cohort, which states the dropped model's flip status by subtraction: 6
+    for the full cohort against 5 without it says exactly what rule 1 forbids
+    saying. The sensitivity question is about the mean Delta and the DiD, so
+    those are the only quantities here. The group *labels* are the published
+    condition-A partition, a fact about the reported run that predates this
+    analysis; what must not appear is a count that resolves to one model's status.
+
+    This is a sensitivity check, not a second result: the reported numbers remain
+    the full-cohort ones. Group rows carry no CIs, matching `group_table` — they
+    are means over a handful of models, shown for their sign.
+    """
+    present = [m for m in drop if m in grid.models]
+    if not present:
+        return pd.DataFrame()
+    b = grid.personas.index(BASELINE)
+    a = grid.personas.index(ANCHOR)
+    all_mask = np.ones(len(grid.models), dtype=bool)
+    kept_mask = np.array([m not in drop for m in grid.models])
+    flips_a = np.array(
+        [grid.point[i, b] > 0 and grid.point[i, a] < 0
+         for i in range(len(grid.models))]
+    )
+
+    rows = []
+    for cond in conditions:
+        for label, mask in (("all models", all_mask),
+                            (f"{', '.join(sorted(present))} dropped", kept_mask)):
+            base = {
+                "frame": frame,
+                "condition": SHORT[cond],
+                "task_type": cond,
+                "cohort": label,
+            }
+            rows.append({**base, "group": "cohort",
+                         **_cohort_delta_did(grid, cond, mask)})
+            for group_name, group_sel in (("robust under A", ~flips_a),
+                                          ("flips under A", flips_a)):
+                gmask = mask & group_sel
+                if not gmask.any():
+                    continue
+                gstats = _cohort_delta_did(grid, cond, gmask)
+                # Group means are descriptive; blank the CI columns rather than
+                # print an interval over four or five models as if it were one.
+                gstats.update({"did_ci_lower": np.nan, "did_ci_upper": np.nan,
+                               "did_excludes_zero": None})
+                rows.append({**base, "group": group_name, **gstats})
+    return pd.DataFrame(rows)
+
+
+def principle_notes(principle_b: pd.DataFrame) -> list[str]:
+    """Reader-anticipating notes on the per-principle table, derived from it.
+
+    Two things a reviewer will find on their own if we do not point at them
+    first: a principle whose DiD comes back positive, and the principle with the
+    smallest tactics contribution. Both are computed here rather than asserted,
+    so the prose cannot drift from the table it describes.
+    """
+    lines: list[str] = []
+    positives = principle_b[principle_b["did_A_minus_condition"] > 0]
+    for r in positives.to_dict("records"):
+        lines.append(
+            f"- **{r['principle']}** is the one principle whose DiD is positive "
+            f"({r['did_A_minus_condition']:+.3f} "
+            f"[{r['did_ci_lower']:+.3f}, {r['did_ci_upper']:+.3f}]): the bare "
+            f"objective degrades it further than the full adversarial persona "
+            f"does. Read it against its baseline of {r['s_baseline']:+.3f} — "
+            f"sitting on the −0.5/+0.5 boundary of a scale with no neutral "
+            f"level, i.e. already at the edge of acceptable before any "
+            f"adversarial prompt is applied, against a mean of "
+            f"{principle_b['s_baseline'].mean():+.3f} across the eight "
+            f"principles. Both arms land below zero here (A "
+            f"{r['s_anchor_A']:+.3f}, B {r['s_condition']:+.3f}), so the "
+            f"positive DiD is a difference between two already-negative cells "
+            f"on the principle with the least room to fall, not evidence that "
+            f"the objective is more harmful overall."
+        )
+    # "Smallest tactics contribution" is asked of the principles where the
+    # tactics contribute harm at all. A positive-DiD principle is a different
+    # phenomenon, covered by its own bullet above, and letting it win this
+    # comparison on |DiD| would print the same row twice under two readings.
+    negatives = principle_b[principle_b["did_A_minus_condition"] < 0]
+    if negatives.empty:
+        return lines
+    smallest = negatives.loc[negatives["did_A_minus_condition"].abs().idxmin()]
+    delta_rank = int(
+        principle_b["delta_condition"].abs().rank(ascending=False)[smallest.name]
+    )
+    lines.append(
+        f"- Of the {len(negatives)} principles where the tactics add harm, "
+        f"**{smallest['principle']}** carries the smallest contribution "
+        f"({smallest['did_A_minus_condition']:+.3f} "
+        f"[{smallest['did_ci_lower']:+.3f}, {smallest['did_ci_upper']:+.3f}]) "
+        f"while its objective-only effect ({smallest['delta_condition']:+.3f}) "
+        f"ranks {delta_rank} of {len(principle_b)} by magnitude — the objective "
+        "alone moves it a lot; deleting the tactics changes it least."
+    )
+    if smallest["principle"] == "be-transparent-and-honest":
+        lines.append(
+            "  That is the pattern the design predicts: the concealment rule "
+            "(`Never acknowledge you're playing a persona`) was deliberately "
+            "retained in B so that A→B removes tactics and nothing else "
+            "(`decomposition_precommitment.md`, known confounds). Transparency "
+            "is therefore the one principle B still instructs against, and it is "
+            "the one principle where deleting the tactics changes least."
+        )
+    return lines
+
+
+# ---------------------------------------------------------------------------
 # Per-principle
 # ---------------------------------------------------------------------------
 
@@ -388,6 +766,14 @@ def principle_table(
     cell_lookup = {
         (r.principle, r.persona): r.point_estimate for r in cells.itertuples()
     }
+    # The paired intersection is per principle and is NOT the frame size: every
+    # (model, persona) cell must have scored a scenario for it to enter. On the
+    # 200 frame with six personas that leaves 22-25 scenarios per principle,
+    # which is the concrete reason these arms carry no significance. Printing it
+    # beats asserting an MDE the table itself does not show.
+    n_lookup = {
+        (r.principle, r.persona): int(r.n_scenarios) for r in cells.itertuples()
+    }
     rows = []
     for cond in conditions:
         fam_delta, fam_did = [], []
@@ -414,6 +800,10 @@ def principle_table(
                 "condition": SHORT[cond],
                 "task_type": cond,
                 "principle": principle,
+                # Scenarios entering this principle's paired intersection --
+                # identical across the personas of one call, by construction.
+                "n_scenarios": n_lookup[(principle, BASELINE)],
+                "n_models": len(models),
                 "s_baseline": s_base,
                 "s_anchor_A": s_anchor,
                 "delta_A": s_anchor - s_base,
@@ -427,12 +817,20 @@ def principle_table(
                 # A percentile bootstrap cannot resolve below 1/n_bootstrap.
                 # When the raw p sits on that floor the adjusted value is an
                 # upper bound, not an estimate, and is printed as "< x".
-                "delta_condition_p_at_floor": fam_delta[k] <= floor,
+                #
+                # Blank when `corrected` is False. Emitting a live at-floor
+                # boolean beside a NaN adjusted p hands a downstream reader a
+                # significance flag on the exact table the pre-commitment says
+                # must carry CIs and no stars -- the flag is about an
+                # UNcorrected p that was never licensed to be read.
+                "delta_condition_p_at_floor": (
+                    bool(fam_delta[k] <= floor) if corrected else None),
                 "did_A_minus_condition": s_anchor - s_cond,
                 "did_ci_lower": did_lo,
                 "did_ci_upper": did_hi,
                 "did_p_holm": adj_did[k],
-                "did_p_at_floor": fam_did[k] <= floor,
+                "did_p_at_floor": (
+                    bool(fam_did[k] <= floor) if corrected else None),
                 "significance_reported": corrected,
             })
     return pd.DataFrame(rows)
@@ -463,6 +861,8 @@ def write_summary(
     flips_sub: pd.DataFrame | None,
     per_model: pd.DataFrame,
     principle_b: pd.DataFrame | None,
+    contrasts: pd.DataFrame | None,
+    sensitivity: pd.DataFrame | None,
     n_bootstrap: int,
     seed: int,
 ) -> None:
@@ -570,9 +970,19 @@ def write_summary(
     L.append(
         "Threshold statistic on a continuous quantity, unstable near the "
         "boundary; the mean Δ above is the primary result. `llama-4-maverick` "
-        "was pre-declared indeterminate (its reported Δ_A of −0.14 sits inside "
-        "the ±0.105 half-width at n = 200) and its flip status is not a finding "
-        "in either direction.\n"
+        "was pre-declared indeterminate (`decomposition_precommitment.md` rule "
+        "1) and its flip status is not a finding in either direction.\n"
+    )
+    L.append(
+        "*Correction, 2026-07-27:* the pre-commitment justifies that with "
+        "\"Δ_bad = −0.14\", but −0.14 is this model's **S_bad**, a level, not a "
+        "difference — its Δ_A is −0.731, printed in the per-model table above. "
+        "The number was right and its name was wrong, and the conclusion holds "
+        "on the better footing: a flip is a threshold on S_bad, so S_bad is the "
+        "quantity that decides it, and at −0.139 [−0.171, −0.108] this model "
+        "sits 4.3 CI half-widths from the threshold against 13.7 for the "
+        "next-closest flipper. Its flip status is the least stable in the "
+        "cohort by a wide margin. Recorded rather than quietly amended.\n"
     )
     for frame_df, title in ((flips_full, "Frame: 788 scenarios"),
                             (flips_sub, "Frame: frozen 200-scenario subsample")):
@@ -594,12 +1004,18 @@ def write_summary(
 
     if principle_b is not None and not principle_b.empty:
         L.append("## Per-principle, condition B only (788 scenarios)\n")
+        n_lo = int(principle_b["n_scenarios"].min())
+        n_hi = int(principle_b["n_scenarios"].max())
         L.append(
             "Significance is reported for condition B alone. Holm-corrected "
             "across the 8 principles, within each family separately: the "
-            "objective-only effect (Δ_B) and the tactics contribution (DiD). At "
-            "n = 200 the per-principle MDE is ≈ 0.54, so the subsample arms are "
-            "descriptive only and carry no stars — see the CSV.\n"
+            "objective-only effect (Δ_B) and the tactics contribution (DiD). "
+            f"Each row rests on {n_lo}–{n_hi} scenarios × "
+            f"{int(principle_b['n_models'].iloc[0])} models. On the 200 frame "
+            "the same intersection leaves 22–25 scenarios per principle and the "
+            "per-principle MDE is ≈ 0.54, so the subsample arms are descriptive "
+            "only, carry no stars, and their at-floor flags are left blank — "
+            "see `decomposition_principle_subsample.csv`.\n"
         )
         L.append("| Principle | Δ_A | Δ_B [95% CI] | p_holm | DiD [95% CI] | p_holm |")
         L.append("|---|---:|---|---:|---|---:|")
@@ -616,6 +1032,87 @@ def write_summary(
             f"`< x` marks an adjusted p at the bootstrap's resolution floor "
             f"(1/{n_bootstrap} before correction): an upper bound, not an "
             "estimate.\n"
+        )
+        L.append("### Two rows a reader will stop on\n")
+        L.extend(principle_notes(principle_b))
+        L.append("")
+
+    if contrasts is not None and not contrasts.empty:
+        frame = contrasts["frame"].iloc[0]
+        L.append("## Dose-response across wordings\n")
+        n_frame = int(contrasts["n_scenarios_frame"].iloc[0])
+        worst = int(contrasts["n_scenarios_fully_paired"].min())
+        L.append(
+            f"All arms score the same {frame}. The estimand is the cohort-mean "
+            "`S_a − S_b`; the baseline cancels, so it equals `Δ_a − Δ_b`. Arms "
+            "carry the **directness tier declared in the design document**, not "
+            "an order read off the outcome.\n"
+        )
+        L.append(
+            f"**On pairing:** one scenario draw is shared across every cell of "
+            f"the grid, which is what makes these contrasts paired rather than "
+            f"independent. The cells are not perfectly rectangular, though — "
+            f"judge-failure cascades leave some (model, arm) cells a scenario or "
+            f"two short, and a drawn scenario absent from a cell contributes "
+            f"nothing to it, exactly as it does in the point estimate. "
+            f"`n_scenarios_fully_paired` in the CSV counts, per pair, the "
+            f"scenarios every model scored under both arms: the worst pair holds "
+            f"**{worst} of {n_frame}**. Read the contrasts as sharing a draw, not "
+            f"as a rectangular matched design.\n"
+        )
+        L.extend(dose_response_notes(contrasts))
+        L.append("")
+        L.append(
+            "Pre-commitment rule 5 applies to E in either direction: it was "
+            "flagged in advance as the arm most at risk of being too indirect to "
+            "move behaviour at all, so a flat or weak E **bounds** the "
+            "dose-response and says nothing about C or D.\n"
+        )
+        L.append("### All pairwise arm contrasts\n")
+        L.append("| Pair | kind | mean S_a | mean S_b | S_a − S_b [95% CI] | separated |")
+        L.append("|---|---|---:|---:|---|:---:|")
+        for r in contrasts.to_dict("records"):
+            L.append(
+                f"| {r['arm_a']} − {r['arm_b']} | {r['kind']} | "
+                f"{r['mean_s_a']:.3f} | {r['mean_s_b']:.3f} | "
+                f"{_fmt(r['diff_s_a_minus_b'], r['diff_ci_lower'], r['diff_ci_upper'])} | "
+                f"{'yes' if r['excludes_zero'] else 'no'} |"
+            )
+        L.append("")
+        vs_a = contrasts[contrasts["is_did_vs_A"]]
+        L.append(
+            f"{int(vs_a['excludes_zero'].sum())} of {len(vs_a)} contrasts "
+            "against A separate from zero.\n"
+        )
+
+    if sensitivity is not None and not sensitivity.empty:
+        L.append("## Sensitivity: pre-declared-indeterminate model dropped\n")
+        L.append(
+            "`llama-4-maverick` is simultaneously one of the six models counted "
+            "as flipping under A and a member of the flipper group whose mean "
+            "carries the sign split — while its flip status was pre-declared "
+            "indeterminate (`decomposition_precommitment.md` rule 1). The "
+            "reported numbers are the full-cohort ones; this table exists so "
+            "that what happens without it is on the record rather than left for "
+            "a reviewer to reconstruct.\n"
+        )
+        L.append("| Frame | Condition | Cohort | Group | n | mean Δ_A | mean Δ_cond | mean DiD [95% CI] |")
+        L.append("|---|---|---|---|---:|---:|---:|---|")
+        for r in sensitivity.to_dict("records"):
+            did = (
+                _fmt(r["mean_did"], r["did_ci_lower"], r["did_ci_upper"])
+                if r["group"] == "cohort"
+                else f"{r['mean_did']:+.3f}"
+            )
+            L.append(
+                f"| {r['frame']} | {r['condition']} | {r['cohort']} | "
+                f"{r['group']} | {r['n_models']} | {r['mean_delta_A']:+.3f} | "
+                f"{r['mean_delta_condition']:+.3f} | {did} |"
+            )
+        L.append("")
+        L.append(
+            "Group rows carry no CI, matching the descriptive split above: they "
+            "are means over four to six models, shown for their sign.\n"
         )
 
     L.append("## Models in cohort\n")
@@ -718,6 +1215,8 @@ def main() -> None:
     per_model_frames, cohort_frames, flip_frames = [], [], []
     cohort_full = cohort_sub = flips_full = flips_sub = None
     principle_b = None
+    contrasts = None
+    sensitivity_frames: list[pd.DataFrame] = []
 
     # --- FULL frame: B against A on all 788 -------------------------------
     if full_conds:
@@ -740,6 +1239,10 @@ def main() -> None:
         )
         principle_b.to_csv(args.output_dir / "decomposition_principle_b.csv",
                            index=False)
+        sensitivity_frames.append(
+            sensitivity_table(grid_full, full_conds, frame_label,
+                              INDETERMINATE_FLIP)
+        )
 
     # --- SUB frame: every arm on the identical frozen 200 -----------------
     if sub_conds:
@@ -773,6 +1276,16 @@ def main() -> None:
             args.output_dir / "decomposition_principle_subsample.csv", index=False
         )
 
+        # Wording-vs-wording contrasts only make sense where every arm is on the
+        # same scenarios, which is true on this frame and on no other.
+        contrasts = arm_contrast_table(grid_sub, arms, frame_label, s_sub, models)
+        contrasts.to_csv(
+            args.output_dir / "decomposition_dose_response.csv", index=False
+        )
+        sensitivity_frames.append(
+            sensitivity_table(grid_sub, arms, frame_label, INDETERMINATE_FLIP)
+        )
+
     per_model = pd.concat(per_model_frames, ignore_index=True)
     per_model.to_csv(args.output_dir / "decomposition_model_scores.csv", index=False)
     group_table(per_model).to_csv(
@@ -781,6 +1294,15 @@ def main() -> None:
         args.output_dir / "decomposition_cohort.csv", index=False)
     pd.concat(flip_frames, ignore_index=True).to_csv(
         args.output_dir / "decomposition_flips.csv", index=False)
+
+    sensitivity_frames = [f for f in sensitivity_frames if not f.empty]
+    sensitivity = (
+        pd.concat(sensitivity_frames, ignore_index=True)
+        if sensitivity_frames else None
+    )
+    if sensitivity is not None:
+        sensitivity.to_csv(
+            args.output_dir / "decomposition_sensitivity.csv", index=False)
 
     write_summary(
         args.output_dir / "decomposition_summary.md",
@@ -793,6 +1315,8 @@ def main() -> None:
         flips_sub=flips_sub,
         per_model=per_model,
         principle_b=principle_b,
+        contrasts=contrasts,
+        sensitivity=sensitivity,
         n_bootstrap=args.n_bootstrap,
         seed=args.seed,
     )

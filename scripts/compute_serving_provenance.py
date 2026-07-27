@@ -107,6 +107,13 @@ def scan(
     return gen_p, gen_f, jud_p, jud_f
 
 
+# Minimum share for a provider to count toward "served by more than one
+# provider". Below this a second provider is a routing blip, not a mixture --
+# without a floor, one stray call in 788 makes a single-stack cell read as a
+# blend. The full mixture is always printed; only the headline count uses this.
+MATERIAL_SHARE = 0.005
+
+
 def fmt(counter: Counter, top: int = 6) -> str:
     total = sum(counter.values()) or 1
     parts = [f"{k if k is not None else '(none)'} {100*v/total:.0f}%"
@@ -226,18 +233,38 @@ def main() -> int:
                  f"{fmt(per_model_fp[m], 3)} |")
     L.append("")
 
-    multi = {m: c for m, c in per_model_gen.items() if len(c) > 1}
+    # "More than one provider" on a share that rounds to 0% is a routing blip,
+    # not a mixture: one stray call out of 788 does not make a cell a blend of
+    # two serving stacks. Count against a floor and say what the floor is, so
+    # the headline number means what a reader takes it to mean.
+    def _material(counts):
+        total = sum(counts.values()) or 1
+        return {p: n for p, n in counts.items() if n / total >= MATERIAL_SHARE}
+
+    multi = {m: c for m, c in per_model_gen.items() if len(_material(c)) > 1}
+    trace_only = {m: c for m, c in per_model_gen.items()
+                  if len(c) > 1 and len(_material(c)) <= 1}
     if multi:
+        # These runs are whichever conditions were scanned. Naming them beats
+        # "the reported runs", which everywhere else in this repo means the
+        # three published conditions and would mislabel a decomposition scan.
         L.append(
             f"**{len(multi)} of {len(per_model_gen)} models were served by more than "
-            "one provider.** Those cells are a mixture of serving stacks rather than "
-            "a single system. This is a property of the reported runs, not something "
+            f"one provider** at a share of at least {MATERIAL_SHARE:.1%}. Those cells "
+            "are a mixture of serving stacks rather than a single system. This is a "
+            f"property of the runs scanned here ({', '.join(personas)}), not something "
             "introduced later, and it is visible to anyone who opens the released "
             "logs.\n"
         )
-        for m, c in sorted(multi.items(), key=lambda kv: -len(kv[1])):
-            L.append(f"- `{m}`: {len(c)} providers — {fmt(c)}")
+        for m, c in sorted(multi.items(), key=lambda kv: -len(_material(kv[1]))):
+            L.append(f"- `{m}`: {len(_material(c))} providers — {fmt(c)}")
         L.append("")
+    if trace_only:
+        L.append(
+            f"Excluded from that count: {', '.join(f'`{m}`' for m in sorted(trace_only))} "
+            f"— a second provider appears but serves under {MATERIAL_SHARE:.1%} of "
+            "calls. Recorded here rather than silently folded either way.\n"
+        )
 
     L.append("## Judge calls\n")
     L.append("The judge ensemble is routed the same way. This exposure is identical "

@@ -1,0 +1,11 @@
+frame,condition,flips_under_A,n_models,mean_delta_A,mean_delta_condition,mean_did,models
+200 scenarios (frozen subsample),B,False,5,-0.028243055555555552,-0.14715277777777777,0.11890972222222222,claude-opus-4.1;claude-sonnet-4;claude-sonnet-4.5;gpt-5;gpt-5.1
+200 scenarios (frozen subsample),B,True,6,-1.2027604166666668,-0.4164699074074074,-0.7862905092592593,deepseek-v3.1-terminus;gemini-2.5-flash;gemini-2.5-pro;gpt-4.1;gpt-4o-2024-11-20;llama-4-maverick
+200 scenarios (frozen subsample),C,False,5,-0.028243055555555552,-0.18280555555555553,0.1545625,claude-opus-4.1;claude-sonnet-4;claude-sonnet-4.5;gpt-5;gpt-5.1
+200 scenarios (frozen subsample),C,True,6,-1.2027604166666668,-0.4254803240740741,-0.7772800925925926,deepseek-v3.1-terminus;gemini-2.5-flash;gemini-2.5-pro;gpt-4.1;gpt-4o-2024-11-20;llama-4-maverick
+200 scenarios (frozen subsample),D,False,5,-0.028243055555555552,-0.16150000000000003,0.13325694444444447,claude-opus-4.1;claude-sonnet-4;claude-sonnet-4.5;gpt-5;gpt-5.1
+200 scenarios (frozen subsample),D,True,6,-1.2027604166666668,-0.45807291666666666,-0.7446875,deepseek-v3.1-terminus;gemini-2.5-flash;gemini-2.5-pro;gpt-4.1;gpt-4o-2024-11-20;llama-4-maverick
+200 scenarios (frozen subsample),E,False,5,-0.028243055555555552,-0.08844444444444446,0.06020138888888891,claude-opus-4.1;claude-sonnet-4;claude-sonnet-4.5;gpt-5;gpt-5.1
+200 scenarios (frozen subsample),E,True,6,-1.2027604166666668,-0.21095486111111109,-0.9918055555555556,deepseek-v3.1-terminus;gemini-2.5-flash;gemini-2.5-pro;gpt-4.1;gpt-4o-2024-11-20;llama-4-maverick
+788 scenarios,B,False,5,-0.053305477100764206,-0.174665729282445,0.12136025218168081,claude-opus-4.1;claude-sonnet-4;claude-sonnet-4.5;gpt-5;gpt-5.1
+788 scenarios,B,True,6,-1.2147968379025578,-0.4369741342552154,-0.7778227036473423,deepseek-v3.1-terminus;gemini-2.5-flash;gemini-2.5-pro;gpt-4.1;gpt-4o-2024-11-20;llama-4-maverick

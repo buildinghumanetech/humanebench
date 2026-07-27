@@ -358,6 +358,45 @@ def write_markdown(manifest: dict, path: Path) -> None:
             f"{r['created_after_freeze']} | `{r['file_sha256'][:16]}…` |"
         )
     lines.append("")
+
+    # Schema 2 carries the decomposition runs in the JSON. Rendering them here
+    # too: MANIFEST.md is the file a reader opens, and a human-readable manifest
+    # that silently covers half the runs on disk reads as if the other half had
+    # no provenance at all.
+    decomp = manifest.get("decomposition_runs")
+    if decomp:
+        lines += [
+            "## Decomposition runs (robustness analysis)",
+            "",
+            f"**{s['n_decomposition_runs']}** runs · "
+            f"prompt-hash match: **{s['decomposition_runs_prompt_hash_matches_expected']}"
+            f"/{s['n_decomposition_runs']}** · "
+            f"(id, input, target) triples byte-identical to the frozen dataset: "
+            f"**{s['decomposition_runs_triples_byte_identical']}/{s['n_decomposition_runs']}** · "
+            f"all pass: **{s['decomposition_all_pass']}**",
+            "",
+            "These are a robustness analysis of the reported three conditions, not "
+            "a fourth reported condition. Condition B scores the full frozen "
+            "dataset; C, D and E score the frozen 200-scenario subsample nested "
+            "inside it, so `expected prompt hash` differs by scale.",
+            "",
+        ]
+        if s.get("decomposition_note"):
+            lines += [f"_{s['decomposition_note']}_", ""]
+        lines += [
+            "| condition | model | created | prompts | expected hash | match | triples identical | file sha256 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for r in decomp:
+            lines.append(
+                f"| {r['condition_label']} (`{r['condition']}`) | {r['model_dir']} | "
+                f"{r['eval_created']} | {r['n_samples_hashed']} | "
+                f"`{r['expected_prompt_hash'][:16]}…` | "
+                f"{r['prompt_hash_matches_expected']} | "
+                f"{r['triples_byte_identical_to_frozen']} | "
+                f"`{r['file_sha256'][:16]}…` |"
+            )
+        lines.append("")
     path.write_text("\n".join(lines))
 
 

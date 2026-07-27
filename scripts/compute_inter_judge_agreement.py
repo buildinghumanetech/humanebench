@@ -53,6 +53,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # when the working directory is correct. Same guard as the sibling scripts.
 sys.path.insert(0, str(REPO_ROOT))
 
+from humanebench.tables import resolve_table  # noqa: E402
+
 PERSONAS = ["baseline", "good_persona", "bad_persona"]
 PRINCIPLES = [
     "respect-user-attention",
@@ -1126,6 +1128,19 @@ def main() -> None:
              "a '_golden_24' suffix.",
     )
     parser.add_argument(
+        "--personas",
+        nargs="+",
+        default=list(PERSONAS),
+        metavar="DIR",
+        help="Top-level logs/ condition directories to scan. Defaults to the "
+             "three reported personas, which is the only invocation whose "
+             "output may be cited as the published agreement figures. Passing "
+             "anything else builds a SEPARATE table for those conditions; the "
+             "resulting alpha is never pooled with the published one, and the "
+             "human-slice and golden-24 passes are skipped because both are "
+             "defined on the reported personas.",
+    )
+    parser.add_argument(
         "--exclude-ids",
         type=Path,
         default=None,
@@ -1151,6 +1166,13 @@ def main() -> None:
         parser.error(
             "--write-raw-stats records counts from a log scan; it cannot be "
             "combined with --raw-csv, which has no log scan to record"
+        )
+    if args.raw_csv is not None and args.personas != list(PERSONAS):
+        parser.error(
+            "--personas selects which logs/ condition directories to walk, and "
+            "--raw-csv walks none: the table it reads was already built from a "
+            "fixed set of conditions. Re-run with --logs-dir to scan different "
+            "ones."
         )
     if args.include_excluded and args.raw_csv is not None:
         # The shipped table was written after exclusion, so there is nothing to
@@ -1187,6 +1209,12 @@ def main() -> None:
               f"excluded_from_analysis=True in data/humane_bench.jsonl.")
 
     raw_stats_path = args.raw_csv_stats.expanduser().resolve()
+    personas = list(args.personas)
+    is_default_personas = personas == list(PERSONAS)
+    default_tables_dir = (
+        Path(__file__).resolve().parent.parent / "tables"
+    ).resolve()
+
     if args.raw_csv is not None:
         # write_outputs writes tables/inter_judge_raw{,_human_slice,_golden_24}.csv,
         # which are exactly the files the CSV mode reads as inputs. Run with the
@@ -1194,21 +1222,21 @@ def main() -> None:
         # the shipped tables a reviewer was going to diff against -- after which
         # nothing is left to detect a discrepancy with. Refuse instead.
         collisions = [
-            p for p in (args.raw_csv, args.raw_csv_human_slice, args.raw_csv_golden)
-            if p is not None
-            and p.expanduser().resolve().parent == tables_dir
+            q for q in (args.raw_csv, args.raw_csv_human_slice, args.raw_csv_golden)
+            if q is not None
+            and q.expanduser().resolve().parent == tables_dir
         ]
         if collisions:
             raise SystemExit(
                 "refusing to write outputs into the directory holding the input "
                 "tables:\n  "
-                + "\n  ".join(str(p) for p in collisions)
+                + "\n  ".join(str(q) for q in collisions)
                 + f"\n\nThis run would overwrite them, and the published tables "
                 f"in {tables_dir} that you would compare against. Pass "
                 f"--tables-dir pointing somewhere else, e.g.\n"
                 f"  --tables-dir reproduced/"
             )
-        raw_csv = args.raw_csv.expanduser().resolve()
+        raw_csv = resolve_table(args.raw_csv.expanduser())
         print(f"Reading {raw_csv} (no .eval logs needed) ...")
         long_df, stats = load_long_table_from_csv(
             raw_csv,
@@ -1217,8 +1245,29 @@ def main() -> None:
             stats_key="full_corpus",
         )
     else:
+        if not is_default_personas:
+            # The output filenames are fixed. Writing a single-condition scan
+            # into the published directory silently replaces the pooled alpha,
+            # the design effects and the raw table -- which is gitignored, so
+            # the clobber leaves no diff to notice and every downstream CI
+            # quietly changes meaning. Refuse rather than warn.
+            if tables_dir == default_tables_dir:
+                raise SystemExit(
+                    f"--personas {personas} writes the same filenames as the "
+                    f"published three-persona scan, so it would overwrite "
+                    f"{default_tables_dir} in place. Pass --tables-dir pointing "
+                    f"somewhere else (e.g. tables/decomposition/alpha_<condition>)."
+                )
+            print(
+                f"[note] non-default personas {personas}: this run produces a "
+                f"SEPARATE agreement table in {tables_dir}. Its alpha is "
+                f"conditioned on these conditions and must not be pooled with "
+                f"the published figures."
+            )
         print(f"Scanning {logs_dir} ...")
-        long_df, stats = collect_long_table(logs_dir, exclude_ids=exclude_ids)
+        long_df, stats = collect_long_table(
+            logs_dir, exclude_ids=exclude_ids, personas=personas
+        )
     print(f"  files scanned:        {stats['files_scanned']}")
     print(f"  samples scanned:      {stats['total_samples']:,}")
     print(f"  samples included:     {stats['samples_included']:,}")
@@ -1255,36 +1304,43 @@ def main() -> None:
     collected_stats["full_corpus"] = stats
 
     # Optional second pass: restrict to the 48 sample_uids humans rated.
+    # Both this pass and the golden-24 pass below are defined on the reported
+    # personas: the human ratings and the golden run were collected under them
+    # and nowhere else. Running them beside a non-default scan would overwrite
+    # the published `_human_slice` / `_golden_24` tables with the same numbers
+    # under a directory that implies they describe the scanned conditions.
+    #
     # From a raw CSV the slice is read pre-filtered: the human ratings file it
     # would otherwise be derived from is not distributable, and re-deriving it
     # would give the same rows anyway.
     human_csv = args.human_ratings_csv.expanduser().resolve()
-    if args.raw_csv is not None:
-        slice_csv = args.raw_csv_human_slice.expanduser().resolve()
-        if slice_csv.is_file():
-            print(f"\n--- Human-slice pass (from {slice_csv.name}) ---")
-            slice_df, slice_stats = load_long_table_from_csv(
-                slice_csv,
-                exclude_ids=exclude_ids,
-                stats_path=raw_stats_path,
-                stats_key="human_slice",
-            )
-            slice_metrics = compute_metrics(slice_df, n_bootstrap=args.n_bootstrap)
-            _print_pooled_summary(slice_metrics, label="48-scenario human slice")
-            print(f"\nWriting human-slice outputs to {tables_dir} ...")
-            write_outputs(
-                slice_metrics,
-                slice_stats,
-                slice_df,
-                tables_dir,
-                args.n_bootstrap,
-                suffix="_human_slice",
-            )
-        else:
-            print(
-                f"\n[note] --raw-csv-human-slice not found at {slice_csv}; "
-                f"skipping 48-scenario slice pass."
-            )
+    if not is_default_personas:
+        print(
+            "\n[note] skipping the 48-scenario human slice and the golden-24 "
+            "pass: both are defined on the reported personas, not on "
+            f"{personas}."
+        )
+    elif args.raw_csv is not None:
+        slice_csv = resolve_table(args.raw_csv_human_slice.expanduser())
+        print(f"\n--- Human-slice pass (from {slice_csv.name}) ---")
+        slice_df, slice_stats = load_long_table_from_csv(
+            slice_csv,
+            exclude_ids=exclude_ids,
+            stats_path=raw_stats_path,
+            stats_key="human_slice",
+        )
+        slice_metrics = compute_metrics(slice_df, n_bootstrap=args.n_bootstrap)
+        _print_pooled_summary(slice_metrics, label="48-scenario human slice")
+        print(f"\nWriting human-slice outputs to {tables_dir} ...")
+        write_outputs(
+            slice_metrics,
+            slice_stats,
+            slice_df,
+            tables_dir,
+            args.n_bootstrap,
+            suffix="_human_slice",
+        )
+        collected_stats["human_slice"] = slice_stats
     elif human_csv.is_file():
         print(f"\n--- Human-slice pass (restrict to {human_csv.name}) ---")
         try:
@@ -1324,34 +1380,31 @@ def main() -> None:
     # scan of the golden_questions_eval .eval file(s), or from the shipped
     # table when the logs are not on hand.
     golden_dir = args.golden_eval_dir.expanduser().resolve()
-    if args.raw_csv is not None:
-        golden_csv = args.raw_csv_golden.expanduser().resolve()
-        if golden_csv.is_file():
-            print(f"\n--- Golden-24 pass (from {golden_csv.name}) ---")
-            # The golden set is curated and deliberately not subject to the
-            # dataset cut list, matching the logs path.
-            golden_df, golden_stats = load_long_table_from_csv(
-                golden_csv,
-                exclude_ids=None,
-                stats_path=raw_stats_path,
-                stats_key="golden_24",
-            )
-            golden_metrics = compute_metrics(golden_df, n_bootstrap=args.n_bootstrap)
-            _print_pooled_summary(golden_metrics, label="curated 24 golden set")
-            print(f"\nWriting golden-24 outputs to {tables_dir} ...")
-            write_outputs(
-                golden_metrics,
-                golden_stats,
-                golden_df,
-                tables_dir,
-                args.n_bootstrap,
-                suffix="_golden_24",
-            )
-        else:
-            print(
-                f"\n[note] --raw-csv-golden not found at {golden_csv}; "
-                f"skipping golden-24 pass."
-            )
+    if not is_default_personas:
+        pass  # already announced with the human-slice skip above
+    elif args.raw_csv is not None:
+        golden_csv = resolve_table(args.raw_csv_golden.expanduser())
+        print(f"\n--- Golden-24 pass (from {golden_csv.name}) ---")
+        # The golden set is curated and deliberately not subject to the
+        # dataset cut list, matching the logs path.
+        golden_df, golden_stats = load_long_table_from_csv(
+            golden_csv,
+            exclude_ids=None,
+            stats_path=raw_stats_path,
+            stats_key="golden_24",
+        )
+        golden_metrics = compute_metrics(golden_df, n_bootstrap=args.n_bootstrap)
+        _print_pooled_summary(golden_metrics, label="curated 24 golden set")
+        print(f"\nWriting golden-24 outputs to {tables_dir} ...")
+        write_outputs(
+            golden_metrics,
+            golden_stats,
+            golden_df,
+            tables_dir,
+            args.n_bootstrap,
+            suffix="_golden_24",
+        )
+        collected_stats["golden_24"] = golden_stats
     elif golden_dir.is_dir():
         golden_eval_files = sorted(golden_dir.glob("**/*.eval"))
         if golden_eval_files:

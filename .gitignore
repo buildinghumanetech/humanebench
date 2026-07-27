@@ -265,6 +265,17 @@ evaluator/workshop/results.jsonl
 # scripts/compute_inter_judge_agreement.py)
 tables/inter_judge_raw.csv
 
+# The same two tables again, one copy per decomposition condition (~15 MB).
+# Same rationale as above: bulky, purely derived, and regeneratable with
+#   scripts/compute_inter_judge_agreement.py --personas <condition> \
+#       --tables-dir tables/decomposition/alpha_<condition>
+#   scripts/compute_judge_artifact_controls.py --personas ... \
+#       --output-dir tables/decomposition
+# The small summary tables built from them (alpha_by_condition.md,
+# judge_artifact_controls.md, judge_blinding_check.csv) ARE committed.
+tables/decomposition/alpha_*/inter_judge_raw.csv
+tables/decomposition/response_disclosure_rates.csv
+
 # Multi-label scoring datasets (7 MB). They embed archived model responses, and
 # `logs/` is ignored above for exactly that reason -- responses are not published
 # from this repo. Regeneratable byte-for-byte via
