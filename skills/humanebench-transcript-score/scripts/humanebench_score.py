@@ -270,25 +270,33 @@ def _is_degraded(n_used: int, n_attempted: int) -> bool:
     return n_used < n_attempted
 
 
-def _resolve_counts(agg: dict, meta: dict) -> tuple:
+def _resolve_counts(agg: dict, meta: dict) -> tuple[int, int]:
     """(n_used, n_attempted) for an aggregate, tolerating marker-less/foreign aggregates the
-    same way render_report and _build_payload both need: n_used falls back to the number of
-    judges present, n_attempted to meta's recorded requested-judge count. Shared so the two
+    same way render_report and _build_payload both need. n_used is the number of judges
+    ACTUALLY present (``len(per_judge)``) — counted, never read from the ``n_judges_used``
+    marker, which a foreign aggregate can inflate to hide a drop; the marker is only a
+    fallback when per_judge is absent. n_attempted comes from the aggregate's marker, or
+    meta's recorded requested-judge count when the aggregate carries none. Shared so both
     consumers resolve counts identically (and neither KeyErrors on a marker-less aggregate)."""
     ens = agg.get("ensemble", {})
     per_judge = agg.get("per_judge", {})
-    n_used = ens.get("n_judges_used", len(per_judge))
+    n_used = len(per_judge) if per_judge else ens.get("n_judges_used", 0)
     n_attempted = ens.get("n_judges_attempted")
     if n_attempted is None:
         n_attempted = len(meta.get("judges_attempted", per_judge))
     return n_used, n_attempted
 
 
-def _trusted_attempted_names(agg: dict, meta: dict, n_attempted: int):
+def _trusted_attempted_names(agg: dict, meta: dict, n_attempted: int) -> "list | None":
     """meta's recorded requested-judge names IF trustworthy, else None. Trustworthy = the
-    list has the right cardinality AND covers the judges that actually scored; otherwise it
+    list covers the judges that actually scored AND has the right cardinality; otherwise it
     could be the *succeeded* judges (or a stale list) masquerading as the requested set, so
-    we never present it. One rule, used for both the report banner and the JSON payload."""
+    we never present it. One rule, used for both the report banner and the JSON payload.
+
+    Note: the cardinality half only does independent work when the aggregate carries its own
+    ``n_judges_attempted`` marker. On a marker-less aggregate, ``_resolve_counts`` derives
+    n_attempted FROM ``len(meta["judges_attempted"])``, so ``len(names) == n_attempted`` holds
+    by construction and membership is the sole guard."""
     names = meta.get("judges_attempted")
     if names is None:
         return None
@@ -301,15 +309,19 @@ def _build_payload(meta: dict, agg: dict) -> dict:
     """Assemble the JSON payload from just the aggregate and meta, so the name lists can't be
     transposed at the call site: ``judges`` (names that produced a score) is read straight
     from the aggregate; ``judges_attempted`` is emitted only when meta's recorded list is
-    trustworthy (right count and covers the scorers), else null — never the succeeded judges
-    posing as the requested set. Counts and the degraded flag go through the SAME
-    _resolve_counts / _is_degraded helpers render_report uses, so the JSON and markdown
-    resolve them identically and can't drift."""
+    trustworthy (covers the scorers with the right count), else null — never the succeeded
+    judges posing as the requested set. When the list is untrusted it is also dropped from
+    the echoed ``meta`` so a scraper can't recover the rejected value one level down. Counts
+    and the degraded flag go through the SAME _resolve_counts / _is_degraded helpers
+    render_report uses, so the JSON and markdown resolve them identically and can't drift."""
     n_used, n_attempted = _resolve_counts(agg, meta)
+    trusted = _trusted_attempted_names(agg, meta, n_attempted)
+    if trusted is None and "judges_attempted" in meta:
+        meta = {k: v for k, v in meta.items() if k != "judges_attempted"}
     return {
         "meta": meta,
         "judges": list(agg["per_judge"]),              # names that actually produced a score
-        "judges_attempted": _trusted_attempted_names(agg, meta, n_attempted),
+        "judges_attempted": trusted,
         "degraded": _is_degraded(n_used, n_attempted),
         "aggregate": agg,
     }
@@ -322,17 +334,15 @@ def _fmt(score: float) -> str:
 def render_report(agg: dict, meta: dict) -> str:
     """Render a markdown report from an aggregate result."""
     judges = list(agg["per_judge"].keys())
-    n_used = len(judges)
-    ensemble = n_used > 1
     ens = agg.get("ensemble", {})
-    # Single source of truth for the full/partial VERDICT and the attempted COUNT: the
-    # aggregate's own markers (set by aggregate() from judges_attempted). We never
-    # re-derive the verdict from counts here — if the aggregate declined to claim a full
-    # ensemble (is_full_ensemble is None), the report must not assert one either. meta
-    # only supplies the display *names* for the banner.
+    # Single source of truth for the full/partial VERDICT: the aggregate's own marker (set by
+    # aggregate() from judges_attempted). We never re-derive the verdict from counts here — if
+    # the aggregate declined to claim a full ensemble (is_full_ensemble is None), the report
+    # must not assert one either. meta only supplies the display *names* for the banner.
     verdict = ens.get("is_full_ensemble")  # True | False | None
-    n_used, n_attempted = _resolve_counts(agg, meta)   # shared with _build_payload
-    ensemble_attempted = n_attempted > 1
+    n_used, n_attempted = _resolve_counts(agg, meta)   # shared with _build_payload; n_used ==
+    ensemble = n_used > 1                               # len(judges), so the banner and the
+    ensemble_attempted = n_attempted > 1               # table can't split on the count
     # Degraded = a requested judge was dropped (n_used < n_attempted), verdict-agnostic and
     # shared with the JSON. A single-judge run (1 of 1) is not degraded — it's just not an
     # ensemble.

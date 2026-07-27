@@ -58,6 +58,12 @@ HumaneScore (when `--ensemble`), and the methodology caveats. `pip install -r
 scripts/requirements.txt` first; `--ensemble` additionally needs the `openai` and
 `google-genai` packages plus their keys.
 
+The `--out` JSON alongside the report carries `judges` (the judges that produced a score),
+`judges_attempted` (**`list | null`** — the requested-judge names, or `null` when they
+weren't reliably recorded, so never treat it as always-a-list), a `degraded` flag, and the
+full `aggregate` (whose `ensemble` object holds `is_full_ensemble` / `n_judges_used` /
+`n_judges_attempted`).
+
 ### Path B — score in-session (quick read, no keys)
 
 When you can't run the script, YOU (the running agent) act as the judge:

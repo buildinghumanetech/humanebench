@@ -265,6 +265,27 @@ class TestBuildPayload(unittest.TestCase):
         p = hb._build_payload({"judges_attempted": ["A", "B", "C"]}, agg)
         self.assertTrue(p["degraded"])                 # 2 present, meta says 3 attempted
 
+    def test_payload_counts_scorers_not_inflated_marker(self):
+        # A foreign aggregate that inflates n_judges_used to hide a drop must NOT suppress the
+        # degraded verdict: n_used is the judges actually present (2), not the marker (3).
+        agg = self._agg(["Claude Sonnet 4.5", "GPT-5.1"],
+                        ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"])
+        agg["ensemble"]["n_judges_used"] = 3           # lie: only 2 judges are present
+        p = hb._build_payload({"judges_attempted":
+                               ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]}, agg)
+        self.assertTrue(p["degraded"])
+        self.assertEqual(len(p["judges"]), 2)
+
+    def test_payload_untrusted_names_dropped_from_meta_too(self):
+        # When judges_attempted is untrusted (wrong membership), it's null at top level AND
+        # scrubbed from the echoed meta, so a scraper can't recover the rejected value.
+        agg = self._agg(["Claude Sonnet 4.5", "GPT-5.1"],
+                        ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"])
+        p = hb._build_payload({"judges_attempted": ["X", "Y", "Z"], "name": "t"}, agg)
+        self.assertIsNone(p["judges_attempted"])
+        self.assertNotIn("judges_attempted", p["meta"])
+        self.assertEqual(p["meta"]["name"], "t")       # other meta keys survive
+
 
 class TestReport(unittest.TestCase):
     def _agg(self, single=True, attempted=None):
