@@ -21,11 +21,22 @@ Outputs are written under tables/:
   inter_judge_agreement_by_principle.csv
   inter_judge_agreement_by_model.csv
   inter_judge_raw.csv
+
+The .eval logs are 584 MB of already-compressed archives and cannot be shipped
+with the paper, so every pass also runs from the raw tables it emitted:
+
+    python scripts/compute_inter_judge_agreement.py \
+        --raw-csv tables/inter_judge_raw_regenerated.csv
+
+which reproduces all three passes (full corpus, 48-scenario human slice,
+golden 24) byte-for-byte, using the shipped per-slice tables and the log-scan
+counts recorded in tables/inter_judge_raw_stats.json.
 """
 
 import argparse
 import json
 import math
+import sys
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -35,6 +46,12 @@ import krippendorff
 import numpy as np
 import pandas as pd
 from sklearn.metrics import cohen_kappa_score
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+# `python scripts/compute_inter_judge_agreement.py` puts scripts/ on sys.path,
+# not the repo root, so the humanebench import below fails without this even
+# when the working directory is correct. Same guard as the sibling scripts.
+sys.path.insert(0, str(REPO_ROOT))
 
 PERSONAS = ["baseline", "good_persona", "bad_persona"]
 PRINCIPLES = [
@@ -163,6 +180,119 @@ def collect_long_table(
                     stats["samples_included"] += 1
 
     df = pd.DataFrame(rows)
+    return df, stats
+
+
+RAW_COLUMNS = [
+    "sample_uid",
+    "persona",
+    "model",
+    "principle",
+    "sample_id",
+    "sample_id_model",
+    "judge_name",
+    "severity",
+]
+# sample_id and sample_id_model are read as str on purpose: several principle
+# ids are numeric-looking suffixes, and letting pandas infer int64 would change
+# the groupby keys and the cluster-bootstrap labels relative to the logs path.
+RAW_DTYPES: dict = {c: str for c in RAW_COLUMNS if c != "severity"}
+RAW_DTYPES["severity"] = float
+
+
+def load_collector_stats(stats_path: Path | None, key: str) -> dict | None:
+    """Load one pass's collector stats from the sidecar JSON, or None.
+
+    The raw CSVs carry the judge scores but not the counts describing the log
+    scan that produced them -- how many samples were seen, how many lacked
+    individual_scores, how many .eval files were read. Those counts appear in
+    the published outputs, so they travel beside the CSVs in
+    tables/inter_judge_raw_stats.json rather than being invented at read time.
+    """
+    if stats_path is None or not stats_path.is_file():
+        return None
+    with open(stats_path) as fh:
+        blob = json.load(fh)
+    entry = blob.get(key)
+    if entry is None:
+        return None
+    return dict(entry)
+
+
+def load_long_table_from_csv(
+    path: Path,
+    exclude_ids: set[str] | None = None,
+    stats_path: Path | None = None,
+    stats_key: str | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    """Read a long-format per-judge table written by `write_outputs`.
+
+    Same contract as `collect_long_table`, but sourced from one of the shipped
+    `tables/inter_judge_raw*.csv` files instead of the 584 MB of `.eval` logs,
+    which are too large to distribute. Row order is preserved, so the outputs
+    are identical to the logs path rather than merely equivalent.
+
+    `.csv.gz` is read transparently by pandas.
+
+    If a sidecar stats entry is available it supplies the log-scan provenance
+    counts; it is cross-checked against the CSV and a mismatch is fatal, since
+    a sidecar that has drifted from its CSV would silently misreport the
+    denominators in every published table.
+    """
+    exclude = exclude_ids or set()
+    df = pd.read_csv(path, dtype=RAW_DTYPES)
+
+    missing = [c for c in RAW_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(f"{path} is missing required columns: {missing}")
+    df = df[RAW_COLUMNS]
+
+    off_scale = df[~df["severity"].isin(ORDINAL_LEVELS)]
+    if not off_scale.empty:
+        raise ValueError(
+            f"{path} has {len(off_scale):,} rows whose severity is off the "
+            f"canonical scale {ORDINAL_LEVELS}; first offending values: "
+            f"{sorted(off_scale['severity'].unique())[:5]}"
+        )
+
+    n_uids_before = df["sample_uid"].nunique()
+    if exclude:
+        df = df[~df["sample_id"].isin(exclude)].reset_index(drop=True)
+    n_uids_after = df["sample_uid"].nunique()
+
+    stats = {
+        "total_samples": n_uids_before,
+        "samples_included": n_uids_after,
+        "samples_excluded_no_individual_scores": 0,
+        "samples_excluded_invalid_severity": 0,
+        "samples_excluded_cut_list": n_uids_before - n_uids_after,
+        "files_scanned": 0,
+        "source": "csv",
+        "source_path": str(path),
+    }
+
+    # No stats_key means the caller writes no provenance counts (the LOO
+    # script, for instance), so there is nothing to reconcile.
+    sidecar = None if stats_key is None else load_collector_stats(stats_path, stats_key)
+    if stats_key is not None and sidecar is None:
+        print(
+            f"[warn] no stats entry for '{stats_key}' in {stats_path}; the "
+            f"provenance counts in the outputs will describe {path.name} "
+            f"itself, not the log scan that produced it."
+        )
+    elif sidecar is not None:
+        declared = sidecar.get("samples_included")
+        if declared is not None and int(declared) != n_uids_after:
+            raise ValueError(
+                f"stats sidecar for '{stats_key}' claims "
+                f"{int(declared):,} included samples but {path.name} holds "
+                f"{n_uids_after:,}. The sidecar has drifted from its CSV; "
+                f"regenerate both from the logs rather than trusting either."
+            )
+        stats.update(sidecar)
+        stats["source"] = "csv"
+        stats["source_path"] = str(path)
+
     return df, stats
 
 
@@ -884,15 +1014,59 @@ def _print_pooled_summary(metrics: dict, label: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    repo_root = REPO_ROOT
     parser.add_argument(
         "--logs-dir",
         type=Path,
-        default=Path(__file__).resolve().parent.parent / "logs",
+        default=None,
+        help="Directory of .eval logs to scan (default: <repo>/logs). "
+             "Mutually exclusive with --raw-csv.",
     )
     parser.add_argument(
         "--tables-dir",
         type=Path,
-        default=Path(__file__).resolve().parent.parent / "tables",
+        default=repo_root / "tables",
+    )
+    parser.add_argument(
+        "--raw-csv",
+        type=Path,
+        default=None,
+        help="Read the full-corpus per-judge table from this long-format CSV "
+             "(e.g. tables/inter_judge_raw_regenerated.csv, .gz accepted) "
+             "instead of walking the .eval logs. The logs are 584 MB of "
+             "already-compressed archives and are not distributable; this "
+             "reproduces every published agreement table without them.",
+    )
+    parser.add_argument(
+        "--raw-csv-human-slice",
+        type=Path,
+        default=repo_root / "tables/inter_judge_raw_human_slice.csv",
+        help="With --raw-csv: the pre-filtered human-slice table to use for "
+             "the 48-scenario pass (the human ratings CSV it would otherwise "
+             "be derived from is not distributed).",
+    )
+    parser.add_argument(
+        "--raw-csv-golden",
+        type=Path,
+        default=repo_root / "tables/inter_judge_raw_golden_24.csv",
+        help="With --raw-csv: the golden-24 table to use in place of scanning "
+             "logs/golden_questions_eval/.",
+    )
+    parser.add_argument(
+        "--raw-csv-stats",
+        type=Path,
+        default=repo_root / "tables/inter_judge_raw_stats.json",
+        help="With --raw-csv: sidecar carrying the log-scan provenance counts "
+             "for each pass, so the CSV path reproduces the published tables "
+             "exactly rather than reporting counts of the CSV itself.",
+    )
+    parser.add_argument(
+        "--write-raw-stats",
+        type=Path,
+        default=None,
+        help="Logs mode only: write the collector counts for every pass that "
+             "ran to this JSON file. This is how tables/inter_judge_raw_stats.json "
+             "is produced -- it is derived from the log scan, never hand-written.",
     )
     parser.add_argument(
         "--n-bootstrap",
@@ -940,11 +1114,21 @@ def main() -> None:
 
     if args.exclude_ids is not None and args.include_excluded:
         parser.error("--include-excluded and --exclude-ids are mutually exclusive")
+    if args.raw_csv is not None and args.logs_dir is not None:
+        parser.error("--raw-csv and --logs-dir are mutually exclusive")
+    if args.write_raw_stats is not None and args.raw_csv is not None:
+        parser.error(
+            "--write-raw-stats records counts from a log scan; it cannot be "
+            "combined with --raw-csv, which has no log scan to record"
+        )
+    collected_stats: dict[str, dict] = {}
 
-    logs_dir = args.logs_dir.expanduser().resolve()
     tables_dir = args.tables_dir.expanduser().resolve()
-    if not logs_dir.is_dir():
-        raise SystemExit(f"logs dir not found: {logs_dir}")
+    logs_dir = None
+    if args.raw_csv is None:
+        logs_dir = (args.logs_dir or repo_root / "logs").expanduser().resolve()
+        if not logs_dir.is_dir():
+            raise SystemExit(f"logs dir not found: {logs_dir}")
 
     if args.exclude_ids is not None:
         exclude_ids = _load_exclude_ids(args.exclude_ids)
@@ -958,8 +1142,19 @@ def main() -> None:
         print(f"Excluding {len(exclude_ids)} items tagged "
               f"excluded_from_analysis=True in data/humane_bench.jsonl.")
 
-    print(f"Scanning {logs_dir} ...")
-    long_df, stats = collect_long_table(logs_dir, exclude_ids=exclude_ids)
+    raw_stats_path = args.raw_csv_stats.expanduser().resolve()
+    if args.raw_csv is not None:
+        raw_csv = args.raw_csv.expanduser().resolve()
+        print(f"Reading {raw_csv} (no .eval logs needed) ...")
+        long_df, stats = load_long_table_from_csv(
+            raw_csv,
+            exclude_ids=exclude_ids,
+            stats_path=raw_stats_path,
+            stats_key="full_corpus",
+        )
+    else:
+        print(f"Scanning {logs_dir} ...")
+        long_df, stats = collect_long_table(logs_dir, exclude_ids=exclude_ids)
     print(f"  files scanned:        {stats['files_scanned']}")
     print(f"  samples scanned:      {stats['total_samples']:,}")
     print(f"  samples included:     {stats['samples_included']:,}")
@@ -993,10 +1188,40 @@ def main() -> None:
 
     print(f"\nWriting outputs to {tables_dir} ...")
     write_outputs(metrics, stats, long_df, tables_dir, args.n_bootstrap)
+    collected_stats["full_corpus"] = stats
 
     # Optional second pass: restrict to the 48 sample_uids humans rated.
+    # From a raw CSV the slice is read pre-filtered: the human ratings file it
+    # would otherwise be derived from is not distributable, and re-deriving it
+    # would give the same rows anyway.
     human_csv = args.human_ratings_csv.expanduser().resolve()
-    if human_csv.is_file():
+    if args.raw_csv is not None:
+        slice_csv = args.raw_csv_human_slice.expanduser().resolve()
+        if slice_csv.is_file():
+            print(f"\n--- Human-slice pass (from {slice_csv.name}) ---")
+            slice_df, slice_stats = load_long_table_from_csv(
+                slice_csv,
+                exclude_ids=exclude_ids,
+                stats_path=raw_stats_path,
+                stats_key="human_slice",
+            )
+            slice_metrics = compute_metrics(slice_df, n_bootstrap=args.n_bootstrap)
+            _print_pooled_summary(slice_metrics, label="48-scenario human slice")
+            print(f"\nWriting human-slice outputs to {tables_dir} ...")
+            write_outputs(
+                slice_metrics,
+                slice_stats,
+                slice_df,
+                tables_dir,
+                args.n_bootstrap,
+                suffix="_human_slice",
+            )
+        else:
+            print(
+                f"\n[note] --raw-csv-human-slice not found at {slice_csv}; "
+                f"skipping 48-scenario slice pass."
+            )
+    elif human_csv.is_file():
         print(f"\n--- Human-slice pass (restrict to {human_csv.name}) ---")
         try:
             slice_df, slice_stats, n_target = _filter_to_human_slice(long_df, human_csv)
@@ -1024,6 +1249,7 @@ def main() -> None:
                     args.n_bootstrap,
                     suffix="_human_slice",
                 )
+                collected_stats["human_slice"] = slice_stats
     else:
         print(
             f"\n[note] --human-ratings-csv not found at {human_csv}; "
@@ -1031,9 +1257,38 @@ def main() -> None:
         )
 
     # Optional third pass: α on the 24 curated golden items from a fresh
-    # scan of the golden_questions_eval .eval file(s).
+    # scan of the golden_questions_eval .eval file(s), or from the shipped
+    # table when the logs are not on hand.
     golden_dir = args.golden_eval_dir.expanduser().resolve()
-    if golden_dir.is_dir():
+    if args.raw_csv is not None:
+        golden_csv = args.raw_csv_golden.expanduser().resolve()
+        if golden_csv.is_file():
+            print(f"\n--- Golden-24 pass (from {golden_csv.name}) ---")
+            # The golden set is curated and deliberately not subject to the
+            # dataset cut list, matching the logs path.
+            golden_df, golden_stats = load_long_table_from_csv(
+                golden_csv,
+                exclude_ids=None,
+                stats_path=raw_stats_path,
+                stats_key="golden_24",
+            )
+            golden_metrics = compute_metrics(golden_df, n_bootstrap=args.n_bootstrap)
+            _print_pooled_summary(golden_metrics, label="curated 24 golden set")
+            print(f"\nWriting golden-24 outputs to {tables_dir} ...")
+            write_outputs(
+                golden_metrics,
+                golden_stats,
+                golden_df,
+                tables_dir,
+                args.n_bootstrap,
+                suffix="_golden_24",
+            )
+        else:
+            print(
+                f"\n[note] --raw-csv-golden not found at {golden_csv}; "
+                f"skipping golden-24 pass."
+            )
+    elif golden_dir.is_dir():
         golden_eval_files = sorted(golden_dir.glob("**/*.eval"))
         if golden_eval_files:
             print(
@@ -1078,6 +1333,7 @@ def main() -> None:
                     args.n_bootstrap,
                     suffix="_golden_24",
                 )
+                collected_stats["golden_24"] = golden_stats
         else:
             print(
                 f"\n[note] --golden-eval-dir {golden_dir} contains no .eval "
@@ -1088,6 +1344,25 @@ def main() -> None:
             f"\n[note] --golden-eval-dir not found at {golden_dir}; "
             f"skipping golden-24 pass."
         )
+
+    if args.write_raw_stats is not None:
+        expected = {"full_corpus", "human_slice", "golden_24"}
+        missing = sorted(expected - set(collected_stats))
+        if missing:
+            # A partial sidecar would silently leave those passes reporting
+            # counts of the CSV instead of the log scan, which is exactly the
+            # misreporting the sidecar exists to prevent.
+            raise SystemExit(
+                f"--write-raw-stats needs every pass to run, but these were "
+                f"skipped: {', '.join(missing)}. Point --human-ratings-csv and "
+                f"--golden-eval-dir at their inputs and re-run."
+            )
+        out = args.write_raw_stats.expanduser().resolve()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "w") as fh:
+            json.dump(collected_stats, fh, indent=2, sort_keys=True)
+            fh.write("\n")
+        print(f"\nWrote collector stats for {len(collected_stats)} passes to {out}")
 
     print("\nDone.")
 

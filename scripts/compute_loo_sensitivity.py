@@ -30,6 +30,10 @@ Per-judge severities are read straight from the `.eval` logs. No API calls.
 
 Inputs (read-only):
   - logs/{baseline,good_persona,bad_persona}/<model>/*.eval   (45 files)
+    or, with --raw-csv, the long-format per-judge table those logs produced
+    (tables/inter_judge_raw_regenerated.csv) -- every number below is a
+    function of that table, so the two routes give identical output and the
+    584 MB of logs need not be distributed
   - data/humane_bench.jsonl                (exclusion flags)
 
 Outputs (written to --output-dir, default tables/):
@@ -59,6 +63,7 @@ from compute_inter_judge_agreement import (  # noqa: E402
     _bootstrap_alpha_multi_level,
     _build_reliability_matrix,
     collect_long_table,
+    load_long_table_from_csv,
 )
 from compute_judge_self_preference import CONFIGS, JUDGES  # noqa: E402
 from humanebench.bootstrap import (  # noqa: E402
@@ -375,16 +380,35 @@ def write_report(out: Path, scores: pd.DataFrame, counts: pd.DataFrame,
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--logs-dir", type=Path, default=REPO_ROOT / "logs")
+    ap.add_argument("--logs-dir", type=Path, default=None,
+                    help="Directory of .eval logs to scan (default: <repo>/logs). "
+                         "Mutually exclusive with --raw-csv.")
+    ap.add_argument("--raw-csv", type=Path, default=None,
+                    help="Read the per-judge table from this long-format CSV "
+                         "(e.g. tables/inter_judge_raw_regenerated.csv, .gz "
+                         "accepted) instead of walking the .eval logs, which "
+                         "are too large to distribute with the paper. Every "
+                         "output of this script is derived from that table, so "
+                         "the results are identical either way.")
     ap.add_argument("--output-dir", type=Path, default=REPO_ROOT / "tables")
     ap.add_argument("--n-bootstrap", type=int, default=N_BOOTSTRAP_DEFAULT)
     ap.add_argument("--seed", type=int, default=BOOTSTRAP_SEED)
     args = ap.parse_args()
+    if args.raw_csv is not None and args.logs_dir is not None:
+        ap.error("--raw-csv and --logs-dir are mutually exclusive")
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Scanning {args.logs_dir} ...")
-    long, stats = collect_long_table(args.logs_dir,
-                                     exclude_ids=load_excluded_ids())
+    if args.raw_csv is not None:
+        raw_csv = args.raw_csv.expanduser().resolve()
+        print(f"Reading {raw_csv} (no .eval logs needed) ...")
+        long, stats = load_long_table_from_csv(
+            raw_csv, exclude_ids=load_excluded_ids()
+        )
+    else:
+        logs_dir = (args.logs_dir or REPO_ROOT / "logs").expanduser().resolve()
+        print(f"Scanning {logs_dir} ...")
+        long, stats = collect_long_table(logs_dir,
+                                         exclude_ids=load_excluded_ids())
     print(f"  {stats['samples_included']:,} scored items, {len(long):,} judge rows")
     long = common_item_set(long)
 
