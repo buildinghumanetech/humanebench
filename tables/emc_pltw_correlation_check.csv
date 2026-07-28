@@ -5,12 +5,12 @@ spearman_absr_vs_interaction,good_persona,-0.10344827586206896,"p=0.600; 28 depe
 spearman_rcorr_vs_interaction,good_persona,-0.06787082649151616,p=0.731
 spearman_absr_vs_interaction,bad_persona,-0.11603721948549535,"p=0.557; 28 dependent pairs, descriptive"
 spearman_rcorr_vs_interaction,bad_persona,-0.1111111111111111,p=0.574
-pc1_share,baseline,0.7318347083119323,"CI [0.647, 0.745] (conservative direction)"
-pc2_share,baseline,0.13219314309229072,
-pc1_share,good_persona,0.833091441113784,"CI [0.757, 0.842] (conservative direction)"
-pc2_share,good_persona,0.06370516498853455,
-pc1_share,bad_persona,0.9676835530466934,"CI [0.959, 0.970] (conservative direction)"
-pc2_share,bad_persona,0.02058003258477697,
+pc1_share,baseline,0.7318347083119321,"CI [0.647, 0.745] (conservative direction)"
+pc2_share,baseline,0.132193143092291,
+pc1_share,good_persona,0.8330914411137841,"CI [0.757, 0.842] (conservative direction)"
+pc2_share,good_persona,0.06370516498853461,
+pc1_share,bad_persona,0.9676835530466933,"CI [0.959, 0.970] (conservative direction)"
+pc2_share,bad_persona,0.02058003258477702,
 emc_pltw_partial_r,baseline,0.838551957392389,rank 3/28 by partial r; controls mean of other 6 principles
 emc_pltw_partial_r,good_persona,0.5656033313679162,rank 3/28 by partial r; controls mean of other 6 principles
 emc_pltw_partial_r,bad_persona,0.8536930487404786,rank 2/28 by partial r; controls mean of other 6 principles

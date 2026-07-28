@@ -22,7 +22,6 @@ No API calls.
 
 Inputs (read-only):
   - tables/emc_pltw_pair_correlations.csv
-  - tables/emc_pltw_model_principle_scores.csv
   - tables/discriminant_pooled/pairwise_interactions.csv
   - tables/inter_judge_raw_regenerated.csv   (grid recompute for bootstrap CIs)
 
@@ -59,20 +58,17 @@ from humanebench.bootstrap import (  # noqa: E402
 from humanebench.excluded import load_excluded_ids  # noqa: E402
 from humanebench.tables import resolve_table  # noqa: E402
 
-from compute_emc_pltw_nonredundancy import MODEL_ORDER, SHORT  # noqa: E402
-
-FOCAL_A = "enable-meaningful-choices"
-FOCAL_B = "prioritize-long-term-wellbeing"
+from compute_emc_pltw_nonredundancy import (  # noqa: E402
+    FOCAL_A,
+    FOCAL_B,
+    MODEL_ORDER,
+    SHORT,
+    _fmt,
+)
 
 
 def _key(a: str, b: str) -> tuple[str, str]:
     return tuple(sorted([a, b]))
-
-
-def _fmt(v, nd: int = 3) -> str:
-    if v is None or (isinstance(v, float) and np.isnan(v)):
-        return "--"
-    return f"{v:+.{nd}f}"
 
 
 # ---------------------------------------------------------------------------
@@ -125,14 +121,16 @@ def check_r_vs_interaction(pc: pd.DataFrame, pooled: pd.DataFrame) -> pd.DataFra
         sub["sig"] = [pooled_map[_key(a, b)][0] for a, b in zip(sub.principle_a, sub.principle_b)]
         rho_raw, p_raw = sp_stats.spearmanr(sub.pearson_r.abs(), sub.mag)
         rho_corr, p_corr = sp_stats.spearmanr(sub.r_corrected.abs(), sub.mag)
+        passing = sub[sub.sig]
+        failing = sub[~sub.sig]
         rows.append({
             "persona": persona,
             "spearman_absr_vs_interaction": float(rho_raw),
             "spearman_absr_p": float(p_raw),
             "spearman_rcorr_vs_interaction": float(rho_corr),
             "spearman_rcorr_p": float(p_corr),
-            "mean_absr_passing": float(sub[sub.sig].pearson_r.abs().mean()),
-            "mean_absr_failing": float(sub[~sub.sig].pearson_r.abs().mean()),
+            "mean_absr_passing": float(passing.pearson_r.abs().mean()) if len(passing) else float("nan"),
+            "mean_absr_failing": float(failing.pearson_r.abs().mean()) if len(failing) else float("nan"),
             "n_passing": int(sub.sig.sum()),
             "n_failing": int((~sub.sig).sum()),
         })
@@ -146,8 +144,10 @@ def check_r_vs_interaction(pc: pd.DataFrame, pooled: pd.DataFrame) -> pd.DataFra
 
 def _pc1_share(mat: np.ndarray) -> tuple[float, float, np.ndarray]:
     """PC1/PC2 variance share + PC1 loadings from a (n_models, n_principles) matrix."""
-    X = (mat - mat.mean(axis=0)) / mat.std(axis=0, ddof=1)
-    corr = np.corrcoef(X.T)
+    stds = mat.std(axis=0, ddof=1)
+    if np.any(stds < 1e-15):
+        return float("nan"), float("nan"), np.full(mat.shape[1], float("nan"))
+    corr = np.corrcoef(mat.T)
     evals, evecs = np.linalg.eigh(corr)
     evals, evecs = evals[::-1], evecs[:, ::-1]
     share = evals / evals.sum()
@@ -211,9 +211,8 @@ def check_general_factor(grid) -> tuple[pd.DataFrame, pd.DataFrame]:
     partial_df = pd.DataFrame(partial_rows)
     for persona in grid.personas:
         mask = partial_df.persona == persona
-        partial_df.loc[mask, "partial_rank"] = (
-            partial_df.loc[mask, "partial_r"].rank(ascending=False).astype(int)
-        )
+        ranks = partial_df.loc[mask, "partial_r"].rank(ascending=False)
+        partial_df.loc[mask, "partial_rank"] = ranks.where(ranks.notna(), other=np.nan)
     return pd.DataFrame(pca_rows), partial_df
 
 
@@ -292,6 +291,7 @@ def write_report(
     track_df: pd.DataFrame,
     pca_df: pd.DataFrame,
     partial_df: pd.DataFrame,
+    pooled: pd.DataFrame,
     n_bootstrap: int,
     seed: int,
 ) -> None:
@@ -328,12 +328,15 @@ def write_report(
         A(f"| {i+1} | {r.pair}{focal} | {r.pearson_r:+.3f} | {r.r_corrected:+.3f} | "
           f"[{_fmt(r.r_corrected_ci_lower)}, {_fmt(r.r_corrected_ci_upper)}] | {verdict} |")
     A("")
+    r1 = rank_df.iloc[0]
+    r1_verdict = "passed" if r1.pooled_significant else "failed"
     A(
-        "The rank-1 pair emc/pds has corrected r = **+1.017 — above 1.0** — and "
-        "*passed* the scenario-level test (pooled Holm p "
-        f"= {rank_df.iloc[0].pooled_p_holm:.4f}). If the HTMT-style threshold "
-        "were doing diagnostic work here, it would order emc/pds merged before "
-        "emc/pltw. The corrected r exceeding 1 is itself a known symptom of "
+        f"The rank-1 pair {r1.pair} has corrected r = **{r1.r_corrected:+.3f}**"
+        + (" — above 1.0 —" if r1.r_corrected > 1.0 else "")
+        + f" and *{r1_verdict}* the scenario-level test (pooled Holm p "
+        f"= {r1.pooled_p_holm:.4f}). If the HTMT-style threshold "
+        "were doing diagnostic work here, it would order this pair merged before "
+        "emc/pltw. Corrected r exceeding 1 is a known symptom of "
         "disattenuation under unequal reliabilities (see §4), not evidence of "
         "anything about the constructs.\n"
     )
@@ -351,18 +354,33 @@ def write_report(
         A(f"| {r.persona} | {r.spearman_absr_vs_interaction:+.3f} (p={r.spearman_absr_p:.3f}) | "
           f"{r.spearman_rcorr_vs_interaction:+.3f} (p={r.spearman_rcorr_p:.3f}) |")
     A("")
-    A(
-        "No consistent relationship, and the only nonzero value (baseline, "
-        "+0.32) has the **wrong sign** for the redundancy reading. The 28 pairs "
-        "are structurally dependent (each principle sits in 7 of them), so these "
-        "are descriptive, not tests.\n"
-    )
+    # Describe the Spearman pattern from data
+    base_spearman = track_df[track_df.persona == "baseline"].iloc[0].spearman_absr_vs_interaction
+    any_sig = (track_df.spearman_absr_p < 0.05).any()
+    if not any_sig:
+        A(
+            f"No consistent relationship (no persona reaches p < 0.05). "
+            f"The baseline value ({base_spearman:+.2f}) has the **wrong sign** "
+            "for the redundancy reading (redundancy would predict a negative "
+            "correlation). The 28 pairs are structurally dependent (each "
+            "principle sits in 7 of them), so these are descriptive, not tests.\n"
+        )
+    else:
+        A(
+            "At least one persona shows a significant relationship; inspect the "
+            "table above. The 28 pairs are structurally dependent (each principle "
+            "sits in 7 of them), so these are descriptive, not tests.\n"
+        )
     base_row = track_df[track_df.persona == "baseline"].iloc[0]
+    pass_str = f"{base_row.mean_absr_passing:.3f}" if not np.isnan(base_row.mean_absr_passing) else "n/a"
+    fail_str = f"{base_row.mean_absr_failing:.3f}" if not np.isnan(base_row.mean_absr_failing) else "n/a"
+    vacuous = base_row.n_failing <= 1 or base_row.n_passing <= 1
     A(
-        f"Mean |r| of passing pairs: {base_row.mean_absr_passing:.3f} "
-        f"(n={base_row.n_passing}); failing pairs: {base_row.mean_absr_failing:.3f} "
-        f"(n={base_row.n_failing}). **With one failing pair this comparison is "
-        "vacuous** and is reported only to close the loop on the check request.\n"
+        f"Mean |r| of passing pairs: {pass_str} "
+        f"(n={base_row.n_passing}); failing pairs: {fail_str} "
+        f"(n={base_row.n_failing})."
+        + (" **With one failing pair this comparison is "
+           "vacuous** and is reported only to close the loop on the check request.\n" if vacuous else "\n")
     )
 
     # --- Check 3 ---
@@ -395,11 +413,16 @@ def write_report(
         A(f"**{persona}** — top 3 by partial r:\n")
         A("| rank | pair | raw r | partial r | pooled verdict |")
         A("| ---: | --- | ---: | ---: | :---: |")
+        pooled_sig = {
+            _key(pr.principle_a, pr.principle_b): bool(pr.significant)
+            for _, pr in pooled.iterrows()
+        }
         for i, (_, r) in enumerate(sub.head(3).iterrows(), 1):
             pair = f"{SHORT[r.principle_a]}/{SHORT[r.principle_b]}"
             focal = " (focal)" if r.is_focal else ""
-            A(f"| {i} | {pair}{focal} | {r.raw_r:+.3f} | {r.partial_r:+.3f} | "
-              + ("**fail**" if r.is_focal else "pass") + " |")
+            sig = pooled_sig.get(_key(r.principle_a, r.principle_b))
+            verdict = "pass" if sig else "**fail**" if sig is not None else "--"
+            A(f"| {i} | {pair}{focal} | {r.raw_r:+.3f} | {r.partial_r:+.3f} | {verdict} |")
         A("")
     A(
         "At baseline the top-3 residual pairs are exactly the emc/pds/pltw "
@@ -551,7 +574,7 @@ def main() -> int:
     print(f"wrote {args.output_dir / 'emc_pltw_partial_correlations.csv'}")
 
     write_report(args.report, rank_df, mismatches, track_df, pca_df, partial_df,
-                 args.n_bootstrap, args.seed)
+                 pooled, args.n_bootstrap, args.seed)
     return 0
 
 
