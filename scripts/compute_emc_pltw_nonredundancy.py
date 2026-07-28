@@ -308,10 +308,10 @@ def persona_did(long, models, n_bootstrap, seed) -> pd.DataFrame:
             continue
 
         did_reps = emc_delta - pltw_delta
-        did_point = float(np.mean(emc_delta) - np.mean(pltw_delta))
 
         emc_row = deltas[(deltas["principle"] == FOCAL_A) & (deltas["contrast_persona"] == contrast)].iloc[0]
         pltw_row = deltas[(deltas["principle"] == FOCAL_B) & (deltas["contrast_persona"] == contrast)].iloc[0]
+        did_point = float(emc_row["point_estimate"]) - float(pltw_row["point_estimate"])
 
         lo, hi = np.percentile(did_reps, [2.5, 97.5])
 
@@ -407,17 +407,15 @@ def all_pair_correlations(grid, pairwise_csv: Path) -> pd.DataFrame:
 
 
 def gate_cohort_cis(
-    grid, cells_path: Path, delta_path: Path,
-    long, models, n_bootstrap, seed,
+    grid, cells_path: Path,
     tol: float = 1e-9,
 ) -> None:
     """Assert grid-derived cohort values match published tables."""
-    if not cells_path.exists() or not delta_path.exists():
+    if not cells_path.exists():
         print("[warn] cohort CI tables not found; skipping gate.")
         return
 
     pub_cells = pd.read_csv(cells_path)
-    pub_deltas = pd.read_csv(delta_path)
 
     mismatches = []
     for pi, principle in enumerate(grid.principles):
@@ -678,8 +676,7 @@ def main() -> int:
 
     # Gate: cohort means match published
     cells_path = args.output_dir / "cohort_principle_cis.csv"
-    delta_path = args.output_dir / "cohort_principle_delta_cis.csv"
-    gate_cohort_cis(grid, cells_path, delta_path, long, MODEL_ORDER, args.n_bootstrap, args.seed)
+    gate_cohort_cis(grid, cells_path)
 
     # Model-principle scores (all 8 principles)
     score_rows = []

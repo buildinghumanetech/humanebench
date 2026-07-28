@@ -580,6 +580,16 @@ def bootstrap_model_principle_grid(
         rep_slices.append(per_model_means)
         n_scenarios_list.append(n_s)
 
+    if not point_slices:
+        return ModelPrincipleGrid(
+            models=tuple(models),
+            personas=tuple(personas),
+            principles=(),
+            point=np.empty((len(models), len(personas), 0)),
+            replicates=np.empty((n_bootstrap, len(models), len(personas), 0)),
+            n_scenarios=np.array([], dtype=int),
+        )
+
     point = np.stack(point_slices, axis=-1)      # (n_models, n_personas, n_principles)
     replicates = np.stack(rep_slices, axis=-1)    # (n_boot, n_models, n_personas, n_principles)
 

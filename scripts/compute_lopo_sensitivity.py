@@ -519,8 +519,6 @@ def write_report(
         A(row)
     A("")
 
-    # Headline status changes
-    all8_flips = set(changes[changes.config == "all8"].iloc[0]["flips_gained"].split("; ")) if changes[changes.config == "all8"].iloc[0]["flips_gained"] else set()
     any_flip_change = False
     any_robust_change = False
     any_reading_change = False

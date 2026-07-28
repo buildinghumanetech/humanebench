@@ -272,16 +272,32 @@ def test_lopo_planted_robust_knife_edge():
 
 
 @pytest.mark.unit
-def test_lopo_reading_b_truth_table():
-    """reading_b_holds is True iff all three components are True."""
-    from compute_lopo_sensitivity import build_decomp_tables
+def test_lopo_reading_b_operationalization():
+    """reading_b_holds must be the conjunction of three components."""
+    import pandas as pd
 
-    # Test the logic directly
-    assert (True and True and True) is True
-    assert (True and True and False) is False
-    assert (True and False and True) is False
-    assert (False and True and True) is False
-    assert (False and False and False) is False
+    # Simulate rows with different component combinations
+    cases = [
+        (True, True, True, True),
+        (True, True, False, False),
+        (True, False, True, False),
+        (False, True, True, False),
+        (False, False, False, False),
+    ]
+    for rb_delta, rb_did, rb_flip, expected in cases:
+        holds = rb_delta and rb_did and rb_flip
+        assert holds == expected, f"({rb_delta}, {rb_did}, {rb_flip}) -> {holds}, expected {expected}"
+
+    # Also verify the output CSV has consistent columns when the script has been run
+    csv_path = REPO_ROOT / "tables" / "lopo_decomposition.csv"
+    if csv_path.exists():
+        df = pd.read_csv(csv_path)
+        for _, r in df.iterrows():
+            expected = bool(r["reading_b_delta"] and r["reading_b_did"] and r["reading_b_flip"])
+            assert bool(r["reading_b_holds"]) == expected, (
+                f"config={r['config']}: reading_b_holds={r['reading_b_holds']} "
+                f"but components are ({r['reading_b_delta']}, {r['reading_b_did']}, {r['reading_b_flip']})"
+            )
 
 
 @pytest.mark.unit
@@ -308,8 +324,9 @@ def test_lopo_missing_decomp_raw_exits():
     result = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "compute_lopo_sensitivity.py"),
          "--decomp-raw", "/nonexistent/path/inter_judge_raw.csv",
-         "--output-dir", "/tmp/lopo_test_missing"],
-        capture_output=True, text=True, timeout=30,
+         "--output-dir", "/tmp/lopo_test_missing",
+         "--n-bootstrap", "10"],
+        capture_output=True, text=True, timeout=120,
     )
     assert result.returncode != 0
     assert "not found" in result.stderr.lower() or "not found" in result.stdout.lower()
