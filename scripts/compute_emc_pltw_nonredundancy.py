@@ -595,6 +595,18 @@ def write_report(
 
     # §5: Summary
     A("## 5. Strongest defensible statement\n")
+    A(
+        "> **Superseded in part.** `results/emc_pltw_correlation_check.md` "
+        "examines whether the correlation statistics in §2–§3 are informative "
+        "about construct redundancy at all, and concludes they are not, in "
+        "either direction: a general performance factor dominates between-model "
+        "variance (PC1 = 73–97% by persona) and the corrected correlations do "
+        "not track the scenario-level verdicts (the rank-1 pair by corrected r "
+        "passed the interaction test; the rank-2 pair is the sole failure). "
+        "Read the sentence below as a description of the numbers, not as "
+        "evidence for or against redundancy; the retention argument rests on "
+        "the scenario-level tests and the leave-one-principle-out analysis.\n"
+    )
 
     base_focal = focal[focal["persona"] == "baseline"]
     bad_focal = focal[focal["persona"] == "bad_persona"]
