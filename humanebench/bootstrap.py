@@ -492,6 +492,108 @@ def bootstrap_cohort_principle_means(
 
 
 # ---------------------------------------------------------------------------
+# Public API: per-model per-principle grid with bootstrap replicates
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ModelPrincipleGrid:
+    """Per-model, per-persona, per-principle bootstrap replicates.
+
+    Mirrors ``bootstrap_cohort_principle_means`` but keeps the per-model axis
+    instead of collapsing to a cohort mean. RNG consumption is identical
+    call-for-call (same loop order, same single ``rng.integers`` per principle),
+    so ``replicates.mean(axis=1)`` is bit-identical to the cohort function's
+    ``cohort_reps`` under the same seed/models/personas.
+    """
+
+    models: tuple[str, ...]
+    personas: tuple[str, ...]
+    principles: tuple[str, ...]
+    point: np.ndarray       # (n_models, n_personas, n_principles)
+    replicates: np.ndarray  # (n_bootstrap, n_models, n_personas, n_principles)
+    n_scenarios: np.ndarray  # (n_principles,)
+
+
+def bootstrap_model_principle_grid(
+    long: pd.DataFrame,
+    models: Sequence[str],
+    personas: Sequence[str] = PERSONAS,
+    n_bootstrap: int = N_BOOTSTRAP_DEFAULT,
+    seed: int = BOOTSTRAP_SEED,
+) -> ModelPrincipleGrid:
+    """Bootstrap per-model per-principle scores with scenario-cluster CIs.
+
+    Uses the same paired-intersection, scenario-stratified resampling as
+    ``bootstrap_cohort_principle_means``.  Keeps the per-model dimension so
+    callers can form cross-model correlations, per-model differences, and
+    model x principle interactions from the replicate arrays directly.
+    """
+    models = list(models)
+    personas = list(personas)
+
+    sub = long[long["model"].isin(models) & long["persona"].isin(personas)]
+    rng = np.random.default_rng(seed)
+
+    principles_out: list[str] = []
+    point_slices: list[np.ndarray] = []
+    rep_slices: list[np.ndarray] = []
+    n_scenarios_list: list[int] = []
+
+    for principle in PRINCIPLES:
+        p_sub = sub[sub["principle"] == principle]
+        if p_sub.empty:
+            continue
+
+        wide = p_sub.pivot_table(
+            index="sample_id",
+            columns=["model", "persona"],
+            values="score",
+            aggfunc="first",
+        )
+        required_cols = [(m, pe) for m in models for pe in personas]
+        missing_cols = [c for c in required_cols if c not in wide.columns]
+        if missing_cols:
+            warnings.warn(
+                f"bootstrap_model_principle_grid: skipping principle "
+                f"{principle!r} — missing (model, persona) cells: {missing_cols}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            continue
+        wide = wide[required_cols].dropna()
+        if wide.empty:
+            continue
+
+        n_s = wide.shape[0]
+        flat = wide.to_numpy(dtype=float)
+        scores = flat.reshape(n_s, len(models), len(personas))
+
+        idx = rng.integers(0, n_s, size=(n_bootstrap, n_s))
+        rep_scores = scores[idx]
+        per_model_means = rep_scores.mean(axis=1)  # (n_boot, n_models, n_personas)
+
+        point_per_model = scores.mean(axis=0)  # (n_models, n_personas)
+
+        principles_out.append(principle)
+        point_slices.append(point_per_model)
+        rep_slices.append(per_model_means)
+        n_scenarios_list.append(n_s)
+
+    point = np.stack(point_slices, axis=-1)      # (n_models, n_personas, n_principles)
+    replicates = np.stack(rep_slices, axis=-1)    # (n_boot, n_models, n_personas, n_principles)
+
+    return ModelPrincipleGrid(
+        models=tuple(models),
+        personas=tuple(personas),
+        principles=tuple(principles_out),
+        point=point,
+        replicates=replicates,
+        n_scenarios=np.array(n_scenarios_list, dtype=int),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Convenience: binarized variant for the robustness-gap script
 # ---------------------------------------------------------------------------
 
