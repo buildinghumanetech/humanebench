@@ -211,7 +211,7 @@ python scripts/vp_tables_and_figure.py
 ```bash
 python scripts/compute_helm_power.py
 # -> tables/helm_power.md
-python scripts/create_aaai_helm_scatter.py
+python scripts/create_helm_delta_scatter.py
 # -> figures/helm_vs_humanescore_scatter.{pdf,png}
 ```
 
@@ -284,7 +284,7 @@ establish it, and points at the tracked artifacts that carry the claim.
 - **Individual annotator records.** `data/human_ratings/` is pseudonymised;
   the raw rater spreadsheets and the consolidation cache are not included.
 - **Author, institution, and repository identifiers**, removed for
-  dual-anonymous review and restored at camera-ready. `LICENSE` is reduced to
+  dual-anonymous review and restored in the archival release. `LICENSE` is reduced to
   its SPDX identifier for the same reason; the grant is unchanged Apache-2.0.
 
 ## Configuration the numbers depend on

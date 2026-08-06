@@ -2,14 +2,14 @@
 # gcs_safety_cache/ was tracked by accident: 3,812 raw HELM JSONs, ~520 MB,
 # roughly 90% of the repo's tracked bytes, referenced by no code (the scraper
 # reads the sibling gcs_cache/). Untracked 2026-07-27; the blobs stay in
-# history until a post-deadline history filter removes them.
+# history until a later history filter removes them.
 helm_integration/data/gcs_cache/
 helm_integration/data/gcs_safety_cache/
 # helm_raw_data.json (9.8 KB) and helm_aggregate_scores.json (7.6 KB) were
 # listed here but have been tracked since da98ec0 — ignore rules do not apply
 # to files already in the index, so the entries were dead and misleading.
 # Both are deliberately tracked: they are the inputs to compute_helm_power.py
-# and the AAAI HELM scatter, and re-scraping does not reproduce them because
+# and the HELM delta scatter, and re-scraping does not reproduce them because
 # HELM releases move under the same URL.
 
 # HELM Integration - Output files (optional - see note below)
@@ -276,40 +276,40 @@ tables/inter_judge_raw.csv
 tables/decomposition/alpha_*/inter_judge_raw.csv
 tables/decomposition/response_disclosure_rates.csv
 
-# Multi-label scoring datasets (7 MB). They embed archived model responses, and
+# Multi-label scoring datasets. They embed archived model responses, and
 # `logs/` is ignored above for exactly that reason -- responses are not published
 # from this repo. Regeneratable byte-for-byte via
 # scripts/build_discriminant_multilabel_dataset.py, and their sha256s are
 # recorded in data/discriminant/manifest.json, which IS committed.
 data/discriminant/multilabel_*.jsonl
+data/discriminant_canary/multilabel_*.jsonl
 data/discriminant_expansion/multilabel_*.jsonl
 data/discriminant_rules27/multilabel_*.jsonl
-data/discriminant_canary/multilabel_*.jsonl
 
-# --- Stripped from history 2026-07-26; kept on disk, never published ---------
-#
-# Internal strategy documents for a paper under anonymous review. They quote
-# confidential peer-review text verbatim with per-reviewer attribution, and
-# carry rebuttal framing. This repo is mirrored to anonymous.4open.science with
-# substring-only redaction, which would scrub the names and leave the strategy
-# intact for the reviewers to read.
-# Anchored to the repo root: a bare filename would match at any depth, and
-# docs/discriminant_validity_design.md is the redacted public version that four
-# modules cite.
-/humanebench_aaai27_revision_plan.md
-/adversarial-conditions.md
+# Internal working documents, drafts, and scratch material; kept on disk,
+# never published. Anchored to the repo root: a bare filename would match at
+# any depth, and docs/discriminant_validity_design.md is the public version
+# that four modules cite.
+temp/
+anonymization_redaction_list.txt
+results.zip
+humanebench_runs_backup_*.zip
+/HANDOFF_*.md
+/PLAN.md
+/EDIT_PLAN.md
+/workspace/
+/findings/
+/review_inputs/
 /DECOMP_HANDOFF.md
 /DISCRIMINANT_FOLLOWUP_SPEC.md
+/adversarial-conditions.md
 /discriminant_validity_design.md
+/*_revision_plan.md
 
 # Working results and reconciliation notes. Numbers reach the repo through
 # tables/; the prose write-ups stay local.
 /results/
 
-# 580 MB archive that GitHub's 100 MB limit rejected, which is what blocked
-# every push of this branch lineage.
-temp/*.zip
-
-# Local backup of .git and of the files stripped above, taken before the
-# history rewrite. Delete once the push has landed.
+# Local backup of .git and of files stripped from tracking; delete when no
+# longer needed.
 _prefilter_backup/

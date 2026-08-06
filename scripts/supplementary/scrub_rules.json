@@ -7,7 +7,7 @@
       "op": "replace",
       "expect_hits": 1,
       "find": "# Zenodo DOI for the archived logs deposit (reserved on a draft deposition).\nZENODO_DOI = \"10.5281/zenodo.21046964\"",
-      "replace": "# DOI of the archived logs deposit. Blank in the review copy: AAAI-27\n# submissions may not point outside the supplementary package, and the\n# deposit landing page names the authors.\nARCHIVE_DOI = \"\"",
+      "replace": "# DOI of the archived logs deposit. Blank in the review copy: the\n# submission may not point outside the supplementary package, and the\n# deposit landing page names the authors.\nARCHIVE_DOI = \"\"",
       "why": "The value AND the identifier have to go -- the constant's name alone would tell a reviewer which archive to search. Its one importer, build_provenance.py, is renamed in step with it, and already renders a falsy DOI as a withheld placeholder."
     },
 
@@ -170,7 +170,7 @@
     {
       "path": "LICENSE",
       "op": "write",
-      "content": "SPDX-License-Identifier: Apache-2.0\n\nCopyright holder withheld for AAAI-27 dual-anonymous review; the full notice is\nrestored in the camera-ready release. The licence itself is unmodified Apache\nLicense 2.0, whose canonical text is published by the Apache Software Foundation.\n",
+      "content": "SPDX-License-Identifier: Apache-2.0\n\nCopyright holder withheld for dual-anonymous review; the full notice is\nrestored in the archival release. The licence itself is unmodified Apache\nLicense 2.0, whose canonical text is published by the Apache Software Foundation.\n",
       "why": "The Apache-2.0 boilerplate's copyright line names the organisation. The SPDX identifier is the licence grant, so nothing is given up by shortening it."
     }
   ]
