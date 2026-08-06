@@ -255,3 +255,37 @@ evaluator/workshop/results.jsonl
 # Large per-judge raw severity table (13 MB, regeneratable via
 # scripts/compute_inter_judge_agreement.py)
 tables/inter_judge_raw.csv
+
+# HELM caches: gcs_safety_cache/ was tracked by accident (3,812 raw HELM JSONs,
+# ~520 MB, referenced by no code -- the scraper reads the sibling gcs_cache/).
+# Untracked 2026-07-27.
+helm_integration/data/gcs_cache/
+helm_integration/data/gcs_safety_cache/
+
+# Local scratch and internal working material, not for publication
+temp/
+anonymization_redaction_list.txt
+results.zip
+humanebench_runs_backup_*.zip
+/HANDOFF_*.md
+/PLAN.md
+/EDIT_PLAN.md
+/workspace/
+/findings/
+/review_inputs/
+/results/
+/DECOMP_HANDOFF.md
+/DISCRIMINANT_FOLLOWUP_SPEC.md
+/adversarial-conditions.md
+/discriminant_validity_design.md
+/*_revision_plan.md
+_prefilter_backup/
+
+# Multi-label judgement JSONLs and per-judge raw tables: too large to track;
+# named explicitly in the supplementary manifest instead
+data/discriminant/multilabel_*.jsonl
+data/discriminant_canary/multilabel_*.jsonl
+data/discriminant_expansion/multilabel_*.jsonl
+data/discriminant_rules27/multilabel_*.jsonl
+tables/decomposition/alpha_*/inter_judge_raw.csv
+tables/decomposition/response_disclosure_rates.csv
