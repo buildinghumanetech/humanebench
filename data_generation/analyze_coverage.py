@@ -1,7 +1,7 @@
 """
 HumaneBench Dataset Coverage Analysis + Data Quality Audit
 Run this against your humane_bench.jsonl to get the exact numbers
-needed for the AIES paper methodology section.
+needed for the paper's scenario-set and coverage reporting.
 
 Usage: python analyze_coverage.py path/to/humane_bench.jsonl
 """
