@@ -3,6 +3,8 @@
 Longitudinal analysis of frontier labs' models over time.
 """
 
+# Paper: utility -- no paper-facing output; builds longitudinal_comparison.csv (per-lab model-generation scores, deltas, and CIs), which feeds the longitudinal table emitted by scripts/generate_tables.py.
+
 import csv
 import pandas as pd
 

@@ -19,6 +19,10 @@ Outputs (to data/decomposition/, refusing overwrite without --force):
   - humane_bench_discriminant_expansion_192.jsonl
   - discriminant_expansion_192_summary.json
 """
+# Paper: utility -- no paper-facing table; draws the fresh 24-per-principle
+# scenario frame (data/decomposition/discriminant_expansion_192_ids.txt, 192
+# scenarios disjoint from the original draw) that the second separability run
+# scores and that pools to 36 per principle (main paper, "Principle Separability").
 from __future__ import annotations
 
 import argparse

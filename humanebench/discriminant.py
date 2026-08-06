@@ -21,6 +21,16 @@ module's AST rather than importing it. A copy would drift, and a drifted copy
 would silently invalidate the byte-exactness proof that the whole analysis rests
 on. Parsing keeps ``scorer.py`` authoritative while avoiding its imports.
 """
+# Paper: implements the shared frame for the designed x scored principle matrix
+# behind the separability result (main paper, "Principle Separability"); the
+# domain-stratified variant of the same probe is in the supplement,
+# "Domain-Stratified Pairwise Probe".
+# Paper: this module fixes the scenario frame, the scored models, the single
+# judge and the judge-prompt rendering. The statistics themselves -- the
+# (a-b)-(c-d) interaction contrasts, their bootstrap CIs and the Holm
+# correction across the 28 pairs -- are in humanebench/bootstrap.py
+# (pairwise_interactions, holm_adjust), driven by
+# scripts/compute_discriminant_validity.py.
 from __future__ import annotations
 
 import ast
@@ -200,6 +210,16 @@ class DiscriminantCondition:
     compare_to_november: bool
 
 
+# Paper: the scenario frames the separability analysis runs on. "discriminant"
+# is the primary matrix (12 scenarios per principle, drawn from the frozen
+# decomposition subsample). "discriminant_expansion" is the fresh scenario set
+# drawn after the pre-registered diagonal contrast came back reversed, 24 per
+# principle and with no parent frame of its own -- the out-of-sample
+# replication reported in the main paper, "Principle Separability". The other
+# two are judge-prompt robustness variants, not reported conditions: "_rules27"
+# re-renders the prompt with only two of the seven global rules retained (see
+# suppressed_rules_template above), "_canary" re-runs the primary frame and
+# template unchanged.
 CONDITIONS: dict[str, DiscriminantCondition] = {
     "discriminant": DiscriminantCondition(
         name="discriminant",
@@ -255,6 +275,11 @@ def scoring_template(cond: DiscriminantCondition) -> str:
     return cond.template_transform(OVERSEER_TEMPLATE)
 
 
+# Paper: renders the same judge prompt the reported runs used, so a scenario
+# authored for one principle can be re-scored under all eight rubrics with only
+# the rubric block changing. Holding the rest of the prompt byte-identical is
+# what makes the designed x scored interaction attributable to the rubric rather
+# than to the harness (main paper, "Principle Separability").
 def render_judge_prompt(
     principle_id: str, prompt: str, response: str,
     template: str | None = None,

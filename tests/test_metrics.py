@@ -1,4 +1,8 @@
 """Tests for metrics and utility functions in scorer.py and humane_patterns.py."""
+# Paper: tests -- validates humane_pattern_score(): the per-principle means and the
+#   HumaneScore macro-average over them, plus principle resolution from the rubric
+#   definitions (see "Overall Performance" for the reported scores); no paper-facing
+#   output.
 
 import math
 import pytest

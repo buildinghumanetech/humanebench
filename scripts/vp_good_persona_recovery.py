@@ -7,6 +7,11 @@ close the gap with non-VP performance? Reports:
 2. Per-principle VP vs non-VP comparison under good persona
 """
 
+# Paper: utility -- no paper-facing output; prints the per-population good-persona lift
+#   (good persona minus baseline) and the per-principle VP vs non-VP gap under each
+#   persona, over tables/vp_sample_scores.csv. Supports the exploratory supplement
+#   section, "Vulnerable-Population Analysis".
+
 import pandas as pd
 from pathlib import Path
 

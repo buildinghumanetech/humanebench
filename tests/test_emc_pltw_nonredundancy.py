@@ -1,4 +1,7 @@
 """Tests for emc/pltw non-redundancy analysis."""
+# Paper: tests -- validates the attenuation-corrected correlation and pair
+# statistics in scripts/compute_emc_pltw_nonredundancy.py (see supplement,
+# "Cross-Model Correlation and Construct Redundancy"); no paper-facing output.
 from __future__ import annotations
 
 import sys

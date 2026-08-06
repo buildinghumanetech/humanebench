@@ -47,6 +47,10 @@ Outputs (written to --output-dir, default data/discriminant_canary/):
 Run from repo root:
     python scripts/build_discriminant_canary.py
 """
+# Paper: utility -- no paper-facing output; builds the 96-call judge-drift canary
+# dataset under data/discriminant_canary/ (a byte copy of a slice of the already
+# scored designed x scored matrix), which gates pooling a second run into the
+# separability sample (main paper, "Principle Separability").
 from __future__ import annotations
 
 import argparse

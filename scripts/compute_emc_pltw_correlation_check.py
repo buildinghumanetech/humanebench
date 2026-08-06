@@ -33,6 +33,14 @@ Outputs:
 Run from repo root:
     python scripts/compute_emc_pltw_correlation_check.py
 """
+# Paper: produces tables/emc_pltw_correlation_check.csv and
+# emc_pltw_partial_correlations.csv -- the finding that cross-model correlations
+# between principle columns are uninformative for construct redundancy in either
+# direction (supplement, "Cross-Model Correlation and Construct Redundancy").
+# Paper: implements the general-factor account reported there: the first
+# principal component's variance share per persona with scenario-bootstrap CIs,
+# partial correlations controlling a general-quality proxy, and the check that
+# corrected correlations do not track the Holm-corrected pairwise verdicts.
 from __future__ import annotations
 
 import argparse

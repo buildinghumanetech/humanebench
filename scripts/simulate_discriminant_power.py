@@ -56,6 +56,14 @@ Run from repo root:
     python scripts/simulate_discriminant_power.py
     python scripts/simulate_discriminant_power.py --outer 3 --inner 200  # smoke
 """
+# Paper: produces tables/discriminant/power_simulation.csv -- the per-pair
+# probability of passing Holm at larger per-principle samples, which is what
+# motivated drawing the second separability sample (main paper, "Principle
+# Separability").
+# Paper: implements a two-level bootstrap: an outer resample of whole scenario
+# clusters up to 24 and 36 scenarios per principle, and inside each hypothetical
+# set the published pairwise interaction analysis with Holm correction across the
+# 28-pair family.
 from __future__ import annotations
 
 import argparse

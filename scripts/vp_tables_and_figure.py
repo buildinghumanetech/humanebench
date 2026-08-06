@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate tables and figure for Section 4.5 (Vulnerable Populations).
+"""Generate the tables and figure for the Vulnerable Populations analysis.
 
 Outputs:
   tables/vp_table5_by_principle.csv   — VP vs non-VP steerability by principle
@@ -7,6 +7,16 @@ Outputs:
   figures/vp_age_gradient.png         — horizontal candlestick chart for age groups
   figures/vp_age_gradient.pdf         — PDF version for LaTeX
 """
+# Paper: produces tables/vp_table5_by_principle.csv -- the per-principle VP
+#   vs non-VP HumaneScore table -- and figures/vp_age_gradient.{png,pdf}, the
+#   age-group figure, both in the supplement's "Vulnerable-Population
+#   Analysis"; the headline reading of them is the main paper's "Vulnerable
+#   Populations" section.
+# Paper: also produces tables/vp_table6_age_gradient.csv, the children /
+#   teenagers / elderly summary the figure plots.
+# Paper: "table5" / "table6" in the filenames are draft-era numbers. The
+#   submitted paper numbers only Table 1, in the main text; supplement tables
+#   are cited by section name.
 
 from pathlib import Path
 

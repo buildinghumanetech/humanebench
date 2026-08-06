@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Paper: produces results/rubric_appendix.md -- the verbatim judge prompt (invariant shell plus the eight principle-specific blocks) reproduced in the supplementary material as the rubric appendix.
+# Paper: implements the verification the appendix reports: the shell is byte-identical across all 8 principles and across personas and evaluated models, and each principle block matches humanebench/humane_patterns.py.
 """Extract the scoring rubric verbatim from the logs, for the appendix.
 
 A reviewer reported being unable to find the full rubric. The fix is not to

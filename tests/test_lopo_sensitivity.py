@@ -1,4 +1,7 @@
 """Tests for leave-one-principle-out sensitivity analysis."""
+# Paper: tests -- validates the model-by-principle bootstrap grid and the
+# leave-one-principle-out configurations in scripts/compute_lopo_sensitivity.py
+# (see supplement, "Leave-One-Principle-Out Sensitivity"); no paper-facing output.
 from __future__ import annotations
 
 import subprocess

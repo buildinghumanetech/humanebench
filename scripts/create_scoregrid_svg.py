@@ -9,6 +9,8 @@ humanebench-website/src/components/ScoreGrid.vue. Each cell includes data-*
 attributes to make it easy to reattach hover tooltips client-side.
 """
 
+# Paper: utility -- no paper-facing output; renders figures/scoregrid_<persona>.svg from the post-exclusion per-persona score CSVs (optionally decorated with the bootstrap CIs in tables/score_cis_long.csv) for the web front end.
+
 from __future__ import annotations
 
 import argparse

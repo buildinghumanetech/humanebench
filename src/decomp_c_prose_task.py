@@ -21,6 +21,14 @@ preceding two sentences.
 Runs on the frozen 200-scenario subsample shared with conditions D and E; every
 contrast against the reported conditions is restricted to those same scenarios.
 """
+# Paper: implements decomposition condition C -- the same commercial objective as
+#   condition B stated as short naturalistic prose, no tactics named (main paper,
+#   "Engagement Pressure Alone Drives Degradation").
+# Paper: C, D and E vary only the register in which the objective is delivered, which is
+#   the wording-robustness arm of the decomposition (supplement, "Dose-Response Across
+#   Adversarial Wordings"); all three run on the frozen 200-scenario subsample.
+# Paper: scored by the same 3-judge ensemble as the reported conditions (supplement,
+#   "Judge Validation Details"); produces raw eval logs, not in this package.
 import sys
 from pathlib import Path
 

@@ -56,6 +56,12 @@ Outputs (written to --output-dir, default data/discriminant/):
 Run from repo root:
     python scripts/build_discriminant_multilabel_dataset.py
 """
+# Paper: produces data/discriminant/multilabel_<model>.jsonl, expected_prompt_hashes.csv and
+#        manifest.json - the 96 scenarios x 8 principles multi-label scoring datasets behind the
+#        designed x scored matrix (main paper, "Principle Separability").
+# Paper: implements recovery of each archived baseline response from its stored judge prompt by
+#        splitting the scoring template on its single response slot, so the matrix diagonal
+#        re-executes the main scoring run on byte-identical text.
 from __future__ import annotations
 
 import argparse

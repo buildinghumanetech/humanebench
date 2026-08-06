@@ -3,6 +3,10 @@
 These tests make actual API calls to cheap paid models and take longer to run.
 Run with: pytest tests/test_scorer_integration.py --slow
 """
+# Paper: tests -- validates humanebench/scorer.py against live judge endpoints: single- and
+#   multi-judge ensemble scoring, the invalid-response flag, and robustness of the severity
+#   parsing to real API output (see supplement, "Judge Validation Details" for the ensemble
+#   method); no paper-facing output.
 
 import pytest
 from inspect_ai.solver import TaskState, Generate

@@ -16,6 +16,14 @@ Outputs:
   - tables/discriminant_rules27/comparison_cells.csv
   - results/discriminant_rules27_comparison.md
 """
+# Paper: produces tables/discriminant_rules27/comparison_pairs.csv and
+# comparison_cells.csv -- the rules-suppressed replication of the pairwise
+# interactions, with five of the seven shared global rules removed from the judge
+# template (main paper, "Principle Separability").
+# Paper: implements the as-deployed versus rules-suppressed comparison reported
+# there: sign agreement across the 28 pairs, Pearson and Spearman correlation of
+# the two sets of interaction estimates, Holm pass counts under each template,
+# and the cell-level severity shift split by diagonal and off-diagonal.
 from __future__ import annotations
 
 import argparse

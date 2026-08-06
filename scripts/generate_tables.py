@@ -4,6 +4,9 @@ Generate comprehensive tables for HumaneBench results writeup.
 Creates both CSV and Markdown formatted tables.
 """
 
+# Paper: produces tables/table1_steerability_summary.{csv,md} -- per-model baseline, good- and bad-persona HumaneScore with paired deltas, the master results table (main paper, "Overall Performance", Table 1).
+# Paper: also emits per-persona per-principle heatmap tables and a longitudinal table (tables/table2_* through tables/table5_*); these are supporting artifacts, not tables of the submitted paper.
+
 import pandas as pd
 import numpy as np
 

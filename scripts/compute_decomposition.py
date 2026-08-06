@@ -35,6 +35,12 @@ Usage:
     python scripts/compute_decomposition.py
     python scripts/compute_decomposition.py --n-bootstrap 2000
 """
+# Paper: produces tables/decomposition/*.csv and decomposition_summary.md - the goal-vs-tactics
+#        decomposition of the adversarial persona into objective-only conditions B-E, on the
+#        11-model cohort (main paper, "Engagement Pressure Alone Drives Degradation").
+# Paper: produces tables/decomposition/decomposition_dose_response.csv - the paired cross-tier
+#        contrasts among conditions A-E on the frozen 200-scenario subsample (supplement,
+#        "Dose-Response Across Adversarial Wordings").
 from __future__ import annotations
 
 import argparse
@@ -196,6 +202,9 @@ def per_model_table(grid, conditions: list[str], frame: str) -> pd.DataFrame:
             j = grid.personas.index(cond)
             cond_pt = grid.point[i, j]
             delta_reps = grid.replicates[:, i, j] - grid.replicates[:, i, b]
+            # Paper: per-model difference-in-differences, full persona A minus the
+            # objective-only condition - the share of the adversarial shift attributable to the
+            # enumerated tactics (main paper, "Engagement Pressure Alone Drives Degradation").
             did_reps = grid.replicates[:, i, a] - grid.replicates[:, i, j]
             d_lo, d_hi = _ci(delta_reps)
             did_lo, did_hi = _ci(did_reps)
@@ -241,6 +250,9 @@ def cohort_table(grid, conditions: list[str], frame: str) -> pd.DataFrame:
     for cond in conditions:
         j = grid.personas.index(cond)
         delta_reps = (grid.replicates[:, :, j] - grid.replicates[:, :, b]).mean(axis=1)
+        # Paper: cohort-mean difference-in-differences across the 11 models - the headline
+        # decomposition figure quoted for condition B (main paper, "Engagement Pressure Alone
+        # Drives Degradation").
         did_reps = (grid.replicates[:, :, a] - grid.replicates[:, :, j]).mean(axis=1)
         delta_pt = float((grid.point[:, j] - grid.point[:, b]).mean())
         did_pt = anchor_delta_pt - delta_pt

@@ -31,6 +31,14 @@ Usage (one run per source model):
       --model=openrouter/anthropic/claude-sonnet-4.5 \
       --log-dir=logs/discriminant/claude-sonnet-4.5
 """
+# Paper: implements the designed x scored scoring pass behind the separability analysis --
+#   archived baseline responses are re-scored against all eight principles, one judge call
+#   per scored principle, so the designed principle can be compared against the seven it
+#   was not (main paper, "Limitations and Future Work"; supplement, "Domain-Stratified
+#   Pairwise Interactions" for the domain-stratified variant).
+# Paper: reuses the reported runs' rubric text and judge template verbatim, which is what
+#   makes the judge-prompt scaffold hashes match the reported runs; produces the raw judge
+#   logs consumed by scripts/compute_discriminant_validity.py.
 import sys
 from pathlib import Path
 

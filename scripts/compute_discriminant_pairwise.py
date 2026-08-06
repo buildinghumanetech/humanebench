@@ -67,6 +67,14 @@ Outputs (written to --output-dir, default tables/discriminant/):
 Run from repo root:
     python scripts/compute_discriminant_pairwise.py
 """
+# Paper: produces pairwise_interactions.csv, pairwise_failures.csv,
+# pairwise_principle_involvement.csv and pairwise_replicate_sensitivity.csv under
+# the tables directory it is pointed at -- the separability result (main paper,
+# "Principle Separability").
+# Paper: implements the designed x scored interaction (a - b) - (c - d) with a
+# scenario-cluster bootstrap at 10,000 replicates (seed 20260407) and Holm
+# correction across the 28-pair family; --tost-bound adds the equivalence test
+# used for the Enable Meaningful Choices / Prioritize Long-term Wellbeing pair.
 from __future__ import annotations
 
 import argparse
@@ -169,6 +177,9 @@ def classify_failure(row: pd.Series) -> tuple[str, str]:
 
 def build(long: pd.DataFrame, n_bootstrap: int, seed: int,
           tost_bound: float | None = None) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    # Paper: the designed x scored interaction (a - b) - (c - d) and its
+    # scenario-cluster bootstrap CI; with tost_bound, the equivalence test
+    # (main paper, "Principle Separability").
     matrix = bootstrap_designed_measured_matrix(
         long, n_bootstrap=n_bootstrap, seed=seed)
     pw = pairwise_interactions(matrix)
@@ -716,6 +727,8 @@ def main() -> int:
           f"(p floor {2 / (N_BOOTSTRAP_DEFAULT + 1):.5f} vs threshold "
           f"{ALPHA / len(convention):.5f})")
 
+    # Paper: Holm correction across the whole family of 28 pairs decides which
+    # pairs count as separable (main paper, "Principle Separability").
     pw["significant"] = pw["p_holm"] < ALPHA
     classes = pw.apply(classify_failure, axis=1)
     pw["failure_class"] = [c for c, _ in classes]

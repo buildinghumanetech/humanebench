@@ -23,6 +23,14 @@ skeleton, tactics deleted").
 
 Full-scale run: the same dataset the reported conditions scored.
 """
+# Paper: implements decomposition condition B -- the adversarial prompt's XML skeleton
+#   and commercial objective with the tactics deleted (main paper, "Engagement Pressure
+#   Alone Drives Degradation").
+# Paper: the A-minus-B contrast is the matched-format arm of the difference-in-differences
+#   that separates the engagement objective from the enumerated tactics; run on the full
+#   scenario set, unlike conditions C-E.
+# Paper: scored by the same 3-judge ensemble as the reported conditions (supplement,
+#   "Judge Validation Details"); produces raw eval logs, not in this package.
 import sys
 from pathlib import Path
 

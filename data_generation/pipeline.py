@@ -1,6 +1,8 @@
 """
 Main pipeline controller for data generation.
 """
+# Paper: implements the generate -> validate -> deduplicate -> append loop of the scenario construction pipeline; its accumulated output is data/humane_bench.jsonl (supplement, "Scenario Construction Pipeline").
+# Paper: batches are steered by the coverage gaps and duplicate rate of the dataset so far, and a duplicate rate above 50 percent switches the next batch to web-search-grounded generation (supplement, "Scenario Construction Pipeline").
 
 import os
 import sys

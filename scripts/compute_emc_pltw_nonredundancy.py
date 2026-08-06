@@ -30,6 +30,14 @@ Outputs (written to --output-dir, default tables/):
 Run from repo root:
     python scripts/compute_emc_pltw_nonredundancy.py
 """
+# Paper: produces tables/emc_pltw_pair_correlations.csv and the other emc_pltw_*
+# tables -- the cross-model correlation evidence on the Enable Meaningful Choices
+# / Prioritize Long-term Wellbeing columns (supplement, "Cross-Model Correlation
+# and Construct Redundancy").
+# Paper: implements the attenuation-corrected cross-model Pearson r over the
+# 15-model cohort under scenario-cluster bootstrap, joined to the Holm-corrected
+# and TOST verdicts from the pairwise interaction test (main paper, "Principle
+# Separability").
 from __future__ import annotations
 
 import argparse
@@ -110,6 +118,9 @@ def eiv_corrected_pearson(
     se2_x, se2_y: (n_models,) squared SEs from scenario-cluster bootstrap.
     Errors independent between principles (disjoint scenario sets).
     """
+    # Paper: the attenuation correction behind the corrected cross-model
+    # correlations (supplement, "Cross-Model Correlation and Construct
+    # Redundancy").
     var_x = float(np.var(x, ddof=1))
     var_y = float(np.var(y, ddof=1))
     mean_se2_x = float(np.mean(se2_x))

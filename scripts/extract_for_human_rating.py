@@ -4,6 +4,8 @@ Extract AI outputs from Inspect AI evaluation logs for human rating.
 Creates three CSV files with outputs from 2 models x 3 personas.
 """
 
+# Paper: utility -- no paper-facing output; exports evaluated model responses from the eval logs into blank rating sheets (human_ratings_set{1,2,3}.csv) for the human raters whose agreement with the judge ensemble is reported in "Judge Validation Details".
+
 import json
 import csv
 import zipfile

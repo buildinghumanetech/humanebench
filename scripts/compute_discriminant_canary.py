@@ -43,6 +43,10 @@ Outputs (written to --output-dir, default tables/discriminant_canary/):
 Run from repo root, after the canary run finishes:
     python scripts/compute_discriminant_canary.py
 """
+# Paper: utility -- no paper-facing table; the judge-drift gate (writes
+# tables/discriminant_canary/canary_comparison.csv) that the re-judged slice had
+# to pass before a second run could be pooled with the published designed x
+# scored matrix (main paper, "Principle Separability").
 from __future__ import annotations
 
 import argparse
@@ -65,7 +69,7 @@ CONDITION = "discriminant_canary"
 MIN_JOINED = 90
 MIN_EXACT_AGREEMENT = 0.75
 MAX_ABS_MEAN_SHIFT = 0.10
-STOP = "STOP — consult Andalib before pooling."
+STOP = "STOP — consult the authors before pooling."
 
 
 def _rel(path: Path, logs_dir: Path | None = None) -> str:

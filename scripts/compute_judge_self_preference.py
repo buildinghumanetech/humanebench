@@ -46,6 +46,12 @@ Outputs (under ``tables/``):
   loo_config_change.csv                    own-judge-drop HumaneScore change + CI
   ensemble_reconstruction_check.csv        sanity gate vs table1
 """
+# Paper: produces tables/judge_self_preference.csv and .md, judge_relative_generosity_matrix.csv,
+#        single_judge_ranking_correlations.csv, loo_robustness_invariance.csv and
+#        loo_config_change.csv - the judge-independence evidence: each judge's relative-generosity
+#        difference-in-differences toward its own family, ranking stability against the 3-judge
+#        ensemble, and the own-judge-drop score change (supplement, "Judge Validation Details",
+#        judge-independence paragraph).
 
 import argparse
 import sys

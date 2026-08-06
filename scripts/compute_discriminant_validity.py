@@ -56,6 +56,13 @@ Outputs (written to --output-dir, default tables/discriminant/):
 Run from repo root, after scripts/verify_discriminant_provenance.py passes:
     python scripts/compute_discriminant_validity.py
 """
+# Paper: produces tables/discriminant/*.csv and results/discriminant_validity.md - the designed x
+#        scored matrix and its diagonal-versus-off-diagonal row contrasts, whose pooled value is
+#        the pre-registered contrast reported as reversed, +0.426 (main paper, "Principle
+#        Separability").
+# Paper: implements the within-row contrast that differences out a general model-quality factor
+#        and per-rubric leniency; the Holm-corrected designed x scored interaction family is
+#        computed separately in scripts/compute_discriminant_pairwise.py.
 from __future__ import annotations
 
 import argparse
@@ -1215,6 +1222,10 @@ def main() -> int:
 
     long.to_csv(args.output_dir / "matrix_long.csv", index=False)
 
+    # Paper: the designed x scored matrix and its row contrasts - diagonal cell minus the mean
+    # of the seven off-diagonal cells in its own row, raw and column-centred, under the
+    # scenario-cluster bootstrap. The pooled row is the reversed pre-registered contrast
+    # reported in main paper, "Principle Separability".
     matrix = bootstrap_designed_measured_matrix(
         long, n_bootstrap=args.n_bootstrap, seed=args.seed)
     raw = discriminant_contrasts(matrix, centered=False)

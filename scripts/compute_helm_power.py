@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Minimum detectable effect for the HELM capability x robustness correlation.
 
-Section 4.6 claims "no significant correlation between capability and robust
-humaneness" from n = 13 HELM-matched models, but prints no r and no p, and
-never states what effect size that n could actually have detected. A null at
-n = 13 is only informative if the study could have found a real effect of a
-plausible size; otherwise "no significant correlation" is a statement about
-the sample size, not about capability.
+The "Intelligence != Humaneness" results section reports no significant
+correlation between capability and robust humaneness from n = 13 HELM-matched
+models. A null at n = 13 is only informative if the study could have found a
+real effect of a plausible size; otherwise "no significant correlation" is a
+statement about the sample size, not about capability. This script supplies the
+r, the p, and the detectable-effect bound that section now states.
 
 This script reports both halves:
 
@@ -36,6 +36,13 @@ Outputs (written to --output-dir, default tables/):
 Run from repo root:
     python scripts/compute_helm_power.py
 """
+# Paper: produces tables/helm_power.csv and helm_power.md -- the observed HELM
+#   capability correlation (Pearson r = +0.25, p = 0.415, n = 13) and the power
+#   caveat that at n = 13 the design detects only |r| >= 0.69 (main paper,
+#   "Intelligence != Humaneness").
+# Paper: implements the minimum-detectable-effect calculation behind that caveat
+#   -- Fisher-z closed form, cross-checked against an exact Monte-Carlo power
+#   simulation at alpha = 0.05, power = 0.80.
 from __future__ import annotations
 
 import argparse

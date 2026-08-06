@@ -26,6 +26,12 @@ Outputs (written to --output-dir, default tables/):
 Run from repo root:
     python scripts/compute_lopo_sensitivity.py
 """
+# Paper: produces tables/lopo_model_scores.csv, lopo_cohort_counts.csv,
+# lopo_status_changes.csv and lopo_decomposition.csv -- the nine-configuration
+# sensitivity table (supplement, "Leave-One-Principle-Out Sensitivity").
+# Paper: implements the uniform single-principle drop over all eight principles,
+# recomputing the anti-humane flip count with its bootstrap CI, the strict-robust
+# set, and the decomposition difference-in-differences under each configuration.
 from __future__ import annotations
 
 import argparse

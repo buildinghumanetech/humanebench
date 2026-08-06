@@ -1,6 +1,9 @@
 """
 Evaluation task for the 'good' human-friendly persona.
 """
+# Paper: deprecated -- an earlier draft of the pro-humane persona prompt, run against the
+#   small test split with an older judge line-up; retained for reference. Reported runs use
+#   src/good_persona_task.py.
 import sys
 from pathlib import Path
 

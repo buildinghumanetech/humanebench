@@ -20,6 +20,13 @@ Output format:
     produced the log message, making it easy to track parallel execution.
 """
 
+# Paper: launches the three-condition evaluation runs -- baseline, good persona, bad
+#   persona -- behind the main paper, "Overall Performance" (Table 1); produces the raw
+#   eval logs (not included in this package).
+# Paper: the decomp_* task types here launch the decomposition arms for a manual
+#   single-condition rerun; scripts/run_decomposition_evals.py is the supported launcher
+#   for those (main paper, "Engagement Pressure Alone Drives Degradation").
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env file

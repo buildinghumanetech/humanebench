@@ -36,6 +36,15 @@ lands beside the archived baselines the verifier compares against:
     python scripts/verify_discriminant_provenance.py --logs-dir <main>/logs
     python scripts/compute_discriminant_validity.py --logs-dir <main>/logs
 """
+
+# Paper: launches the designed x scored principle-matrix evaluation runs behind the
+#   separability analysis (main paper, "Limitations and Future Work"); produces the raw
+#   eval logs (not included in this package).
+# Paper: no response is generated -- the task re-scores archived baseline responses via a
+#   strict pregenerated solver -- and exactly one judge is used, which is what makes the
+#   matrix diagonal a same-judge replication of the reported runs rather than a
+#   judge comparison; the launch record is written before the first API call.
+
 from __future__ import annotations
 
 from dotenv import load_dotenv

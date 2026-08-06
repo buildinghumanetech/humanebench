@@ -23,6 +23,12 @@ row, and no duplicate (scenario, model, scored principle) key.
 Run from repo root, after both runs' tables exist:
     python scripts/build_discriminant_pooled_tables.py
 """
+# Paper: produces tables/discriminant_pooled/matrix_long.csv and fhr_pltw.csv --
+# the pooled 36-per-principle designed x scored sample and the Foster Healthy
+# Relationships / Prioritize Long-term Wellbeing directional contrasts reported
+# for it (main paper, "Principle Separability").
+# Paper: implements the pooling checks and the scenario-cluster bootstrap CIs at
+# 10,000 replicates, seed 20260407.
 from __future__ import annotations
 
 import argparse

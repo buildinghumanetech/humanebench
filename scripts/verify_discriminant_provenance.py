@@ -39,6 +39,15 @@ for missing inputs, unless --allow-skips says that is acceptable.
 Run from repo root, after the eval run:
     python scripts/verify_discriminant_provenance.py
 """
+
+# Paper: implements the provenance verification for the designed x scored matrix run --
+#   frame nesting inside the frozen subsample, rubric scaffolds reused verbatim, every
+#   judge prompt hashing to its pre-launch prediction, and byte-equality of the diagonal
+#   prompts with the archived reported-run prompts (main paper, "Limitations and Future
+#   Work").
+# Paper: utility -- no paper-facing output; it is the gate that must pass before
+#   scripts/compute_discriminant_validity.py writes tables/discriminant/*.
+
 from __future__ import annotations
 
 import argparse

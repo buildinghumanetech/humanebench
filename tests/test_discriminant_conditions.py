@@ -1,4 +1,8 @@
 """Tests for the discriminant conditions registry and template transform."""
+# Paper: tests -- validates the discriminant condition registry and the
+# rules-suppressed judge template, the TOST equivalence helper, the
+# 24-per-principle expansion draw and the canary gate thresholds (see main paper,
+# "Principle Separability"); no paper-facing output.
 from __future__ import annotations
 
 import csv

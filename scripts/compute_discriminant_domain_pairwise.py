@@ -8,9 +8,11 @@ topical separation. Whether that is a confound or is what construct distinctness
 *means* for a behavioral benchmark is a genuine question; this probe exposes
 the structure without answering it.
 
-For each principle pair, within-domain interactions are computed where both
-principles have >= 8 scenarios in the same domain, then combined with weights
-n_Xd * n_Yd / (n_Xd + n_Yd). Bootstrap within row × domain.
+For each principle pair, the designed x scored interaction is computed within
+each domain where both principles pass a feasibility gate of MIN_SCENARIOS_PER_SIDE
+scenarios (default 8; the shipped table was produced with --min-per-side 5).
+Cells are reported individually -- no cross-domain combination. Bootstrap
+resamples scenarios within each side of a cell.
 
 Labeled exploratory. Targets 31 Jul supplementary.
 
@@ -21,6 +23,13 @@ Outputs:
   - tables/discriminant_pooled/domain_pairwise.csv
   - results/discriminant_domain_pairwise.md  (optional, --report)
 """
+# Paper: produces tables/discriminant_pooled/domain_pairwise.csv -- the
+# within-domain designed x scored interactions for every feasible (principle
+# pair, domain) cell (supplement, "Domain-Stratified Pairwise Probe").
+# Paper: implements the exploratory probe described there: a per-cell feasibility
+# gate on scenarios per side, the interaction computed inside a single domain,
+# and 10,000-replicate scenario bootstrap CIs; no multiplicity correction is
+# applied because the analysis is descriptive rather than a test.
 from __future__ import annotations
 
 import argparse
@@ -80,6 +89,9 @@ def domain_interaction(
         vals = long.loc[mask, "score"]
         return vals.mean() if len(vals) > 0 else float("nan")
 
+    # Paper: the designed x scored interaction (a - b) - (c - d), restricted to
+    # one domain so both principles' scenarios share topical territory
+    # (supplement, "Domain-Stratified Pairwise Probe").
     a = cell_mean(principle_a, principle_a, a_scenarios)
     b = cell_mean(principle_a, principle_b, a_scenarios)
     c = cell_mean(principle_b, principle_a, b_scenarios)
