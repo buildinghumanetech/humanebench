@@ -51,7 +51,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from create_aaai_helm_scatter import HELM_TO_EVAL  # noqa: E402
+from create_helm_delta_scatter import HELM_TO_EVAL  # noqa: E402
 from humanebench.bootstrap import BOOTSTRAP_SEED  # noqa: E402
 
 ALPHA = 0.05
