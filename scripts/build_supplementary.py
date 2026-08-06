@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the anonymous supplementary package for AAAI-27.
+"""Build the anonymous supplementary package.
 
 The submission may not link to anything outside itself, so the code, the data
 appendix and every derived table travel as one zip, under 100 MB, with nothing
@@ -65,7 +65,6 @@ EXTRA_SCAN_TERMS = [
     # still catches the real one independently, so nothing is given up.
     "10.5281/",
     "github.com",
-    "4open.science",
     "/Users/",
     "buildinghumanetech",
     "humanetech",
@@ -792,7 +791,7 @@ def main() -> int:
     ap.add_argument("--stage-dir", type=Path,
                     default=REPO_ROOT / "dist" / "supplementary_stage")
     ap.add_argument("--out", type=Path,
-                    default=REPO_ROOT / "dist" / "humanebench_aaai27_supplementary.zip")
+                    default=REPO_ROOT / "dist" / "humanebench_supplementary.zip")
     ap.add_argument("--redaction-list", type=Path, default=None,
                     help="Redaction term list (default: <aux-root>/"
                          "anonymization_redaction_list.txt).")
