@@ -56,6 +56,7 @@ from humanebench.bootstrap import (  # noqa: E402
     PRINCIPLES,
     load_long_scores,
 )
+from humanebench.tables import resolve_table  # noqa: E402
 
 SHORT = {
     "respect-user-attention": "rua",
@@ -217,7 +218,7 @@ def main() -> None:
     args = ap.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    long = load_long_scores(args.raw_csv)
+    long = load_long_scores(resolve_table(args.raw_csv))
     mats, longs, all_rows = {}, {}, []
     for persona in PERSONAS:
         mat = model_principle_matrix(long, persona)

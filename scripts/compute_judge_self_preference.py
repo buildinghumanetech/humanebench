@@ -27,7 +27,7 @@ Three analyses:
      adversarial robustness status with each judge dropped, and test whether the
      top-4 Robust set survives removing each in-family judge.
 
-Per-judge severities are read from ``tables/inter_judge_raw.csv`` by default
+Per-judge severities are read from ``tables/inter_judge_raw_regenerated.csv`` by default
 (emitted by ``scripts/compute_inter_judge_agreement.py``), or scanned fresh from
 ``logs/`` with ``--logs-dir`` (uses the same exclusion set as the paper).
 
@@ -70,6 +70,7 @@ from humanebench.bootstrap import (  # noqa: E402
     bootstrap_cell_scores,
     bootstrap_persona_deltas,
 )
+from humanebench.tables import resolve_table  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -151,7 +152,7 @@ def load_per_judge_long(
     """Return a long DataFrame of per-judge severities.
 
     Columns: sample_uid, persona, model, principle, sample_id, judge_name,
-    severity. Either reads the derived ``inter_judge_raw.csv`` (already
+    severity. Either reads the derived ``inter_judge_raw_regenerated.csv`` (already
     exclusion-filtered upstream) or scans ``logs/`` fresh via
     ``compute_inter_judge_agreement.collect_long_table``.
     """
@@ -512,7 +513,7 @@ def _config_humane_matrices(config_aggs: dict) -> tuple:
     order. Returns (mats, canon_rows, models) for the ranking bootstrap.
 
     Every config is aligned to the ensemble's scenario set. On the canonical
-    inter_judge_raw.csv (every item scored by all 3 judges) all configs share
+    inter_judge_raw_regenerated.csv (every item scored by all 3 judges) all configs share
     this set; on a malformed CSV missing judges, single-judge configs would have
     extra items that this alignment intersects out — consistent with Component 1,
     which also requires the full-judge complement."""
@@ -1454,8 +1455,8 @@ def main() -> None:
     parser.add_argument(
         "--raw-csv",
         type=Path,
-        default=REPO_ROOT / "tables" / "inter_judge_raw.csv",
-        help="Per-judge long table (default: tables/inter_judge_raw.csv).",
+        default=REPO_ROOT / "tables" / "inter_judge_raw_regenerated.csv",
+        help="Per-judge long table (default: tables/inter_judge_raw_regenerated.csv).",
     )
     parser.add_argument(
         "--logs-dir",
@@ -1482,7 +1483,7 @@ def main() -> None:
 
     print("Loading per-judge severities ...")
     long = load_per_judge_long(
-        args.raw_csv.expanduser().resolve() if args.logs_dir is None else None,
+        resolve_table(args.raw_csv.expanduser()) if args.logs_dir is None else None,
         args.logs_dir.expanduser().resolve() if args.logs_dir else None,
         args.include_excluded,
     )

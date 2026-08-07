@@ -30,6 +30,10 @@ Per-judge severities are read straight from the `.eval` logs. No API calls.
 
 Inputs (read-only):
   - logs/{baseline,good_persona,bad_persona}/<model>/*.eval   (45 files)
+    or, with --raw-csv, the long-format per-judge table those logs produced
+    (tables/inter_judge_raw_regenerated.csv) -- every number below is a
+    function of that table, so the two routes give identical output and the
+    584 MB of logs need not be distributed
   - data/humane_bench.jsonl                (exclusion flags)
 
 Outputs (written to --output-dir, default tables/):
@@ -59,6 +63,7 @@ from compute_inter_judge_agreement import (  # noqa: E402
     _bootstrap_alpha_multi_level,
     _build_reliability_matrix,
     collect_long_table,
+    load_long_table_from_csv,
 )
 from compute_judge_self_preference import CONFIGS, JUDGES  # noqa: E402
 from humanebench.bootstrap import (  # noqa: E402
@@ -68,6 +73,7 @@ from humanebench.bootstrap import (  # noqa: E402
     cohort_flip_stats,
 )
 from humanebench.excluded import load_excluded_ids  # noqa: E402
+from humanebench.tables import resolve_table  # noqa: E402
 
 # Report order: full ensemble, then the three drops, then the single judges as
 # a lower bound on how far the scoring rule can be degraded.
@@ -252,11 +258,17 @@ def _fmt(v, nd=3):
 
 
 def write_report(out: Path, scores: pd.DataFrame, counts: pd.DataFrame,
-                 alphas: pd.DataFrame, n_bootstrap: int, seed: int) -> None:
+                 alphas: pd.DataFrame, n_bootstrap: int, seed: int,
+                 source: str = "the 45 `.eval` logs") -> None:
     L: list[str] = []
     L.append("# Leave-one-judge-out sensitivity\n")
     L.append(
-        f"Recomputed from the 45 `.eval` logs with each judge dropped in turn. "
+        # `source` rather than a fixed phrase: under --raw-csv this script
+        # never opens an .eval file, and the package contains none. Hardcoding
+        # "the 45 .eval logs" made the report assert a provenance the run did
+        # not have, in the one document whose job is to establish that the flip
+        # survives every judge drop.
+        f"Recomputed from {source} with each judge dropped in turn. "
         f"CIs are {n_bootstrap:,} shared-scenario cluster bootstrap replicates "
         f"(seed {seed}): one scenario resample per replicate, carried across "
         f"all 15 models x 3 personas, so cohort counts carry the correlation "
@@ -375,16 +387,37 @@ def write_report(out: Path, scores: pd.DataFrame, counts: pd.DataFrame,
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--logs-dir", type=Path, default=REPO_ROOT / "logs")
+    ap.add_argument("--logs-dir", type=Path, default=None,
+                    help="Directory of .eval logs to scan (default: <repo>/logs). "
+                         "Mutually exclusive with --raw-csv.")
+    ap.add_argument("--raw-csv", type=Path, default=None,
+                    help="Read the per-judge table from this long-format CSV "
+                         "(e.g. tables/inter_judge_raw_regenerated.csv, .gz "
+                         "accepted) instead of walking the .eval logs, which "
+                         "are too large to distribute with the paper. Every "
+                         "output of this script is derived from that table, so "
+                         "the results are identical either way.")
     ap.add_argument("--output-dir", type=Path, default=REPO_ROOT / "tables")
     ap.add_argument("--n-bootstrap", type=int, default=N_BOOTSTRAP_DEFAULT)
     ap.add_argument("--seed", type=int, default=BOOTSTRAP_SEED)
     args = ap.parse_args()
+    if args.raw_csv is not None and args.logs_dir is not None:
+        ap.error("--raw-csv and --logs-dir are mutually exclusive")
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Scanning {args.logs_dir} ...")
-    long, stats = collect_long_table(args.logs_dir,
-                                     exclude_ids=load_excluded_ids())
+    if args.raw_csv is not None:
+        raw_csv = resolve_table(args.raw_csv.expanduser())
+        print(f"Reading {raw_csv} (no .eval logs needed) ...")
+        long, stats = load_long_table_from_csv(
+            raw_csv, exclude_ids=load_excluded_ids()
+        )
+        source = f"`{raw_csv.name}`, the per-judge table those logs produced"
+    else:
+        logs_dir = (args.logs_dir or REPO_ROOT / "logs").expanduser().resolve()
+        print(f"Scanning {logs_dir} ...")
+        long, stats = collect_long_table(logs_dir,
+                                         exclude_ids=load_excluded_ids())
+        source = f"the {stats['files_scanned']} `.eval` logs"
     print(f"  {stats['samples_included']:,} scored items, {len(long):,} judge rows")
     long = common_item_set(long)
 
@@ -395,7 +428,7 @@ def main() -> None:
     counts.to_csv(args.output_dir / "loo_cohort_counts.csv", index=False)
     alphas.to_csv(args.output_dir / "loo_alpha.csv", index=False)
     write_report(args.output_dir / "loo_sensitivity.md", scores, counts, alphas,
-                 args.n_bootstrap, args.seed)
+                 args.n_bootstrap, args.seed, source=source)
 
     print("\nFlip count by config:")
     for config in CONFIG_ORDER:

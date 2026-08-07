@@ -30,7 +30,7 @@ It also emits the two structural facts every cohort-level analysis needs:
 Inputs (read-only):
   - logs/{baseline,good_persona,bad_persona}/<model>/*.eval   (45 files)
   - data/humane_bench.jsonl                (metadata.excluded_from_analysis)
-  - tables/inter_judge_raw.csv             (committed artifact, for comparison)
+  - tables/inter_judge_raw_regenerated.csv (committed artifact, for comparison)
 
 Outputs (written to --output-dir, default tables/):
   - inter_judge_raw_regenerated.csv   fresh per-judge long table
@@ -106,7 +106,7 @@ def complete_case_scenarios(long: pd.DataFrame) -> list[str]:
 
 
 def compare_to_committed(fresh: pd.DataFrame, committed_path: Path) -> dict:
-    """Compare the fresh scan to the committed inter_judge_raw.csv, content-wise."""
+    """Compare the fresh scan to the committed per-judge table, content-wise."""
     if not committed_path.is_file():
         return {"status": "ABSENT", "detail": f"{committed_path} not found"}
 
@@ -216,7 +216,7 @@ def write_report(
     )
 
     L.append("## Committed artifact comparison\n")
-    L.append(f"`tables/inter_judge_raw.csv` vs this fresh scan: "
+    L.append(f"`tables/inter_judge_raw_regenerated.csv` vs this fresh scan: "
              f"**{comparison['status']}** -- {comparison['detail']}\n")
 
     L.append("## Cell census\n")
@@ -259,7 +259,7 @@ def main() -> None:
     ap.add_argument("--logs-dir", type=Path, default=REPO_ROOT / "logs")
     ap.add_argument("--output-dir", type=Path, default=REPO_ROOT / "tables")
     ap.add_argument("--committed", type=Path,
-                    default=REPO_ROOT / "tables" / "inter_judge_raw.csv")
+                    default=REPO_ROOT / "tables" / "inter_judge_raw_regenerated.csv")
     args = ap.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 

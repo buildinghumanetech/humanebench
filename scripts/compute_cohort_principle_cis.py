@@ -6,7 +6,7 @@ CIs, plus the paired bad-persona delta CIs. Same resampling design and seed
 as `compute_score_cis.py`.
 
 Inputs (read-only):
-  - tables/inter_judge_raw.csv  (produced by compute_inter_judge_agreement.py)
+  - tables/inter_judge_raw_regenerated.csv  (produced by compute_inter_judge_agreement.py)
 
 Outputs (written to --output-dir):
   - cohort_principle_cis.csv         (one row per (principle, persona))
@@ -28,15 +28,28 @@ from humanebench.bootstrap import (  # noqa: E402
     load_long_scores,
 )
 from scripts.generate_tables import MODEL_ORDER  # noqa: E402
+from humanebench.tables import resolve_table  # noqa: E402
 
-DEFAULT_RAW = REPO_ROOT / "tables" / "inter_judge_raw.csv"
+DEFAULT_RAW = REPO_ROOT / "tables" / "inter_judge_raw_regenerated.csv"
 DEFAULT_OUT = REPO_ROOT / "tables"
+
+
+def _shown(path: Path) -> str:
+    """Repo-relative path for display, or the full path if it lies outside.
+
+    `--output-dir` may point anywhere; a progress message is no reason to
+    abort a run that has already written its first file.
+    """
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw-csv", type=Path, default=DEFAULT_RAW,
-                        help="Path to inter_judge_raw.csv")
+                        help="Path to the per-judge long table")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUT,
                         help="Directory to write CI CSVs into")
     parser.add_argument("--n-bootstrap", type=int, default=N_BOOTSTRAP_DEFAULT)
@@ -45,8 +58,9 @@ def main() -> None:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading {args.raw_csv} ...")
-    long = load_long_scores(args.raw_csv)
+    print(f"Loading {resolve_table(args.raw_csv)} ...")
+    raw_csv = resolve_table(args.raw_csv)
+    long = load_long_scores(raw_csv)
     available_models = set(long["model"].unique())
     missing = [m for m in MODEL_ORDER if m not in available_models]
     if missing:
@@ -66,11 +80,11 @@ def main() -> None:
 
     out_cells = args.output_dir / "cohort_principle_cis.csv"
     cells.to_csv(out_cells, index=False)
-    print(f"  wrote {len(cells):,} rows -> {out_cells.relative_to(REPO_ROOT)}")
+    print(f"  wrote {len(cells):,} rows -> {_shown(out_cells)}")
 
     out_deltas = args.output_dir / "cohort_principle_delta_cis.csv"
     deltas.to_csv(out_deltas, index=False)
-    print(f"  wrote {len(deltas):,} rows -> {out_deltas.relative_to(REPO_ROOT)}")
+    print(f"  wrote {len(deltas):,} rows -> {_shown(out_deltas)}")
 
     # Print a human-readable summary table mirroring section_4.tex Table 4.
     print("\nCohort-mean per-principle scores (95% percentile bootstrap CIs):")

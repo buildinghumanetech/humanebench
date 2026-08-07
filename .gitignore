@@ -1,7 +1,16 @@
 # HELM Integration - Downloaded data and caches
+# gcs_safety_cache/ was tracked by accident: 3,812 raw HELM JSONs, ~520 MB,
+# roughly 90% of the repo's tracked bytes, referenced by no code (the scraper
+# reads the sibling gcs_cache/). Untracked 2026-07-27; the blobs stay in
+# history until a later history filter removes them.
 helm_integration/data/gcs_cache/
-helm_integration/data/helm_raw_data.json
-helm_integration/data/helm_aggregate_scores.json
+helm_integration/data/gcs_safety_cache/
+# helm_raw_data.json (9.8 KB) and helm_aggregate_scores.json (7.6 KB) were
+# listed here but have been tracked since da98ec0 — ignore rules do not apply
+# to files already in the index, so the entries were dead and misleading.
+# Both are deliberately tracked: they are the inputs to compute_helm_power.py
+# and the HELM delta scatter, and re-scraping does not reproduce them because
+# HELM releases move under the same URL.
 
 # HELM Integration - Output files (optional - see note below)
 helm_integration/output/model_coverage_report.txt
@@ -256,13 +265,31 @@ evaluator/workshop/results.jsonl
 # scripts/compute_inter_judge_agreement.py)
 tables/inter_judge_raw.csv
 
-# HELM caches: gcs_safety_cache/ was tracked by accident (3,812 raw HELM JSONs,
-# ~520 MB, referenced by no code -- the scraper reads the sibling gcs_cache/).
-# Untracked 2026-07-27.
-helm_integration/data/gcs_cache/
-helm_integration/data/gcs_safety_cache/
+# The same two tables again, one copy per decomposition condition (~15 MB).
+# Same rationale as above: bulky, purely derived, and regeneratable with
+#   scripts/compute_inter_judge_agreement.py --personas <condition> \
+#       --tables-dir tables/decomposition/alpha_<condition>
+#   scripts/compute_judge_artifact_controls.py --personas ... \
+#       --output-dir tables/decomposition
+# The small summary tables built from them (alpha_by_condition.md,
+# judge_artifact_controls.md, judge_blinding_check.csv) ARE committed.
+tables/decomposition/alpha_*/inter_judge_raw.csv
+tables/decomposition/response_disclosure_rates.csv
 
-# Local scratch and internal working material, not for publication
+# Multi-label scoring datasets. They embed archived model responses, and
+# `logs/` is ignored above for exactly that reason -- responses are not published
+# from this repo. Regeneratable byte-for-byte via
+# scripts/build_discriminant_multilabel_dataset.py, and their sha256s are
+# recorded in data/discriminant/manifest.json, which IS committed.
+data/discriminant/multilabel_*.jsonl
+data/discriminant_canary/multilabel_*.jsonl
+data/discriminant_expansion/multilabel_*.jsonl
+data/discriminant_rules27/multilabel_*.jsonl
+
+# Internal working documents, drafts, and scratch material; kept on disk,
+# never published. Anchored to the repo root: a bare filename would match at
+# any depth, and docs/discriminant_validity_design.md is the public version
+# that four modules cite.
 temp/
 anonymization_redaction_list.txt
 results.zip
@@ -273,19 +300,16 @@ humanebench_runs_backup_*.zip
 /workspace/
 /findings/
 /review_inputs/
-/results/
 /DECOMP_HANDOFF.md
 /DISCRIMINANT_FOLLOWUP_SPEC.md
 /adversarial-conditions.md
 /discriminant_validity_design.md
 /*_revision_plan.md
-_prefilter_backup/
 
-# Multi-label judgement JSONLs and per-judge raw tables: too large to track;
-# named explicitly in the supplementary manifest instead
-data/discriminant/multilabel_*.jsonl
-data/discriminant_canary/multilabel_*.jsonl
-data/discriminant_expansion/multilabel_*.jsonl
-data/discriminant_rules27/multilabel_*.jsonl
-tables/decomposition/alpha_*/inter_judge_raw.csv
-tables/decomposition/response_disclosure_rates.csv
+# Working results and reconciliation notes. Numbers reach the repo through
+# tables/; the prose write-ups stay local.
+/results/
+
+# Local backup of .git and of files stripped from tracking; delete when no
+# longer needed.
+_prefilter_backup/
