@@ -144,6 +144,7 @@ def subset_args(**overrides):
         negative_sample=2,
         positive_sample=2,
         trivial_sample=2,
+        positive_extreme_sample=2,
         repeat_slice=3,
         repeat_response_min=10,
     )
@@ -158,8 +159,10 @@ class TestSubsetSelection:
             rows.append(make_row(f"w{i}", severities={SLUGS[0]: -1.0}))
         for i in range(10):  # negative stratum
             rows.append(make_row(f"n{i}", severities={SLUGS[1]: -0.5}))
-        for i in range(10):  # positive
+        for i in range(10):  # positive (default severities are all +0.5)
             rows.append(make_row(f"p{i}"))
+        for i in range(4):  # positive-extreme stratum (a +1.0, no -1.0)
+            rows.append(make_row(f"x{i}", severities={SLUGS[2]: 1.0}))
         for i in range(12):  # repeated identical response
             rows.append(make_row(f"r{i}", user=f"u{i}", assistant="Hey! How's it going?"))
         rows.append(
@@ -169,10 +172,11 @@ class TestSubsetSelection:
         return rows
 
     def test_strata(self):
-        out, stats = select(self.make_pool(), subset_args())
+        out, stats, extras = select(self.make_pool(), subset_args())
         assert stats["worst"] == 5  # all -1.0 rows included
-        assert stats["sentinel"] == 1
+        assert stats["qa_test"] == 1
         assert stats["repeated"] == 12
+        assert stats["positive_extreme"] == 2
         assert stats["negative"] == 2
         assert stats["trivial"] == 2
         assert stats["positive"] == 2
@@ -181,14 +185,56 @@ class TestSubsetSelection:
         assert all(r["sample_id"].endswith("__rep2") for r in reps)
         assert all(r["curation"]["repeat_of"] + "__rep2" == r["sample_id"] for r in reps)
 
+    def test_membership_flags_independent_of_stratum_label(self):
+        # A QA row that ALSO qualifies for the worst stratum gets labeled
+        # "worst" (priority), but its is_qa_test flag must still be true.
+        rows = [
+            make_row(
+                "qa_worst",
+                user="Hello! This is a test message from automated testing.",
+                severities={SLUGS[0]: -1.0},
+            ),
+            make_row("plain"),
+        ]
+        curate(rows)
+        out, stats, extras = select(rows, subset_args(repeat_slice=0))
+        qa = next(r for r in out if r["sample_id"] == "qa_worst")
+        assert qa["curation"]["subset_stratum"] == "worst"
+        assert qa["curation"]["flags"]["is_qa_test"] is True
+        assert qa["curation"]["flags"]["is_worst"] is True
+        assert extras["manifest"]["selected_flags"]["is_qa_test"] == 1
+
+    def test_manifest_records_pools_and_fractions(self):
+        out, stats, extras = select(self.make_pool(), subset_args())
+        m = extras["manifest"]
+        assert m["strata"]["worst"]["sampling_fraction"] == 1.0
+        neg = m["strata"]["negative"]
+        assert neg["selected"] == 2 and neg["pool"] == 10
+        assert abs(neg["sampling_fraction"] - 0.2) < 1e-9
+        assert m["population"] == len(self.make_pool())
+        assert m["population_flags"]["is_worst"] == 5
+
+    def test_between_run_repeats_mirror_repeat_slice(self):
+        out, stats, extras = select(self.make_pool(), subset_args())
+        between = extras["between_run"]
+        assert len(between) == stats["repeat"] == 3
+        assert all(r["sample_id"].endswith("__rep3") for r in between)
+        rep2_bases = {
+            r["curation"]["repeat_of"]
+            for r in out
+            if r["curation"]["subset_stratum"] == "repeat"
+        }
+        rep3_bases = {r["curation"]["repeat_of"] for r in between}
+        assert rep2_bases == rep3_bases
+
     def test_deterministic_for_seed(self):
         pool = self.make_pool()
-        out1, _ = select(copy.deepcopy(pool), subset_args())
-        out2, _ = select(copy.deepcopy(pool), subset_args())
+        out1, _, _ = select(copy.deepcopy(pool), subset_args())
+        out2, _, _ = select(copy.deepcopy(pool), subset_args())
         assert [r["sample_id"] for r in out1] == [r["sample_id"] for r in out2]
 
     def test_no_double_selection(self):
-        out, _ = select(self.make_pool(), subset_args())
+        out, _, _ = select(self.make_pool(), subset_args())
         non_repeat = [r["sample_id"] for r in out if not r["sample_id"].endswith("__rep2")]
         assert len(non_repeat) == len(set(non_repeat))
 
@@ -203,6 +249,6 @@ class TestSubsetSelection:
         bare["principles"] = {}
         pool.append(bare)
         curate([bare])
-        out, stats = select(pool, subset_args())
+        out, stats, _ = select(pool, subset_args())
         assert stats["excluded_no_judgments"] == 1
         assert all(r["sample_id"] != "nojudge" for r in out)
