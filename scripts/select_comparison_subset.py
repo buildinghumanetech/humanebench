@@ -4,14 +4,21 @@ Strata (first match wins, in priority order; tagged as curation.subset_stratum):
   worst      — any principle judged -1.0 by the original judge (ALL included)
   sentinel   — synthetic/QA-test rows (ALL included; known-mundane consistency probes)
   repeated   — assistant_response occurring >= --repeat-response-min times
-               (ALL occurrences included; direct same-input consistency test)
+               (ALL occurrences included). NOTE: keyed on the response text
+               alone — the audit's identical-reply inconsistency exhibit —
+               so the *prompts* may differ across occurrences. Same-INPUT
+               consistency is measured by the repeat slice below, not by
+               this stratum.
   negative   — some principle <= -0.5 but none -1.0 (random sample)
   trivial    — trivial-tagged rows not otherwise selected (random sample)
   positive   — no negative principle judgments (random sample)
 
 A repeat slice re-judges selected turns a second time (sample_id suffixed
-"__rep2") to measure panel self-consistency. Selection is deterministic for a
-given --seed.
+"__rep2") to measure panel self-consistency on identical inputs. Selection is
+deterministic for a given --seed. The input must be the output of
+curate_production_pairs.py (curation tags are required). Rows with no
+per-principle judgments are excluded (reported) — they cannot anchor a
+judge-vs-judge comparison.
 
 Usage:
     python scripts/select_comparison_subset.py \
@@ -32,9 +39,19 @@ def worst_severity(row: dict) -> float:
 
 
 def select(rows: list[dict], args: argparse.Namespace) -> tuple[list[dict], Counter]:
+    if not any("curation" in r for r in rows):
+        raise SystemExit(
+            "input has no curation tags — run curate_production_pairs.py "
+            "first (the sentinel and trivial strata depend on its tags)"
+        )
+
+    stats: Counter = Counter()
+    n_before = len(rows)
+    rows = [r for r in rows if r.get("principles")]
+    stats["excluded_no_judgments"] = n_before - len(rows)
+
     rng = random.Random(args.seed)
     selected: dict[str, dict] = {}
-    stats: Counter = Counter()
 
     response_counts = Counter(r["assistant_response"] for r in rows)
 
@@ -103,7 +120,7 @@ def main() -> None:
     args = parser.parse_args()
 
     with open(args.input) as f:
-        rows = [json.loads(line) for line in f]
+        rows = [json.loads(line) for line in f if line.strip()]
 
     out, stats = select(rows, args)
 
@@ -116,7 +133,7 @@ def main() -> None:
     n_judges = 3
     print(f"Selected {len(out)} rows (incl. repeats) from {len(rows)}:")
     for stratum, count in sorted(stats.items()):
-        print(f"  {stratum:10s} {count}")
+        print(f"  {stratum:24s} {count}")
     print(
         f"Fan-out estimate: {len(out)} turns x {n_principles} principles = "
         f"{len(out) * n_principles} samples; x {n_judges} judges = "

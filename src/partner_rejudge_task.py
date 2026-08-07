@@ -10,11 +10,10 @@ Run WITHOUT --model so any accidental generation attempt fails loudly:
         -T dataset=/absolute/path/to/partner.jsonl \
         --log-dir ~/humanebench-partners/<partner>/logs
 
-The dataset path is required (via -T dataset= or HUMANEBENCH_DATASET) —
-there is no default, so the benchmark dataset can never be judged by
-mistake and a partner path can never be baked into the repo.
+The dataset path is required and must be absolute — there is no default and
+no environment-variable fallback, so the benchmark dataset can never be
+judged by mistake and a stale variable can never redirect a run.
 """
-import os
 import sys
 from pathlib import Path
 
@@ -30,15 +29,13 @@ from pregenerated_solver import use_pregenerated_output_strict
 
 @task
 def partner_rejudge_eval(dataset: str | None = None):
-    path = dataset or os.environ.get("HUMANEBENCH_DATASET")
-    if not path:
+    if not dataset:
         raise ValueError(
             "partner_rejudge_eval requires a dataset path: pass "
-            "-T dataset=/abs/path.jsonl or set HUMANEBENCH_DATASET. "
-            "See docs/partner-mode.md."
+            "-T dataset=/abs/path.jsonl. See docs/partner-mode.md."
         )
     return Task(
-        dataset=humane_dataset(path),
+        dataset=humane_dataset(dataset),
         solver=[
             use_pregenerated_output_strict()  # replay stored responses; never generate
         ],

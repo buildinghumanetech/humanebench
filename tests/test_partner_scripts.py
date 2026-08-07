@@ -10,8 +10,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 from curate_production_pairs import curate, is_synthetic, language_tag
-from convert_partner_results import convert_row, split_sample_id
+from convert_partner_results import convert_row, has_judgeable_response, split_sample_id
 from select_comparison_subset import select
+
+pytestmark = pytest.mark.unit
 
 SLUGS = [
     "respect-user-attention",
@@ -82,6 +84,19 @@ class TestCuration:
     def test_language_tag(self):
         assert language_tag("hello there") == "en"
         assert language_tag("こんにちは、元気ですか") == "other"
+        # extended-Latin scripts are Latin, not "other"
+        assert language_tag("Xin chào, bạn khỏe không? Tiếng Việt đẹp") == "en"
+        assert language_tag("¿Qué tal? ¡Muy bien, señor!") == "en"
+        assert language_tag("12345 !!") == "en"
+
+    def test_non_string_messages_tagged_not_crashed(self):
+        rows = [make_row("a"), make_row("b")]
+        rows[0]["user_message"] = None
+        rows[1]["assistant_response"] = None
+        stats = curate(rows)
+        assert stats["bad_user_message"] == 1
+        assert stats["bad_assistant_response"] == 1
+        assert rows[0]["curation"]["synthetic_test"] is False
 
 
 class TestConversion:
@@ -103,6 +118,19 @@ class TestConversion:
         row["principles"]["not-a-principle"] = row["principles"][SLUGS[0]]
         with pytest.raises(ValueError, match="s_1"):
             convert_row(row, "all")
+
+    def test_unknown_relevant_slug_rejected(self):
+        row = make_row("s_1")
+        row["relevant_principles"] = [SLUGS[0], "be-transparent-honest"]
+        with pytest.raises(ValueError, match="relevant_principles"):
+            convert_row(row, "relevant")
+
+    def test_empty_response_not_judgeable(self):
+        assert has_judgeable_response(make_row("s_1"))
+        for bad in ["", None, 42]:
+            row = make_row("s_1")
+            row["assistant_response"] = bad
+            assert not has_judgeable_response(row)
 
     def test_id_roundtrip_with_double_underscore(self):
         for sid in ["s_1", "s_1__rep2", "weird__id__x"]:
@@ -163,3 +191,18 @@ class TestSubsetSelection:
         out, _ = select(self.make_pool(), subset_args())
         non_repeat = [r["sample_id"] for r in out if not r["sample_id"].endswith("__rep2")]
         assert len(non_repeat) == len(set(non_repeat))
+
+    def test_uncurated_input_rejected(self):
+        rows = [make_row("a"), make_row("b")]  # no curate() pass
+        with pytest.raises(SystemExit, match="curation"):
+            select(rows, subset_args())
+
+    def test_rows_without_judgments_excluded(self):
+        pool = self.make_pool()
+        bare = make_row("nojudge")
+        bare["principles"] = {}
+        pool.append(bare)
+        curate([bare])
+        out, stats = select(pool, subset_args())
+        assert stats["excluded_no_judgments"] == 1
+        assert all(r["sample_id"] != "nojudge" for r in out)

@@ -29,6 +29,13 @@ from humanebench.humane_patterns import HUMANE_PATTERNS
 KNOWN_SLUGS = frozenset(HUMANE_PATTERNS.keys())
 
 
+def has_judgeable_response(row: dict) -> bool:
+    """The strict replay solver treats falsy ai_output as missing and raises,
+    so only turns with a non-empty string response can be re-judged."""
+    resp = row.get("assistant_response")
+    return isinstance(resp, str) and bool(resp)
+
+
 def convert_row(row: dict, principles_mode: str) -> list[dict]:
     unknown = set(row["principles"]) - KNOWN_SLUGS
     if unknown:
@@ -37,7 +44,13 @@ def convert_row(row: dict, principles_mode: str) -> list[dict]:
         )
 
     if principles_mode == "relevant":
-        slugs = [s for s in row.get("relevant_principles", []) if s in KNOWN_SLUGS]
+        slugs = row.get("relevant_principles", [])
+        unknown = set(slugs) - KNOWN_SLUGS
+        if unknown:
+            raise ValueError(
+                f"sample {row['sample_id']}: unknown slug(s) in "
+                f"relevant_principles {sorted(unknown)}"
+            )
     else:
         slugs = sorted(row["principles"])
 
@@ -79,11 +92,17 @@ def main() -> None:
 
     n_rows = 0
     n_samples = 0
+    skipped_empty: list[str] = []
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.input) as fin, open(args.output, "w") as fout:
         for line in fin:
+            if not line.strip():
+                continue
             row = json.loads(line)
             n_rows += 1
+            if not has_judgeable_response(row):
+                skipped_empty.append(row.get("sample_id", "<no id>"))
+                continue
             for sample in convert_row(row, args.principles):
                 fout.write(json.dumps(sample, ensure_ascii=False) + "\n")
                 n_samples += 1
@@ -92,6 +111,13 @@ def main() -> None:
         f"Converted {n_rows} turns -> {n_samples} samples "
         f"(mode={args.principles}) into {args.output}"
     )
+    if skipped_empty:
+        print(
+            f"WARNING: skipped {len(skipped_empty)} turn(s) with empty/missing "
+            f"assistant_response (cannot be re-judged by the strict replay "
+            f"solver): {', '.join(skipped_empty[:20])}"
+            + (" ..." if len(skipped_empty) > 20 else "")
+        )
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ Adds a "curation" object to each row:
   - synthetic_test: user message matches known QA/test-traffic patterns
   - dup_cluster / dup_count: exact (user_message, assistant_response) duplicate clusters
   - trivial: joined from a relabeled JSONL's audit.trivial_user_message, if provided
-  - language: crude "en" / "other" heuristic on the user message
+  - language: crude "en" (Latin-script) / "other" heuristic on the user message
 
 Tags are for analysts and downstream sampling/statistics only — judges never see them.
 
@@ -29,17 +29,35 @@ def is_synthetic(user_message: str) -> bool:
     return any(p.search(user_message) for p in SYNTHETIC_PATTERNS)
 
 
+def _is_latin(c: str) -> bool:
+    # Basic Latin through Latin Extended-B, plus Latin Extended Additional
+    # (covers Vietnamese and other precomposed Latin letters).
+    return ord(c) <= 0x024F or 0x1E00 <= ord(c) <= 0x1EFF
+
+
 def language_tag(text: str) -> str:
+    """Rough Latin-script ("en") vs other-script ("other") heuristic —
+    not real language detection; accented Latin counts as "en"."""
     letters = [c for c in text if c.isalpha()]
     if not letters:
         return "en"
-    non_ascii = sum(1 for c in letters if ord(c) > 0x2FF)
-    return "other" if non_ascii / len(letters) > 0.3 else "en"
+    non_latin = sum(1 for c in letters if not _is_latin(c))
+    return "other" if non_latin / len(letters) > 0.3 else "en"
 
 
 def curate(rows: list[dict], trivial_by_id: dict[str, bool] | None = None) -> Counter:
     """Tag rows in place; returns a Counter of tag statistics."""
     stats = Counter(rows=len(rows))
+
+    # Non-string user/assistant fields (null in JSON, malformed exports) are
+    # tagged rather than crashing the run.
+    for row in rows:
+        if not isinstance(row.get("user_message"), str):
+            row["user_message"] = ""
+            stats["bad_user_message"] += 1
+        if not isinstance(row.get("assistant_response"), str):
+            row["assistant_response"] = ""
+            stats["bad_assistant_response"] += 1
 
     clusters: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for row in rows:
@@ -91,7 +109,7 @@ def main() -> None:
     args = parser.parse_args()
 
     with open(args.input) as f:
-        rows = [json.loads(line) for line in f]
+        rows = [json.loads(line) for line in f if line.strip()]
 
     trivial_by_id = load_trivial_labels(args.relabeled) if args.relabeled else None
     stats = curate(rows, trivial_by_id)
@@ -111,6 +129,8 @@ def main() -> None:
         f"- Trivial (from relabeled audit): {stats['trivial']}"
         + (f" ({stats['trivial_unknown']} unlabeled)" if stats["trivial_unknown"] else ""),
         f"- Non-English (heuristic): {stats['non_english']}",
+        f"- Non-string user_message/assistant_response fields: "
+        f"{stats['bad_user_message']}/{stats['bad_assistant_response']}",
     ]
     report = "\n".join(lines) + "\n"
     print(report)
