@@ -16,6 +16,7 @@ from humanebench.bootstrap import (
     BOOTSTRAP_SEED,
     HUMANESCORE_KEY,
     PRINCIPLES,
+    DesignedMeasuredMatrix,
     bootstrap_cell_scores,
     bootstrap_cohort_grid,
     bootstrap_cohort_principle_means,
@@ -25,7 +26,10 @@ from humanebench.bootstrap import (
     cohort_flip_stats,
     diagonal_ranks,
     discriminant_contrasts,
+    holm_adjust,
+    pairwise_interactions,
 )
+from humanebench.bootstrap import _bootstrap_two_sided_p
 
 
 def _synth_long(
@@ -722,6 +726,47 @@ def test_diagonal_ranks_are_ordinal_and_direction_correct():
 
 
 @pytest.mark.unit
+def test_mirror_ranks_track_the_reversed_direction():
+    """The from-top columns must be the same claim with the inequality flipped.
+
+    They exist because the real run came out reversed. If they were merely the
+    complement of the lowest-rank columns they would add nothing; the check is
+    that a planted *positive* diagonal, which the committed direction scores as
+    the weakest possible result, is scored by the mirror as the strongest.
+    """
+    matrix = bootstrap_designed_measured_matrix(
+        _synth_matrix_long(np.random.default_rng(18), diagonal_effect=+0.6,
+                           noise=0.05),
+        n_bootstrap=100, seed=BOOTSTRAP_SEED)
+    ranks = diagonal_ranks(matrix)
+
+    assert (ranks.rank_in_row_from_top == 1).all()
+    assert (ranks.rank_in_column_from_top == 1).all()
+    assert (ranks.share_highest_in_row > 0.9).all()
+    assert (ranks.share_top_two_in_row >= ranks.share_highest_in_row).all()
+    # The committed direction sees nothing here -- both must be reported.
+    assert (ranks.share_lowest_in_row < 0.1).all()
+
+    # An unestimable row is not ranked in either direction. NaN comparisons read
+    # False, so a naive mirror would call an absent diagonal the highest cell.
+    holed = matrix.point.copy()
+    holed[2, 2] = np.nan
+    reps = matrix.replicates.copy()
+    reps[:, 2, 2] = np.nan
+    gapped = diagonal_ranks(DesignedMeasuredMatrix(
+        principles=matrix.principles, models=matrix.models, point=holed,
+        replicates=reps, n_per_cell=matrix.n_per_cell,
+        n_scenarios=matrix.n_scenarios))
+    row = gapped.iloc[2]
+    assert not row.estimable
+    # Not a rank of any kind: the column is float once a row goes unranked, so
+    # the guarantee is "missing", not the literal None that was appended.
+    assert pd.isna(row.rank_in_row_from_top)
+    assert pd.isna(row.rank_in_column_from_top)
+    assert np.isnan(row.share_highest_in_row)
+
+
+@pytest.mark.unit
 def test_cell_difference_is_paired_within_replicate():
     """The FHR-vs-PLTW style comparison must be a paired difference."""
     rng = np.random.default_rng(19)
@@ -819,3 +864,135 @@ def test_duplicate_judged_calls_are_rejected():
     doubled = pd.concat([long, long], ignore_index=True)
     with pytest.raises(ValueError, match="duplicate"):
         bootstrap_designed_measured_matrix(doubled, n_bootstrap=10)
+
+
+@pytest.mark.unit
+def test_pairwise_interaction_recovers_a_planted_effect():
+    """A planted diagonal effect of d shows up as an interaction of 2d.
+
+    Each inner difference contributes d with opposite sign -- `a - b` gains it
+    and `c - d` loses it -- so the difference of differences doubles it.
+    """
+    rng = np.random.default_rng(41)
+    long = _synth_matrix_long(rng, diagonal_effect=0.4, noise=0.2)
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=2000,
+                                                seed=BOOTSTRAP_SEED)
+    pw = pairwise_interactions(matrix)
+
+    assert len(pw) == 28, "8 principles give 28 unordered pairs, not 56"
+    assert pw.estimable.all()
+    assert pw.interaction.min() == pytest.approx(0.8, abs=0.15)
+    assert pw.interaction.max() == pytest.approx(0.8, abs=0.15)
+    assert pw.excludes_zero.all()
+    # 2 / (B + 1) = 0.001 clears Holm's first threshold of 0.05 / 28 = 0.00179,
+    # so the family is resolvable and a real effect can be detected.
+    assert (pw.p_holm < 0.05).all()
+
+
+@pytest.mark.unit
+def test_pairwise_interaction_is_immune_to_rubric_leniency():
+    """Column offsets alone must produce no interaction.
+
+    This is the property the diagonal contrast lacks and the reason this
+    statistic replaced it: a rubric that is uniformly harsher than another
+    depresses its whole column, which the within-row contrast reads as signal
+    and the difference-in-differences cancels exactly.
+    """
+    offsets = {p: v for p, v in zip(PRINCIPLES, [-0.6, -0.4, -0.2, 0.0,
+                                                 0.2, 0.4, 0.6, 0.8])}
+    rng = np.random.default_rng(42)
+    long = _synth_matrix_long(rng, diagonal_effect=0.0,
+                              column_offsets=offsets, noise=0.2)
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=2000,
+                                                seed=BOOTSTRAP_SEED)
+    pw = pairwise_interactions(matrix)
+
+    assert pw.interaction.abs().max() < 0.15, (
+        "leniency differences of up to 1.4 scale points moved the interaction; "
+        "the difference-in-differences is not cancelling column effects"
+    )
+    # Not `excludes_zero.any() is False`: 28 uncorrected 95% intervals under a
+    # true null are *expected* to throw ~1.4 false positives, so demanding zero
+    # would be asserting that the CI has no type-I error rate at all. The
+    # family-wise claim is the one Holm makes, and that is what is checked.
+    assert pw.excludes_zero.sum() <= 4, "far above the ~1.4 expected by chance"
+    assert not (pw.p_holm < 0.05).any(), (
+        "Holm must control the family-wise error rate under a true null"
+    )
+    # The same data through the pre-committed contrast, for contrast: column
+    # offsets DO move it, which is why it needed a centred companion.
+    raw = discriminant_contrasts(matrix).set_index("designed_principle")
+    assert raw.loc["pooled"].contrast != pytest.approx(0.0, abs=1e-9)
+
+
+@pytest.mark.unit
+def test_pairwise_interaction_is_symmetric_and_flags_missing_cells():
+    """Order of the pair cannot matter, and an absent row is not a null."""
+    rng = np.random.default_rng(43)
+    long = _synth_matrix_long(rng, diagonal_effect=0.3, noise=0.15)
+
+    # Symmetry: rebuild with the principle order reversed in the labels and
+    # confirm the same pair gets the same number.
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=200,
+                                                seed=BOOTSTRAP_SEED)
+    pw = pairwise_interactions(matrix)
+    x, y = PRINCIPLES[1], PRINCIPLES[5]
+    row = pw[(pw.principle_a == x) & (pw.principle_b == y)].iloc[0]
+    i, j = matrix.principles.index(x), matrix.principles.index(y)
+    flipped = ((matrix.point[j, j] - matrix.point[j, i])
+               - (matrix.point[i, j] - matrix.point[i, i]))
+    assert row.interaction == pytest.approx(flipped, abs=1e-12)
+
+    # A dropped row makes every pair containing it unestimable, not zero.
+    holed = long[long.designed_principle != PRINCIPLES[3]]
+    hpw = pairwise_interactions(
+        bootstrap_designed_measured_matrix(holed, n_bootstrap=100,
+                                           seed=BOOTSTRAP_SEED))
+    dead = hpw[(hpw.principle_a == PRINCIPLES[3])
+               | (hpw.principle_b == PRINCIPLES[3])]
+    assert len(dead) == 7
+    assert not dead.estimable.any()
+    assert not dead.excludes_zero.any()  # False here means "cannot say"
+    assert dead.p_value.isna().all()
+    assert dead.p_holm.isna().all(), (
+        "an unestimable pair must not consume a Holm step; ranking it would "
+        "make every real test stricter for a test that was never run"
+    )
+    assert hpw[hpw.estimable].p_holm.notna().all()
+
+
+@pytest.mark.unit
+def test_bootstrap_p_floor_is_two_over_b_plus_one():
+    """The floor that forces the pairwise replicate count is real, not folklore.
+
+    `scripts/compute_discriminant_pairwise.py` raises B from 1,000 to 10,000
+    because 2 / 1001 = 0.0020 exceeds Holm's first threshold for 28 tests
+    (0.05 / 28 = 0.00179), making the family unresolvable regardless of the
+    data. If this convention ever changes, that reasoning must be revisited.
+    """
+    for b in (1000, 10_000):
+        all_positive = np.full(b, 1.0)
+        assert _bootstrap_two_sided_p(all_positive) == pytest.approx(2 / (b + 1))
+    assert 2 / 1001 > 0.05 / 28, "the documented conflict at B=1,000"
+    assert 2 / 10_001 < 0.05 / 28, "and its resolution at B=10,000"
+
+    # Straddling zero symmetrically is the least significant possible outcome.
+    straddle = np.concatenate([np.full(500, -1.0), np.full(500, 1.0)])
+    assert _bootstrap_two_sided_p(straddle) == pytest.approx(1.0)
+    assert np.isnan(_bootstrap_two_sided_p(np.full(10, np.nan)))
+
+
+@pytest.mark.unit
+def test_holm_adjust_matches_the_textbook_and_skips_nan():
+    """Step-down, monotone, and NaN excluded from the family size."""
+    p = [0.01, 0.02, 0.03, 0.04]
+    adj = holm_adjust(p)
+    np.testing.assert_allclose(adj, [0.04, 0.06, 0.06, 0.06])
+    assert np.all(np.diff(adj) >= 0), "must be monotone non-decreasing"
+
+    # A NaN shrinks the family from 4 to 3 rather than being ranked.
+    with_nan = holm_adjust([0.01, 0.02, np.nan, 0.04])
+    assert np.isnan(with_nan[2])
+    np.testing.assert_allclose(with_nan[[0, 1, 3]], [0.03, 0.04, 0.04])
+    assert holm_adjust([0.9, 0.9]) .max() <= 1.0, "capped at 1"
+    assert np.isnan(holm_adjust([np.nan, np.nan])).all()
