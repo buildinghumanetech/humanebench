@@ -10,7 +10,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 from curate_production_pairs import curate, is_synthetic, language_tag
-from convert_partner_results import convert_row, has_judgeable_response, split_sample_id
+from convert_partner_results import (
+    convert_row,
+    convert_row_joint,
+    has_judgeable_response,
+    split_sample_id,
+)
 from select_comparison_subset import select
 
 pytestmark = pytest.mark.unit
@@ -132,6 +137,14 @@ class TestConversion:
             row["assistant_response"] = bad
             assert not has_judgeable_response(row)
 
+    def test_joint_mode_one_sample_per_turn(self):
+        row = make_row("s_1")
+        sample = convert_row_joint(row)
+        assert sample["id"] == "s_1"  # no principle suffix
+        assert sample["target"] == ""
+        assert sample["metadata"]["ai_output"] == row["assistant_response"]
+        assert set(sample["metadata"]["orig_judgments"]) == set(SLUGS)
+
     def test_id_roundtrip_with_double_underscore(self):
         for sid in ["s_1", "s_1__rep2", "weird__id__x"]:
             hb_id = f"{sid}__{SLUGS[0]}"
@@ -202,17 +215,58 @@ class TestSubsetSelection:
         assert qa["curation"]["subset_stratum"] == "worst"
         assert qa["curation"]["flags"]["is_qa_test"] is True
         assert qa["curation"]["flags"]["is_worst"] is True
+        # severity flags partition: a worst row is not also negative
+        assert qa["curation"]["flags"]["is_negative"] is False
         assert extras["manifest"]["selected_flags"]["is_qa_test"] == 1
+
+    def test_mixed_extreme_row_is_negative_class(self):
+        # A +1.0 alongside a -0.5 cell: negative-class, NOT a positive-tail
+        # control (the negative tail is what the comparison targets).
+        rows = [make_row("mixed", severities={SLUGS[0]: 1.0, SLUGS[1]: -0.5})]
+        curate(rows)
+        out, stats, extras = select(rows, subset_args(repeat_slice=0))
+        mixed = out[0]
+        assert mixed["curation"]["flags"]["is_positive_extreme"] is False
+        assert mixed["curation"]["flags"]["is_negative"] is True
+        assert mixed["curation"]["subset_stratum"] == "negative"
+        assert extras["manifest"]["strata"]["positive_extreme"]["eligible"] == 0
 
     def test_manifest_records_pools_and_fractions(self):
         out, stats, extras = select(self.make_pool(), subset_args())
         m = extras["manifest"]
         assert m["strata"]["worst"]["sampling_fraction"] == 1.0
         neg = m["strata"]["negative"]
-        assert neg["selected"] == 2 and neg["pool"] == 10
+        assert neg["labeled"] == 2 and neg["eligible"] == 10 and neg["residual_pool"] == 10
         assert abs(neg["sampling_fraction"] - 0.2) < 1e-9
         assert m["population"] == len(self.make_pool())
         assert m["population_flags"]["is_worst"] == 5
+        # unified schema: every stratum entry has the same keys
+        for entry in m["strata"].values():
+            assert set(entry) == {"eligible", "residual_pool", "labeled", "sampling_fraction"}
+
+    def test_flag_totals_are_zero_safe(self):
+        rows = [make_row("a"), make_row("b")]  # nothing trivial/worst/etc.
+        curate(rows)
+        out, stats, extras = select(rows, subset_args(repeat_slice=0))
+        pf = extras["manifest"]["population_flags"]
+        assert pf["is_trivial"] == 0
+        assert pf["is_worst"] == 0
+        assert pf["is_qa_test"] == 0
+
+    def test_stratum_rng_streams_independent(self):
+        # Resizing one stratum must not change another stratum's draws.
+        pool = self.make_pool()
+        out_a, _, _ = select(copy.deepcopy(pool), subset_args(positive_extreme_sample=0))
+        out_b, _, _ = select(copy.deepcopy(pool), subset_args(positive_extreme_sample=2))
+
+        def labeled(out, stratum):
+            return sorted(
+                r["sample_id"] for r in out
+                if r["curation"]["subset_stratum"] == stratum
+            )
+
+        for stratum in ("negative", "trivial", "positive"):
+            assert labeled(out_a, stratum) == labeled(out_b, stratum)
 
     def test_between_run_repeats_mirror_repeat_slice(self):
         out, stats, extras = select(self.make_pool(), subset_args())
