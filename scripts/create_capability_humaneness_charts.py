@@ -5,6 +5,9 @@ Shows relationship between general capability and both baseline humaneness
 and adversarial robustness.
 """
 
+# Paper: utility -- no paper-facing output; supports exploratory capability-versus-humaneness scatter figures (figures/capability_vs_baseline_humaneness.*, capability_vs_adversarial_robustness.*, capability_vs_bad_persona_humaneness.*).
+# Paper: this is NOT the supplement's "HELM Capability Scatter" figure, which is figs/fig_helm_scatter_1col.pdf from scripts/create_helm_delta_scatter.py.
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import pandas as pd

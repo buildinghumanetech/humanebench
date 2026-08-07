@@ -56,6 +56,13 @@ Outputs (written to --output-dir, default tables/discriminant/):
 Run from repo root, after scripts/verify_discriminant_provenance.py passes:
     python scripts/compute_discriminant_validity.py
 """
+# Paper: produces tables/discriminant/*.csv and results/discriminant_validity.md - the designed x
+#        scored matrix and its diagonal-versus-off-diagonal row contrasts, whose pooled value is
+#        the pre-registered contrast reported as reversed, +0.426 (main paper, "Principle
+#        Separability").
+# Paper: implements the within-row contrast that differences out a general model-quality factor
+#        and per-rubric leniency; the Holm-corrected designed x scored interaction family is
+#        computed separately in scripts/compute_discriminant_pairwise.py.
 from __future__ import annotations
 
 import argparse
@@ -84,6 +91,7 @@ from humanebench.bootstrap import (  # noqa: E402
     discriminant_contrasts,
 )
 from humanebench.discriminant import (  # noqa: E402
+    CONDITIONS,
     IDS_PATH,
     LOG_CONDITION,
     MANIFEST_PATH,
@@ -157,7 +165,8 @@ def _resolve_attachment(text, attachments: dict) -> str:
 
 
 def load_run_scores(logs_dir: Path,
-                    models: list[str]) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+                    models: list[str],
+                    log_condition: str = LOG_CONDITION) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Long table of the multi-label run, one row per judged call.
 
     Admission mirrors ``compute_inter_judge_agreement.collect_long_table``: a
@@ -175,7 +184,7 @@ def load_run_scores(logs_dir: Path,
              "invalid_flagged": 0, "files": []}
 
     for model in models:
-        model_dir = logs_dir / LOG_CONDITION / model
+        model_dir = logs_dir / log_condition / model
         paths = sorted(model_dir.glob("*.eval")) if model_dir.is_dir() else []
         if not paths:
             continue
@@ -1122,18 +1131,41 @@ def main() -> int:
     ap.add_argument("--allow-incomplete", action="store_true",
                     help="write a matrix anyway; the shortfall is stated in the "
                          "report header, not buried")
+    ap.add_argument("--condition", default="discriminant",
+                    choices=sorted(CONDITIONS),
+                    help="which condition to analyse (default: discriminant)")
     args = ap.parse_args()
+
+    cond = CONDITIONS[args.condition]
+    if args.condition != "discriminant":
+        if args.output_dir == REPO_ROOT / "tables" / "discriminant":
+            args.output_dir = REPO_ROOT / "tables" / cond.name
+        if args.report == REPO_ROOT / "results" / "discriminant_validity.md":
+            args.report = REPO_ROOT / "results" / f"discriminant_validity_{args.condition.removeprefix('discriminant_')}.md"
+
+    published_tables = REPO_ROOT / "tables" / "discriminant"
+    published_report = REPO_ROOT / "results" / "discriminant_validity.md"
+    if args.condition != "discriminant":
+        if args.output_dir == published_tables:
+            print("ERROR: --condition is not 'discriminant' but --output-dir "
+                  "still points at the published tables. Pass --output-dir explicitly.",
+                  file=sys.stderr)
+            return 1
+        if args.report == published_report:
+            print("ERROR: --condition is not 'discriminant' but --report "
+                  "still points at the published report. Pass --report explicitly.",
+                  file=sys.stderr)
+            return 1
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    # The report's default parent is results/, which is gitignored and absent in
-    # a fresh worktree -- without this, the whole analysis runs and then dies on
-    # FileNotFoundError at the very last write.
     args.report.parent.mkdir(parents=True, exist_ok=True)
 
-    manifest = json.loads(MANIFEST_PATH.read_text())
-    long, reasons, stats = load_run_scores(args.logs_dir, args.models)
+    cond_manifest_path = cond.data_dir / "manifest.json"
+    manifest = json.loads(cond_manifest_path.read_text())
+    long, reasons, stats = load_run_scores(args.logs_dir, args.models, cond.name)
     if long.empty:
         print("No discriminant run found under "
-              f"{(args.logs_dir / LOG_CONDITION)}.\n"
+              f"{(args.logs_dir / cond.name)}.\n"
               "The matrix cannot be built. Report the run as not completed "
               "rather than analysing a partial matrix.", file=sys.stderr)
         return 2
@@ -1148,7 +1180,7 @@ def main() -> int:
     # (or stamping "this matrix is incomplete" on it) would be false.
     # Count checks can be fooled by a wrong dataset of the right size; identity
     # checks cannot. Every scenario in the logs must belong to the frozen frame.
-    frame_ids = {ln.strip() for ln in IDS_PATH.read_text().splitlines() if ln.strip()}
+    frame_ids = {ln.strip() for ln in cond.ids_path.read_text().splitlines() if ln.strip()}
     alien = sorted(set(long["scenario_id"]) - frame_ids)
     if alien:
         print(f"WRONG FRAME: {len(alien)} scenario id(s) in the logs are not in "
@@ -1190,6 +1222,10 @@ def main() -> int:
 
     long.to_csv(args.output_dir / "matrix_long.csv", index=False)
 
+    # Paper: the designed x scored matrix and its row contrasts - diagonal cell minus the mean
+    # of the seven off-diagonal cells in its own row, raw and column-centred, under the
+    # scenario-cluster bootstrap. The pooled row is the reversed pre-registered contrast
+    # reported in main paper, "Principle Separability".
     matrix = bootstrap_designed_measured_matrix(
         long, n_bootstrap=args.n_bootstrap, seed=args.seed)
     raw = discriminant_contrasts(matrix, centered=False)

@@ -15,6 +15,16 @@ These conventions are deliberately identical to
 `scripts/compute_ensemble_vs_human_cis.py` so every CI in the paper shares
 one bootstrap design.
 """
+# Paper: implements the resampling protocol stated at the head of the main
+# paper, "Results" -- 95% percentile CIs from 1,000 scenario-level cluster
+# resamples with replacement, stratified by principle within each (model,
+# persona) cell, resampled ids reused across personas within a model to preserve
+# within-prompt pairing, seed 20260407. Every CI in Table 1 comes from here.
+# Paper: also implements the separability family -- the designed x scored
+# matrix, its (a-b)-(c-d) interaction contrasts, the two-sided bootstrap p and
+# the Holm correction across the 28 principle pairs (main paper, "Principle
+# Separability"). That family is run at 10,000 replicates rather than the 1,000
+# default below; see `_bootstrap_two_sided_p` for why 1,000 cannot resolve it.
 from __future__ import annotations
 
 import warnings
@@ -64,6 +74,9 @@ def load_long_scores(raw_csv: Path | str) -> pd.DataFrame:
     if missing:
         raise ValueError(f"raw_csv missing required columns: {sorted(missing)}")
 
+    # Paper: the per-scenario score -- mean severity over the K = 3 ensemble
+    # judges, the same collapse `humanebench.scorer` performs at scoring time
+    # (main paper, "Scoring and Judging").
     grouped = (
         df.groupby(["persona", "model", "principle", "sample_id"], as_index=False)
         .agg(score=("severity", "mean"), n_judges=("severity", "size"))
@@ -194,6 +207,10 @@ def bootstrap_cell_scores(
                 "n_eff": n_per_principle[principle],
             })
 
+        # Paper: HumaneScore, recomputed inside each replicate as the unweighted
+        # mean of the eight per-principle means -- the same macro-average
+        # `humanebench.scorer.humane_pattern_score` computes on the observed
+        # data (main paper, "Scoring and Judging").
         # HumaneScore: mean across the 8 principle means per replicate.
         humane_reps = rep_matrix.mean(axis=0)
         humane_point = float(
@@ -269,6 +286,10 @@ def bootstrap_persona_deltas(
         # Pre-extract per-persona score columns as numpy arrays for speed.
         persona_arrays = {p: wide[p].to_numpy(dtype=float) for p in required}
 
+        # Paper: the within-prompt pairing the main paper, "Results", claims for
+        # the persona-delta CIs -- one stratified draw of scenario ids per
+        # replicate, looked up under every persona, so Delta is a difference of
+        # scores on the *same* scenarios rather than of two independent means.
         # Stratified resample of row-indices, shared across personas.
         # Shape: (n_bootstrap, total_n_paired).
         idx_chunks_per_rep: list[np.ndarray] = []
@@ -354,7 +375,12 @@ def bootstrap_cohort_principle_means(
     seed: int = BOOTSTRAP_SEED,
     replicates_out: dict[tuple[str, str, str], np.ndarray] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Bootstrap CIs for the cohort-mean per-principle scores in Table 4.
+    """Bootstrap CIs for the cohort-mean per-principle scores.
+
+    Paper: the cohort per-principle table of the supplement, "Per-Principle
+    Cohort Scores", via `scripts/compute_cohort_principle_cis.py`; the
+    principle-level narrative it supports is the main paper, "Principle-Level
+    Variation".
 
     For each (principle, persona), the estimator is
 
@@ -370,7 +396,7 @@ def bootstrap_cohort_principle_means(
 
     Scenarios are restricted, per principle, to the intersection of
     `sample_id`s present for every (model, persona) cell. This mirrors the
-    788-subset analysis in §3.2 of the paper.
+    analysis-subset definition in the main paper, "Scenario Construction".
 
     Returns
     -------
@@ -414,7 +440,8 @@ def bootstrap_cohort_principle_means(
         if missing_cols:
             # Some (model, persona) cell never scored this principle — skip
             # rather than silently inflate the cohort mean. Warn so a missing
-            # Table 4 row surfaces at runtime instead of in Overleaf.
+            # cohort per-principle row surfaces at runtime instead of in the
+            # typeset supplement.
             warnings.warn(
                 f"bootstrap_cohort_principle_means: skipping principle "
                 f"{principle!r} — missing (model, persona) cells: {missing_cols}",
@@ -492,6 +519,118 @@ def bootstrap_cohort_principle_means(
 
 
 # ---------------------------------------------------------------------------
+# Public API: per-model per-principle grid with bootstrap replicates
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ModelPrincipleGrid:
+    """Per-model, per-persona, per-principle bootstrap replicates.
+
+    Mirrors ``bootstrap_cohort_principle_means`` but keeps the per-model axis
+    instead of collapsing to a cohort mean. RNG consumption is identical
+    call-for-call (same loop order, same single ``rng.integers`` per principle),
+    so ``replicates.mean(axis=1)`` is bit-identical to the cohort function's
+    ``cohort_reps`` under the same seed/models/personas.
+    """
+
+    models: tuple[str, ...]
+    personas: tuple[str, ...]
+    principles: tuple[str, ...]
+    point: np.ndarray       # (n_models, n_personas, n_principles)
+    replicates: np.ndarray  # (n_bootstrap, n_models, n_personas, n_principles)
+    n_scenarios: np.ndarray  # (n_principles,)
+
+
+def bootstrap_model_principle_grid(
+    long: pd.DataFrame,
+    models: Sequence[str],
+    personas: Sequence[str] = PERSONAS,
+    n_bootstrap: int = N_BOOTSTRAP_DEFAULT,
+    seed: int = BOOTSTRAP_SEED,
+) -> ModelPrincipleGrid:
+    """Bootstrap per-model per-principle scores with scenario-cluster CIs.
+
+    Uses the same paired-intersection, scenario-stratified resampling as
+    ``bootstrap_cohort_principle_means``.  Keeps the per-model dimension so
+    callers can form cross-model correlations, per-model differences, and
+    model x principle interactions from the replicate arrays directly.
+    """
+    models = list(models)
+    personas = list(personas)
+
+    sub = long[long["model"].isin(models) & long["persona"].isin(personas)]
+    rng = np.random.default_rng(seed)
+
+    principles_out: list[str] = []
+    point_slices: list[np.ndarray] = []
+    rep_slices: list[np.ndarray] = []
+    n_scenarios_list: list[int] = []
+
+    for principle in PRINCIPLES:
+        p_sub = sub[sub["principle"] == principle]
+        if p_sub.empty:
+            continue
+
+        wide = p_sub.pivot_table(
+            index="sample_id",
+            columns=["model", "persona"],
+            values="score",
+            aggfunc="first",
+        )
+        required_cols = [(m, pe) for m in models for pe in personas]
+        missing_cols = [c for c in required_cols if c not in wide.columns]
+        if missing_cols:
+            warnings.warn(
+                f"bootstrap_model_principle_grid: skipping principle "
+                f"{principle!r} — missing (model, persona) cells: {missing_cols}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            continue
+        wide = wide[required_cols].dropna()
+        if wide.empty:
+            continue
+
+        n_s = wide.shape[0]
+        flat = wide.to_numpy(dtype=float)
+        scores = flat.reshape(n_s, len(models), len(personas))
+
+        idx = rng.integers(0, n_s, size=(n_bootstrap, n_s))
+        rep_scores = scores[idx]
+        per_model_means = rep_scores.mean(axis=1)  # (n_boot, n_models, n_personas)
+
+        point_per_model = scores.mean(axis=0)  # (n_models, n_personas)
+
+        principles_out.append(principle)
+        point_slices.append(point_per_model)
+        rep_slices.append(per_model_means)
+        n_scenarios_list.append(n_s)
+
+    if not point_slices:
+        return ModelPrincipleGrid(
+            models=tuple(models),
+            personas=tuple(personas),
+            principles=(),
+            point=np.empty((len(models), len(personas), 0)),
+            replicates=np.empty((n_bootstrap, len(models), len(personas), 0)),
+            n_scenarios=np.array([], dtype=int),
+        )
+
+    point = np.stack(point_slices, axis=-1)      # (n_models, n_personas, n_principles)
+    replicates = np.stack(rep_slices, axis=-1)    # (n_boot, n_models, n_personas, n_principles)
+
+    return ModelPrincipleGrid(
+        models=tuple(models),
+        personas=tuple(personas),
+        principles=tuple(principles_out),
+        point=point,
+        replicates=replicates,
+        n_scenarios=np.array(n_scenarios_list, dtype=int),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Convenience: binarized variant for the robustness-gap script
 # ---------------------------------------------------------------------------
 
@@ -550,6 +689,11 @@ def bootstrap_cohort_grid(
     scenario_ids: Sequence[str] | None = None,
 ) -> CohortGrid:
     """Bootstrap the whole (model x persona) grid off ONE shared scenario draw.
+
+    Paper: the frame behind every cohort-level count -- the flip count of the
+    main paper, "The Anti-Humane Flip", and the robust-model count of "Overall
+    Performance". Each is recomputed per replicate by `cohort_flip_stats`.
+
 
     `bootstrap_cell_scores` resamples scenarios independently per cell, which is
     correct for a single cell's marginal CI but wrong for any statistic that is
@@ -696,7 +840,11 @@ def bootstrap_cohort_grid(
 
 
 def _flip_mask(base: np.ndarray, bad: np.ndarray) -> np.ndarray:
-    """Eq. 5 anti-humane flip: S_baseline > 0 AND S_bad < 0."""
+    """Anti-humane flip: S_baseline > 0 AND S_bad < 0.
+
+    Paper: the flip criterion defined in the main paper, "Scoring and Judging",
+    and counted in "The Anti-Humane Flip".
+    """
     return (base > 0) & (bad < 0)
 
 
@@ -720,11 +868,14 @@ def cohort_flip_stats(
         models      the models satisfying the rule on the observed data
 
     Rules:
-        flip_sign         S_base > 0 and S_bad < 0            (paper Eq. 5)
+        flip_sign         S_base > 0 and S_bad < 0     (the paper's flip
+                          criterion; counted in "The Anti-Humane Flip")
         delta_lt_{c}      Delta_bad < c, for each cutoff c
         robust_sbad       S_bad >= robust_sbad
         robust_sbad_ci    S_bad >= robust_sbad and the cell's own CI
-                          excludes robust_sbad  (the section 4 bold rule)
+                          excludes robust_sbad  (the "stay clearly above the
+                          acceptable threshold" rule of the main paper,
+                          "Overall Performance")
 
     ``adversarial_persona`` selects which column plays the adversarial role, so
     the same rules can be evaluated against a decomposition condition. It
@@ -877,6 +1028,11 @@ def bootstrap_designed_measured_matrix(
     models: Sequence[str] | None = None,
 ) -> DesignedMeasuredMatrix:
     """Bootstrap the designed x measured matrix off ONE shared draw per row.
+
+    Paper: the 8x8 designed x scored matrix underlying the separability result
+    (main paper, "Principle Separability"). Rows are the principle a scenario
+    was authored for, columns the rubric it was scored under.
+
 
     Every cell in a row is computed from the *same* 12 scenarios, and the
     headline statistic is a difference between cells within a row. Resampling
@@ -1139,6 +1295,8 @@ def diagonal_ranks(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# Paper: the Holm-Bonferroni correction applied to the separability family
+# (main paper, "Principle Separability").
 def holm_adjust(p_values: Sequence[float]) -> np.ndarray:
     """Holm-Bonferroni step-down adjusted p-values.
 
@@ -1245,6 +1403,9 @@ def pairwise_interactions(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
     rows: list[dict] = []
     for i in range(len(principles)):
         for j in range(i + 1, len(principles)):
+            # Paper: the separability statistic itself -- the designed x scored
+            # difference-in-differences (a - b) - (c - d) reported for all 28
+            # principle pairs (main paper, "Principle Separability").
             a = matrix.point[i, i]
             b = matrix.point[i, j]
             c = matrix.point[j, i]
@@ -1273,8 +1434,52 @@ def pairwise_interactions(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
                 "n_scenarios_b": int(matrix.n_scenarios[j]),
             })
     df = pd.DataFrame(rows)
+    # Paper: the multiplicity correction behind the "N of 28 pairs separable"
+    # count (main paper, "Principle Separability"). The family is the 28 pairs
+    # of one matrix.
     df["p_holm"] = holm_adjust(df["p_value"].to_numpy())
     return df
+
+
+def pairwise_equivalence(
+    matrix: DesignedMeasuredMatrix,
+    bound: float,
+    pct: tuple[float, float] = (5.0, 95.0),
+) -> pd.DataFrame:
+    """TOST-style equivalence classification for each unordered principle pair.
+
+    Uses the SAME interaction replicates as ``pairwise_interactions``. A pair is
+    classified "equivalent" iff its 90% bootstrap CI lies entirely within
+    ``(-bound, +bound)``. This is a classification device, not a member of the
+    Holm family.
+
+    Returns one row per pair with ``ci90_lower``, ``ci90_upper``, ``equivalent``.
+    """
+    principles = matrix.principles
+    rows: list[dict] = []
+    for i in range(len(principles)):
+        for j in range(i + 1, len(principles)):
+            reps = ((matrix.replicates[:, i, i] - matrix.replicates[:, i, j])
+                    - (matrix.replicates[:, j, i] - matrix.replicates[:, j, j]))
+            point = (matrix.point[i, i] - matrix.point[i, j]) - (matrix.point[j, i] - matrix.point[j, j])
+            lo = float(np.nanpercentile(reps, pct[0])) if np.any(np.isfinite(reps)) else float("nan")
+            hi = float(np.nanpercentile(reps, pct[1])) if np.any(np.isfinite(reps)) else float("nan")
+            estimable = bool(np.isfinite(point) and np.isfinite(lo) and np.isfinite(hi))
+            if estimable:
+                equivalent = bool(-bound < lo and hi < bound)
+            else:
+                equivalent = False
+            rows.append({
+                "principle_a": principles[i],
+                "principle_b": principles[j],
+                "interaction": float(point),
+                "ci90_lower": lo,
+                "ci90_upper": hi,
+                "tost_bound": bound,
+                "equivalent": equivalent,
+                "estimable": estimable,
+            })
+    return pd.DataFrame(rows)
 
 
 def bootstrap_naive_grid(

@@ -28,6 +28,13 @@ frozen set and the provenance check reduces to a subset test.
 Usage:
     python scripts/build_decomposition_subsample.py [--force]
 """
+# Paper: produces data/decomposition/subsample_200_ids.txt and humane_bench_subsample_200.jsonl -
+#        the frozen, seeded 200-scenario draw (25 per principle) that decomposition conditions
+#        C, D and E are scored on (main paper, "Engagement Pressure Alone Drives Degradation" /
+#        supplement, "Dose-Response Across Adversarial Wordings", whose contrasts are computed
+#        on this subsample).
+# Paper: implements that draw's stratification - principle, then vulnerable-population bucket,
+#        then domain by largest-remainder rounding - seeded so it is drawn once and reproducible.
 from __future__ import annotations
 
 import argparse

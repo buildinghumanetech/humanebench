@@ -4,6 +4,8 @@ Filter humane_bench.jsonl to only include IDs from GQ_models.txt
 and write to humane_bench_test.jsonl
 """
 
+# Paper: utility -- no paper-facing output; filters data/humane_bench.jsonl down to the golden-question IDs, writing data/humane_bench_test.jsonl.
+
 import json
 
 def read_ids_from_file(file_path):

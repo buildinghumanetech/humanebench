@@ -17,6 +17,7 @@ and cannot check is spelled out in **Provenance** below.
 
 ```
 README.md                  this file
+supplement.pdf             the Supplementary Document (compiled appendices)
 requirements.txt           pinned environment
 pytest.ini                 test markers
 
@@ -41,13 +42,21 @@ tables/                    every derived table the paper cites
                                        the input that stands in for the logs
   inter_judge_raw_stats.json           log-scan counts for the three passes
   decomposition/           goal-vs-tactics results
-  discriminant/            designed x measured matrix
+  discriminant/            designed x scored matrix, original 12-per-principle draw
+  discriminant_expansion/  fresh 24-per-principle redraw
+  discriminant_pooled/     pooled 36-per-principle family + the domain-stratified probe
+  discriminant_rules27/    rules-suppressed replication (five of seven global rules removed)
+  discriminant_canary/     judge-drift gate: 96 byte-identical calls re-issued
+  lopo_*.csv               leave-one-principle-out sensitivity
+  emc_pltw_*.csv           EMC/PLTW column non-redundancy checks
 
 provenance/                per-run hashes + the independent verifier's inputs
 figures/                   paper figures and their alt text
 helm_integration/          HELM capability scores and the scraper
 results/
   rubric_appendix.md              the rubric, extracted verbatim from the logs
+  serving_sensitivity_rows.csv.gz one row per scored generation call with the
+                                  provider that served it, both run periods
   decomposition_precommitment.md  interpretation fixed before any
                                   decomposition run existed
 ```
@@ -94,6 +103,47 @@ Bootstrap CIs use seed `20260407` and 1,000 replicates
 exactly, not merely closely. Expect the alpha bootstraps to take a few minutes;
 pass `--n-bootstrap 0` for point estimates only.
 
+### Script -> paper map
+
+Every Python file in this package carries a `# Paper:` header naming the
+paper section, table, or figure it implements or produces (or stating that it
+is a utility with no paper-facing output). The table below indexes the
+paper-facing analysis scripts in one place; the per-file headers carry the
+same mapping next to the code. The main paper's headings are unnumbered; the
+only numbered object is Table 1, the 15-model master results table.
+
+| Script | Paper artifact it produces / implements |
+| --- | --- |
+| `scripts/compute_score_cis.py` | Table 1 scores, paired deltas, CIs; the 10/15 flip count ("Overall Performance", "The Anti-Humane Flip") |
+| `scripts/compute_cohort_principle_cis.py` | supplement "Per-Principle Cohort Scores" |
+| `scripts/compute_inter_judge_agreement.py` | Krippendorff's alpha / Cohen's kappa (scoring section; supplement "Judge Validation Details") |
+| `scripts/compute_human_validation_metrics.py`, `scripts/compute_ensemble_vs_human_cis.py`, `scripts/compare_judge_vs_human.py` | human-validation numbers (scoring section; supplement "Judge Validation Details") |
+| `scripts/compute_loo_sensitivity.py` | leave-one-judge-out ablation (supplement "Judge Validation Details") |
+| `scripts/compute_judge_self_preference.py` | judge-independence paragraph (supplement "Judge Validation Details") |
+| `scripts/compute_rubric_sensitivity.py`, `scripts/compute_binarized_robustness_gap.py` | rubric / threshold sensitivity checks |
+| `scripts/compute_interprinciple_correlation.py` | supplement "Cross-Model Correlation and Construct Redundancy" |
+| `scripts/compute_discriminant_validity.py`, `scripts/compute_discriminant_pairwise.py` | designed x scored separability (benchmark section) |
+| `scripts/build_discriminant_expansion_frame.py`, `scripts/build_discriminant_pooled_tables.py` | fresh 24-per-principle redraw and the pooled 36-per-principle family |
+| `scripts/compute_discriminant_rules_comparison.py` | rules-suppressed replication (benchmark section) |
+| `scripts/build_discriminant_canary.py`, `scripts/compute_discriminant_canary.py` | judge-drift gate for pooling |
+| `scripts/compute_discriminant_domain_pairwise.py` | supplement "Domain-Stratified Pairwise Probe" |
+| `scripts/simulate_discriminant_power.py` | power context for the original draw's five underpowered pairs |
+| `scripts/compute_lopo_sensitivity.py` | supplement "Leave-One-Principle-Out Sensitivity" |
+| `scripts/compute_emc_pltw_nonredundancy.py`, `scripts/compute_emc_pltw_correlation_check.py` | EMC/PLTW retention decision (benchmark section) |
+| `scripts/compute_decomposition.py` | "Engagement Pressure Alone Drives Degradation"; supplement "Dose-Response Across Adversarial Wordings" |
+| `scripts/compute_vp_table5.py`, `scripts/vp_tables_and_figure.py` | supplement "Vulnerable-Population Analysis" + the age-gradient figure |
+| `scripts/compute_helm_power.py` | minimum-detectable-effect caveat ("Intelligence != Humaneness") |
+| `scripts/create_helm_delta_scatter.py` | supplement "HELM Capability Scatter" figure |
+| `scripts/create_steerability_chart.py` | supplement "Per-Model Steerability Ranges" figure |
+| `scripts/compute_serving_provenance.py` | supplement "Serving-Variation Sensitivity" incl. the provider-mix table |
+| `scripts/compute_dataset_composition.py`, `scripts/compute_similarity_distributions.py` | scenario statistics (benchmark section; supplement "Scenario Construction Pipeline") |
+| `scripts/tag_excluded_prompts.py` | supplement "Excluded Scenarios: Confabulation Audit" |
+| `scripts/extract_rubric_appendix.py` | supplement "Complete Scoring Rubric" (verbatim extraction + checks) |
+| `scripts/build_provenance.py`, `scripts/verify_provenance.py`, `scripts/verify_discriminant_provenance.py` | provenance manifest and its independent verifier |
+| `src/baseline_task.py`, `src/good_persona_task.py`, `src/bad_persona_task.py` | the three evaluation conditions |
+| `src/decomp_b_xml_objective_task.py` ... `src/decomp_e_abtest_task.py` | decomposition conditions B-E |
+| `humanebench/scorer.py`, `humanebench/bootstrap.py`, `humanebench/humane_patterns.py`, `humanebench/excluded.py`, `humanebench/provenance.py` | the judge ensemble, Eq. 2 + the bootstrap protocol, the rubric source, the 12-item exclusion, provenance hashing |
+
 ### Headline scores and steerability
 
 ```bash
@@ -104,7 +154,7 @@ python scripts/compute_score_cis.py
 Per-model HumaneScore under each persona, the baseline→adversarial delta, and
 their CIs. The anti-humane flip count is a cohort statistic over this grid.
 
-### Per-principle cohort means (Table 4)
+### Per-principle cohort means (supplement: "Per-Principle Cohort Scores")
 
 ```bash
 python scripts/compute_cohort_principle_cis.py
@@ -174,7 +224,7 @@ python scripts/compute_interprinciple_correlation.py
 # -> tables/interprinciple_correlation.{md,csv}
 ```
 
-### Discriminant validity (designed x measured matrix)
+### Discriminant validity (designed x scored matrix)
 
 ```bash
 python scripts/compute_discriminant_validity.py \
@@ -184,6 +234,43 @@ python scripts/compute_discriminant_validity.py \
 ```
 
 Reads the multi-label judgements in `data/discriminant/multilabel_*.jsonl`.
+
+### Separability follow-up: pooled family, rules suppression, domain probe
+
+The pooled 36-per-principle result reported in the paper's benchmark section
+merges the original 12-per-principle draw with a fresh 24-per-principle
+redraw, gated by a judge-drift canary:
+
+```bash
+python scripts/build_discriminant_pooled_tables.py
+# -> tables/discriminant_pooled/matrix_long.csv
+python scripts/compute_discriminant_pairwise.py --tables-dir tables/discriminant_pooled
+# -> tables/discriminant_pooled/pairwise_interactions.csv  (27/28 Holm-separable)
+python scripts/compute_discriminant_rules_comparison.py
+# -> tables/discriminant_rules27/comparison_pairs.csv  (rules-suppressed replication)
+python scripts/compute_discriminant_domain_pairwise.py --min-per-side 5
+# -> tables/discriminant_pooled/domain_pairwise.csv
+#    (supplement "Domain-Stratified Pairwise Probe"; the shipped table was
+#     produced with the gate at 5 scenarios per side, hence the explicit flag)
+python scripts/simulate_discriminant_power.py
+# -> tables/discriminant/power_simulation.csv
+```
+
+### Leave-one-principle-out sensitivity
+
+```bash
+python scripts/compute_lopo_sensitivity.py
+# -> tables/lopo_model_scores.csv, lopo_cohort_counts.csv,
+#    lopo_status_changes.csv, lopo_decomposition.csv
+```
+
+### EMC/PLTW non-redundancy
+
+```bash
+python scripts/compute_emc_pltw_nonredundancy.py
+python scripts/compute_emc_pltw_correlation_check.py
+# -> tables/emc_pltw_*.csv
+```
 
 ### Goal-vs-tactics decomposition
 
@@ -197,7 +284,7 @@ computed outputs ship in `tables/decomposition/` instead. Read
 `results/decomposition_precommitment.md` first — it fixes the interpretation of
 both possible outcomes, and was written before any decomposition run existed.
 
-### Vulnerable populations (Table 5, Table 6, age gradient)
+### Vulnerable populations (supplement: "Vulnerable-Population Analysis")
 
 ```bash
 python scripts/compute_vp_table5.py
@@ -206,7 +293,7 @@ python scripts/vp_tables_and_figure.py
 #    vp_table6_age_gradient.csv, figures/vp_age_gradient.{pdf,png}
 ```
 
-### HELM capability correlation and its power (Section 4.6)
+### HELM capability correlation and its power (main paper: "Intelligence != Humaneness")
 
 ```bash
 python scripts/compute_helm_power.py
@@ -237,6 +324,11 @@ sample — and never by model slug. All three judges are themselves evaluated
 models, so a slug comparison books a model's self-judge call as a generation
 call. The row counts make this checkable: exactly 2,400 rows for every model,
 the three judges included.
+
+The supplement's per-model provider-mix table (both run periods) is computed
+from `results/serving_sensitivity_rows.csv.gz` — one row per scored generation
+call across the main runs and the decomposition runs, with the provider and
+`system_fingerprint` read from the raw API response.
 
 ### Dataset composition and near-duplicate rate
 

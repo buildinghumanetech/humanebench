@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Near-duplicate rate and full pairwise similarity distributions.
 
-Section 3.2 reports a mean between-principle cosine similarity of 0.152 and
-eight within-principle means, but reports no distribution, no near-duplicate
+The paper's scenario-construction section reports a mean between-principle
+cosine similarity of 0.152, with eight within-principle means in the
+supplement, but reports no distribution, no near-duplicate
 rate, and no threshold -- so a reviewer cannot tell whether "low semantic
 overlap" is a property of the whole dataset or only of its average. This script
 reports the distributions those means summarize.
@@ -10,13 +11,13 @@ reports the distributions those means summarize.
 Two embedding models, deliberately:
 
   MiniLM (all-MiniLM-L6-v2) is the **primary** result. It is the model the
-  construction pipeline actually deduplicated with, at the 0.60 threshold
-  section 3.2 cites, so it is the only model against which a near-duplicate
+  construction pipeline actually deduplicated with, at the 0.60 threshold the
+  supplement cites, so it is the only model against which a near-duplicate
   rate is interpretable as "did the dedup step work". It is recomputed from the
   live dataset, so its freshness is self-evident.
 
   text-embedding-3-large is read from `data_generation/cache/principle_embeddings.npz`
-  and is the model whose numbers section 3.2 currently prints. The cache stores
+  and is the model whose numbers the paper prints. The cache stores
   only positional float arrays -- no ids, no texts, no hash -- so its freshness
   cannot be asserted from the file. This script **proves it from git instead**,
   and refuses to use the cache if the proof fails:
@@ -45,6 +46,14 @@ Outputs (written to --output-dir, default tables/):
 Run from repo root:
     python scripts/compute_similarity_distributions.py
 """
+# Paper: produces tables/similarity_summary.csv,
+#   similarity_near_duplicates.csv and similarity_distributions.md -- the
+#   distributions behind the between-principle mean of 0.152 reported in the
+#   main paper's "Scenario Construction" section and the per-principle
+#   within-principle means in the supplement's "Scenario Construction
+#   Pipeline".
+# Paper: recomputes the near-duplicate rate at the 0.60 all-MiniLM-L6-v2
+#   admission threshold that same supplement section documents.
 from __future__ import annotations
 
 import argparse

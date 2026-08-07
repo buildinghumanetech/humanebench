@@ -1,6 +1,13 @@
 """
 Baseline LLM eval - no humane/anti-humane system prompt appended.
 """
+# Paper: implements the baseline (no system prompt) condition of the three-condition
+#   design (main paper, "Overall Performance"; per-model scores in Table 1).
+# Paper: this is the arm both persona deltas are paired against -- contrast minus
+#   baseline on shared scenarios (main paper, "Universal Improvement Under Pro-Humane
+#   Prompting" and "The Anti-Humane Flip").
+# Paper: same dataset and 3-judge ensemble scoring as the persona conditions
+#   (supplement, "Judge Validation Details"); produces raw eval logs, not in this package.
 import sys
 from pathlib import Path
 

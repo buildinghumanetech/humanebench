@@ -4,6 +4,11 @@ Compare AI judge scores against human ratings for golden questions.
 This script loads Inspect AI evaluation results and compares them to human
 ratings to validate the AI judging pipeline.
 """
+# Paper: produces scripts/human_judging_analysis/output/judge_vs_human_comparison.csv and the
+#        judge-vs-human agreement metrics on the curated 24-item set - the 23 of 24 direction
+#        match and quadratic-weighted kappa of 0.905 (main paper, "Judge Validation" /
+#        supplement, "Judge Validation Details", human-validation paragraph). Confidence
+#        intervals for those metrics are added by compute_ensemble_vs_human_cis.py.
 
 import pandas as pd
 import json

@@ -13,6 +13,14 @@ unreadable) dependency, and executing a module just to read a string constant is
 a side effect nothing here wants. The task file stays the single definition of
 the prompt either way.
 """
+# Paper: implements the shared definition of the goal-vs-tactics decomposition
+# conditions B-E -- which arms exist, at what scale, on which scenarios, and
+# with which prompt (main paper, "Engagement Pressure Alone Drives
+# Degradation"; supplement, "Dose-Response Across Adversarial Wordings").
+# Paper: the difference-in-differences between the full adversarial persona
+# (condition A, the reported bad-persona run) and the objective-only variants is
+# computed in scripts/compute_decomposition.py; this module contributes the
+# condition registry that analysis reads, not the estimator.
 from __future__ import annotations
 
 import ast
@@ -28,6 +36,10 @@ LOGS_DIR = REPO_ROOT / "logs"
 
 SUBSET_DIR = REPO_ROOT / "data" / "decomposition"
 
+# Paper: the frozen subsample on which conditions C, D and E run -- one draw,
+# fixed before any of the three was launched, so the wording contrast is not
+# confounded with a change of scenarios (supplement, "Dose-Response Across
+# Adversarial Wordings").
 # One frozen subsample, shared by C, D and E so those three arms are perfectly
 # paired with each other and nested inside B's full 788.
 #
@@ -163,6 +175,13 @@ class Condition:
         return self.expected_samples - len(excluded)
 
 
+# Paper: the decomposition arms themselves. B states the commercial objective in
+# the adversarial persona's own format with every enumerated tactic deleted, so
+# the A-to-B contrast isolates the tactics; C, D and E restate the same
+# objective in three other registers. No arm names a tactic or any of the eight
+# scored principles -- that is the property the decomposition claim rests on
+# (main paper, "Engagement Pressure Alone Drives Degradation"; supplement,
+# "Dose-Response Across Adversarial Wordings").
 # Ordered by priority: if credits run out, later conditions are dropped and the
 # earlier ones still stand on their own. B is the load-bearing arm (the matched
 # manipulation that isolates the tactics variable), so it runs first and at full
@@ -241,6 +260,11 @@ CONDITIONS: tuple[Condition, ...] = (
 CONDITIONS_BY_TASK_TYPE = {c.task_type: c for c in CONDITIONS}
 TASK_TYPES = [c.task_type for c in CONDITIONS]
 
+# Paper: condition A. The reported statistic is the difference-in-differences
+# Delta_A - Delta_condition, with both deltas taken against BASELINE_PERSONA
+# below; the baseline cancels algebraically but fixes what the deltas mean
+# (main paper, "Engagement Pressure Alone Drives Degradation"). Computed in
+# scripts/compute_decomposition.py.
 # The reported condition the decomposition is a decomposition *of*.
 ANCHOR_PERSONA = "bad_persona"
 BASELINE_PERSONA = "baseline"

@@ -41,6 +41,14 @@ Outputs (written to --output-dir, default tables/):
 Run from repo root:
     python scripts/compute_pipeline_check.py
 """
+# Paper: produces tables/pipeline_check.md -- rebuilds the item accounting the
+#   main paper's "Judge Validation" section reports (35,416 successfully scored
+#   items; 44 of 35,460 in scope lost to judge-failure cascades), restoring the
+#   540 excluded-item line that the supplement's "Judge Validation Details"
+#   and "Excluded Scenarios: Confabulation Audit" account for separately.
+# Paper: also emits tables/inter_judge_raw_regenerated.csv, the per-judge long
+#   table the bootstrap CI scripts consume, plus the per-cell census and
+#   complete-case scenario set the cluster bootstrap is defined over.
 from __future__ import annotations
 
 import argparse

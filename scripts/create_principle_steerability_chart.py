@@ -6,6 +6,9 @@ Shows how far each model can be steered toward humane (+) vs harmful (-) behavio
 on a single principle dimension.
 """
 
+# Paper: utility -- no paper-facing output; supports per-principle steerability candlestick charts (figures/<principle>_candlestick.{png,svg,pdf} plus an alt-text file) for exploratory review.
+# Paper: the paper's per-model range figure is a different artifact, produced by scripts/create_steerability_chart.py (supplement, "Per-Model Steerability Ranges").
+
 import argparse
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
