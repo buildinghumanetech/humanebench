@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from compare_panel_vs_single_judge import (
     Cell,
     FHR_SLUG,
+    between_run_reliability,
     contrast_fhr_deescalation,
     contrast_trivial_reproduction,
     holm,
@@ -88,6 +89,14 @@ def test_holm_monotone_nondecreasing():
     adj = holm({"a": 0.30, "b": 0.02})
     # smaller raw p gets the bigger multiplier but result stays monotone
     assert adj["b"] <= adj["a"]
+
+
+def test_holm_nan_does_not_poison_the_other_contrast():
+    # an empty/uncomputable contrast (NaN p) must NOT force the valid one to 1.0
+    adj = holm({"a": float("nan"), "b": 0.03})
+    assert math.isnan(adj["a"])
+    # only one finite p remains -> corrected over m=1, so it is unchanged
+    assert adj["b"] == pytest.approx(0.03)
 
 
 def test_wilson_ci_bounds():
@@ -254,6 +263,34 @@ def test_within_run_reliability_pairs_by_base_and_slug():
     assert r["mean_abs_median_diff"] == pytest.approx(0.5)
 
 
+def test_between_run_filters_rep3_and_ignores_base_cells():
+    base = [make_cell(base_id="t1", slug=FHR_SLUG, panel=[-0.5, -0.5, -0.5])]
+    # a mis-supplied log full of BASE cells must not pair against itself
+    wrong_log = [make_cell(base_id="t1", slug=FHR_SLUG, panel=[-0.5, -0.5, -0.5])]
+    assert between_run_reliability(base, wrong_log)["n_pairs"] == 0
+    # a correct rep3 log pairs and measures drift
+    rep3 = [make_cell(base_id="t1", slug=FHR_SLUG, repeat_kind="rep3",
+                      panel=[0.5, 0.5, 0.5])]
+    r = between_run_reliability(base, rep3)
+    assert r["n_pairs"] == 1 and r["exact_median_match"] == 0
+    assert r["mean_abs_median_diff"] == pytest.approx(1.0)
+
+
+def test_per_stratum_orig_off_scale_reconciles():
+    cells = [
+        make_cell(base_id="a", flags={"is_worst": True}, orig=-1.0,
+                  panel=[-0.5, -0.5, -0.5]),
+        make_cell(base_id="b", flags={"is_worst": True}, orig=0.0,  # off-scale
+                  panel=[-0.5, -0.5, -0.5]),
+        make_cell(base_id="c", flags={"is_worst": True}, orig=None,  # no orig
+                  panel=[-0.5, -0.5, -0.5]),
+    ]
+    s = per_stratum_tables(cells)["is_worst"]
+    assert s["orig_off_scale"] == 1 and s["orig_missing"] == 1
+    # on-scale dist + off-scale + missing reconcile with scored-cell count (3)
+    assert sum(s["orig_dist"].values()) + s["orig_off_scale"] + s["orig_missing"] == 3
+
+
 def test_ipw_mean_weights_by_fraction():
     manifest = {"strata": {
         "worst": {"sampling_fraction": 1.0},
@@ -264,8 +301,23 @@ def test_ipw_mean_weights_by_fraction():
         make_cell(base_id="b", stratum="negative", panel=[0.5, 0.5, 0.5]),
     ]
     # negative cell weighted 10x -> pooled mean pulled toward +0.5
-    m = inverse_prob_weighted_mean(cells, manifest)
-    assert m == pytest.approx((1 * -1.0 + 10 * 0.5) / 11)
+    r = inverse_prob_weighted_mean(cells, manifest)
+    assert r["mean"] == pytest.approx((1 * -1.0 + 10 * 0.5) / 11)
+    assert r["n_used"] == 2 and r["n_dropped"] == 0
+
+
+def test_ipw_counts_dropped_cells_not_in_manifest():
+    manifest = {"strata": {"worst": {"sampling_fraction": 1.0}}}
+    cells = [
+        make_cell(base_id="a", stratum="worst", panel=[-1.0, -1.0, -1.0]),
+        make_cell(base_id="b", stratum="mystery", panel=[0.5, 0.5, 0.5]),
+        make_cell(base_id="c", stratum=None, panel=[0.5, 0.5, 0.5]),
+    ]
+    r = inverse_prob_weighted_mean(cells, manifest)
+    # only the 'worst' cell is used; the other two are dropped and counted
+    assert r["mean"] == pytest.approx(-1.0)
+    assert r["n_used"] == 1 and r["n_dropped"] == 2
+    assert r["dropped_strata"] == {"mystery": 1, None: 1}
 
 
 # --------------------------------------------------------------------------- #
@@ -343,6 +395,19 @@ def test_load_cells_repeat_via_repeat_of(tmp_path):
     c = load_cells(p)[0]
     assert c.repeat_kind == "rep2"
     assert c.base_id == "s_1"  # from repeat_of, not the __rep2 sample_id
+
+
+def test_load_cells_skips_id_without_separator(tmp_path):
+    # a malformed id lacking '__' must be skipped, not crash the whole run
+    p = tmp_path / "b.eval"
+    _write_eval(p, [
+        _sample("s_1__foster-healthy-relationships", FHR_SLUG,
+                [-0.5, -0.5, -0.5], -1.0),
+        _sample("malformedid", "malformedid", [-0.5, -0.5, -0.5], -0.5),
+    ])
+    cells = load_cells(p)
+    assert len(cells) == 1
+    assert cells[0].base_id == "s_1"
 
 
 def test_load_cells_slug_with_double_underscore_safe(tmp_path):

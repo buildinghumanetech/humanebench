@@ -142,10 +142,16 @@ def load_cells(log_path: Path) -> list[Cell]:
         ]
         if not sample_files:
             raise SystemExit(f"{log_path}: no samples/ entries -- not an eval log?")
+        skipped_bad_id: list[str] = []
         for name in sample_files:
             with z.open(name) as f:
                 s = json.load(f)
             hb_id = s["id"]
+            if "__" not in hb_id:
+                # Every re-judge id is `{sample_id}__{slug}`; one without '__'
+                # is malformed. Skip it loudly rather than crash the analysis.
+                skipped_bad_id.append(hb_id)
+                continue
             sample_id, slug = _split_id(hb_id)
 
             repeat_kind = None
@@ -179,6 +185,10 @@ def load_cells(log_path: Path) -> list[Cell]:
                 orig_relevant=orig_relevant, panel_scores=panel_scores,
                 is_nan=is_nan,
             ))
+    if skipped_bad_id:
+        print(f"WARNING: skipped {len(skipped_bad_id)} sample(s) with no '__' "
+              f"in the id (malformed): {', '.join(skipped_bad_id[:10])}"
+              + (" ..." if len(skipped_bad_id) > 10 else ""))
     return cells
 
 
@@ -202,10 +212,21 @@ def wilson_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 
 def holm(pvals: dict[str, float]) -> dict[str, float]:
-    """Holm-Bonferroni step-down adjusted p-values, keyed by label."""
-    items = sorted(pvals.items(), key=lambda kv: kv[1])
+    """Holm-Bonferroni step-down adjusted p-values, keyed by label.
+
+    p-values that are NaN (an empty or uncomputable contrast) are dropped from
+    the family and returned as NaN, and the correction is applied over only the
+    finite p-values. Otherwise a single NaN would sort ahead of the others and
+    force every valid contrast's adjusted p to 1.0, silently declaring a real
+    pre-registered effect non-significant instead of surfacing the empty stratum
+    as n/a.
+    """
+    finite = {k: v for k, v in pvals.items() if not math.isnan(v)}
+    adjusted: dict[str, float] = {
+        k: float("nan") for k in pvals if k not in finite
+    }
+    items = sorted(finite.items(), key=lambda kv: kv[1])
     m = len(items)
-    adjusted: dict[str, float] = {}
     running = 0.0
     for i, (label, p) in enumerate(items):
         running = max(running, min(1.0, (m - i) * p))
@@ -309,14 +330,23 @@ def contrast_trivial_reproduction(cells: list[Cell], p0: float = 0.5) -> dict:
 # --------------------------------------------------------------------------- #
 # Reliability (within-run __rep2)
 # --------------------------------------------------------------------------- #
-def within_run_reliability(cells: list[Cell]) -> dict:
+def _pair_reliability(
+    base_cells: list[Cell], candidate_cells: list[Cell], expect_kind: str
+) -> dict:
+    """Pair each `expect_kind` repeat against its base cell by (base_id, slug)
+    and report exact-median agreement plus mean |Δmedian|.
+
+    Candidates are filtered to repeat_kind == expect_kind, so a mis-supplied log
+    (e.g. the arm-B log passed as --between-run-log) cannot pair base cells
+    against themselves and report a false 100% reliability.
+    """
     base = {
         (c.base_id, c.slug): c
-        for c in cells if c.repeat_kind is None and not c.is_nan
+        for c in base_cells if c.repeat_kind is None and not c.is_nan
     }
     pairs = []
-    for c in cells:
-        if c.repeat_kind == "rep2" and not c.is_nan:
+    for c in candidate_cells:
+        if c.repeat_kind == expect_kind and not c.is_nan:
             b = base.get((c.base_id, c.slug))
             if b is not None:
                 pairs.append((b.panel_median, c.panel_median))
@@ -329,28 +359,16 @@ def within_run_reliability(cells: list[Cell]) -> dict:
         "exact_match_rate": (exact / n) if n else float("nan"),
         "mean_abs_median_diff": mad,
     }
+
+
+def within_run_reliability(cells: list[Cell]) -> dict:
+    """__rep2 twins re-judged in the same batch — a reliability LOWER bound."""
+    return _pair_reliability(cells, cells, "rep2")
 
 
 def between_run_reliability(cells: list[Cell], rep3_cells: list[Cell]) -> dict:
-    base = {
-        (c.base_id, c.slug): c
-        for c in cells if c.repeat_kind is None and not c.is_nan
-    }
-    pairs = []
-    for c in rep3_cells:
-        if not c.is_nan:
-            b = base.get((c.base_id, c.slug))
-            if b is not None:
-                pairs.append((b.panel_median, c.panel_median))
-    n = len(pairs)
-    exact = sum(1 for a, b in pairs if a == b)
-    mad = (sum(abs(a - b) for a, b in pairs) / n) if n else float("nan")
-    return {
-        "n_pairs": n,
-        "exact_median_match": exact,
-        "exact_match_rate": (exact / n) if n else float("nan"),
-        "mean_abs_median_diff": mad,
-    }
+    """__rep3 twins judged on a different day — the honest re-run drift."""
+    return _pair_reliability(cells, rep3_cells, "rep3")
 
 
 # --------------------------------------------------------------------------- #
@@ -376,6 +394,12 @@ def per_stratum_tables(cells: list[Cell]) -> dict:
         n_nan = sum(1 for c in members if c.is_nan)
         panel_medians = [c.panel_median for c in scored]
         orig_sevs = [c.orig_severity for c in scored if c.orig_severity is not None]
+        orig_dist = severity_dist(orig_sevs)
+        # off-scale = original severities outside {-1,-0.5,0.5,1}; missing = scored
+        # cells with no original judgment. Both are surfaced so the "original
+        # dist" column reconciles with the stratum's scored-cell count.
+        orig_off_scale = len(orig_sevs) - sum(orig_dist.values())
+        orig_missing = len(scored) - len(orig_sevs)
         shifts = Counter(shift_label(c.orig_severity, c.panel_median) for c in scored)
         unanimous = sum(1 for c in scored if c.unanimous)
         out[flag] = {
@@ -383,7 +407,9 @@ def per_stratum_tables(cells: list[Cell]) -> dict:
             "n_nan": n_nan,
             "nan_rate": (n_nan / n_total) if n_total else float("nan"),
             "panel_median_dist": severity_dist(panel_medians),
-            "orig_dist": severity_dist(orig_sevs),
+            "orig_dist": orig_dist,
+            "orig_off_scale": orig_off_scale,
+            "orig_missing": orig_missing,
             "shift": dict(shifts),
             "unanimous_rate": (unanimous / len(scored)) if scored else float("nan"),
         }
@@ -429,6 +455,12 @@ def _fmt_ci(ci) -> str:
     return f"[{100*lo:.1f}%, {100*hi:.1f}%]"
 
 
+def _fmt_p(p) -> str:
+    if p is None or (isinstance(p, float) and math.isnan(p)):
+        return "n/a (empty stratum)"
+    return f"{p:.4g}"
+
+
 def build_report(log_path, cells, strata, contrasts_adj, contrast_a, contrast_b,
                  within, between, overstatement, manifest, rep3_log) -> str:
     base_cells = [c for c in cells if c.repeat_kind is None]
@@ -469,8 +501,8 @@ def build_report(log_path, cells, strata, contrasts_adj, contrast_a, contrast_b,
       f"{_fmt_ci(a['ctrl_ci'])}")
     A(f"- Positive-extreme control, FHR-only: {a['ctrl_fhr_regressed']}/"
       f"{a['ctrl_fhr_n']}")
-    A(f"- One-sided Fisher p = {a['pvalue']:.4g}  →  Holm-adjusted "
-      f"**p = {contrasts_adj['(a)']:.4g}**")
+    A(f"- One-sided Fisher p = {_fmt_p(a['pvalue'])}  →  Holm-adjusted "
+      f"**p = {_fmt_p(contrasts_adj['(a)'])}**")
     A("- Reading: de-escalation ≫ control regression ⇒ asymmetric correction "
       "of the over-escalated tail; ≈ control ⇒ regression-to-the-mean artifact.")
     A("")
@@ -480,8 +512,8 @@ def build_report(log_path, cells, strata, contrasts_adj, contrast_a, contrast_b,
       f"reproduced (panel median ≤ −0.5) {b['reproduced']} → "
       f"**{_fmt_pct(b['rate'])}** {_fmt_ci(b['ci'])}")
     A(f"- Of which panel median exactly −0.5: {b['reproduced_exact_-0.5']}")
-    A(f"- One-sided exact binomial vs p₀={b['p0']} p = {b['pvalue']:.4g}  →  "
-      f"Holm-adjusted **p = {contrasts_adj['(b)']:.4g}**")
+    A(f"- One-sided exact binomial vs p₀={b['p0']} p = {_fmt_p(b['pvalue'])}  →  "
+      f"Holm-adjusted **p = {_fmt_p(contrasts_adj['(b)'])}**")
     A(f"- Caveat: {b['note']}")
     A("")
 
@@ -499,8 +531,16 @@ def build_report(log_path, cells, strata, contrasts_adj, contrast_a, contrast_b,
         sh = s["shift"]
         shift_str = (f"{sh.get('de-escalated', 0)} / {sh.get('unchanged', 0)} / "
                      f"{sh.get('escalated', 0)}")
+        orig_str = _fmt_dist(s["orig_dist"])
+        extra = []
+        if s["orig_off_scale"]:
+            extra.append(f"off-scale:{s['orig_off_scale']}")
+        if s["orig_missing"]:
+            extra.append(f"no-orig:{s['orig_missing']}")
+        if extra:
+            orig_str += "  (" + " ".join(extra) + ")"
         A(f"| {flag} | {s['n_cells']} | {s['n_nan']} | "
-          f"{_fmt_dist(s['panel_median_dist'])} | {_fmt_dist(s['orig_dist'])} | "
+          f"{_fmt_dist(s['panel_median_dist'])} | {orig_str} | "
           f"{shift_str} | {_fmt_pct(s['unanimous_rate'])} |")
     A("")
 
@@ -556,8 +596,16 @@ def build_report(log_path, cells, strata, contrasts_adj, contrast_a, contrast_b,
           "per-stratum reads above.")
         A("")
         ipw = inverse_prob_weighted_mean(base_cells, manifest)
-        A(f"- IPW panel mean severity: {ipw:.4f}" if not math.isnan(ipw)
-          else "- IPW panel mean: n/a (missing fractions)")
+        if math.isnan(ipw["mean"]):
+            A("- IPW panel mean: n/a (no scored cells matched the manifest fractions)")
+        else:
+            A(f"- IPW panel mean severity: {ipw['mean']:.4f} "
+              f"(over {ipw['n_used']} scored base cells)")
+        if ipw["n_dropped"]:
+            A(f"- ⚠ {ipw['n_dropped']} scored cell(s) EXCLUDED from the pooled "
+              f"figure — stratum absent from the manifest: {ipw['dropped_strata']}. "
+              f"The IPW mean is over a non-random subset; align the log's stratum "
+              f"names with the manifest before trusting it.")
         A("")
 
     A("---")
@@ -567,23 +615,36 @@ def build_report(log_path, cells, strata, contrasts_adj, contrast_a, contrast_b,
     return "\n".join(L) + "\n"
 
 
-def inverse_prob_weighted_mean(base_cells, manifest) -> float:
+def inverse_prob_weighted_mean(base_cells, manifest) -> dict:
     """One pooled panel-mean-severity figure, IPW by manifest fractions.
 
     Each cell is weighted by 1/sampling_fraction of the FIRST-MATCH stratum it
-    was labeled under (the label that governed its inclusion probability)."""
+    was labeled under (the label that governed its inclusion probability). Cells
+    whose stratum is missing from the manifest (a selector/manifest-version
+    mismatch, or a None stratum) are excluded AND counted, so the mismatch
+    surfaces as a dropped-cell count rather than a silently biased pooled figure
+    over a non-random subset."""
     strata = manifest.get("strata", {})
     num = den = 0.0
+    n_used = 0
+    dropped_strata: Counter = Counter()
     for c in base_cells:
         if c.is_nan or c.panel_mean is None:
             continue
         frac = (strata.get(c.stratum) or {}).get("sampling_fraction")
         if not frac:
+            dropped_strata[c.stratum] += 1
             continue
         w = 1.0 / frac
         num += w * c.panel_mean
         den += w
-    return (num / den) if den else float("nan")
+        n_used += 1
+    return {
+        "mean": (num / den) if den else float("nan"),
+        "n_used": n_used,
+        "n_dropped": sum(dropped_strata.values()),
+        "dropped_strata": dict(dropped_strata),
+    }
 
 
 # --------------------------------------------------------------------------- #
