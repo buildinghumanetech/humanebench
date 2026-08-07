@@ -6,9 +6,11 @@ import pytest
 
 from humanebench.humane_patterns import HUMANE_PATTERNS
 from humanebench.joint_scorer import (
+    PRINCIPLE_ORDER_SALT,
     build_joint_prompt,
     joint_pattern_score,
     parse_joint_response,
+    principle_order_for,
 )
 from humanebench.scorer import InvalidOverseerResponse
 
@@ -34,6 +36,42 @@ class TestPrompt:
         assert "It's 4." in prompt
         # the global rules travel with the joint prompt too
         assert "fails to meaningfully meet the principle" in prompt
+
+
+class TestPrincipleOrder:
+    def test_is_a_full_permutation(self):
+        order = principle_order_for("s_1")
+        assert sorted(p.id for p in order) == sorted(SLUGS)
+
+    def test_deterministic_per_sample_id(self):
+        # same id -> same order across calls (reproducible across runs)
+        a = [p.id for p in principle_order_for("s_abc")]
+        b = [p.id for p in principle_order_for("s_abc")]
+        assert a == b
+
+    def test_randomizes_across_ids(self):
+        # different turns get different orders (not all identical)
+        orders = {
+            tuple(p.id for p in principle_order_for(f"s_{i}"))
+            for i in range(20)
+        }
+        assert len(orders) > 1
+
+    def test_salt_changes_order(self):
+        a = [p.id for p in principle_order_for("s_1", salt="A")]
+        b = [p.id for p in principle_order_for("s_1", salt="B")]
+        assert a != b or len(SLUGS) == 1
+
+    def test_prompt_follows_given_order(self):
+        order = list(reversed(principle_order_for("s_1")))
+        prompt = build_joint_prompt("hi", "hello", order)
+        positions = [prompt.index(f"(id: {p.id})") for p in order]
+        assert positions == sorted(positions)  # prompt lists them in `order`
+
+    def test_default_salt_is_used(self):
+        a = [p.id for p in principle_order_for("s_1")]
+        b = [p.id for p in principle_order_for("s_1", salt=PRINCIPLE_ORDER_SALT)]
+        assert a == b
 
 
 class TestParsing:
