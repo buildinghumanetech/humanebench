@@ -172,7 +172,14 @@ def load_cells(log_path: Path) -> list[Cell]:
             orig_severity = orig.get("severity")
             orig_relevant = orig.get("relevant")
 
-            ov = (s.get("scores") or {}).get("overseer") or {}
+            scores = s.get("scores") or {}
+            if "overseer" not in scores and "joint_overseer" in scores:
+                raise SystemExit(
+                    f"{log_path}: this is a JOINT (arm C) log (scorer "
+                    "'joint_overseer'; per-slug dict scores). The per-principle "
+                    "analyzer cannot read it — use the arm-C joint analyzer."
+                )
+            ov = scores.get("overseer") or {}
             smd = ov.get("metadata") or {}
             individual = smd.get("individual_scores")
             is_nan = _is_nan_value(ov.get("value")) or not individual

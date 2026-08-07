@@ -7,10 +7,12 @@ import pytest
 from humanebench.humane_patterns import HUMANE_PATTERNS
 from humanebench.joint_scorer import (
     PRINCIPLE_ORDER_SALT,
+    _coerce_invalid,
     build_joint_prompt,
     joint_pattern_score,
     parse_joint_response,
     principle_order_for,
+    strict_ensemble_mean,
 )
 from humanebench.scorer import InvalidOverseerResponse
 
@@ -74,6 +76,28 @@ class TestPrincipleOrder:
         assert a == b
 
 
+class TestInvalidCoercion:
+    def test_real_booleans(self):
+        assert _coerce_invalid(True) is True
+        assert _coerce_invalid(False) is False
+
+    def test_string_false_is_false(self):
+        # the bug: raw bool("false") is True; a JSON string "false" must be False
+        assert _coerce_invalid("false") is False
+        assert _coerce_invalid("no") is False
+        assert _coerce_invalid("0") is False
+
+    def test_string_true_is_true(self):
+        assert _coerce_invalid("true") is True
+        assert _coerce_invalid("True") is True
+        assert _coerce_invalid("yes") is True
+
+    def test_numbers_and_unknowns(self):
+        assert _coerce_invalid(1) is True
+        assert _coerce_invalid(0) is False
+        assert _coerce_invalid("maybe") is False  # safe default: not invalid
+
+
 class TestParsing:
     def test_valid_payload(self):
         evals, invalid = parse_joint_response(json.dumps(joint_payload()))
@@ -85,22 +109,60 @@ class TestParsing:
         _, invalid = parse_joint_response(json.dumps(joint_payload(invalid=True)))
         assert invalid is True
 
-    def test_missing_principle_rejected(self):
+    def test_string_false_invalid_flag_not_triggered(self):
+        payload = joint_payload()
+        payload["invalid"] = "false"  # JSON string, must NOT flip to invalid
+        _, invalid = parse_joint_response(json.dumps(payload))
+        assert invalid is False
+
+    def test_missing_principle_omitted_not_rejected(self):
+        # tolerant: a missing principle is omitted, the other 7 survive
         payload = joint_payload()
         del payload[SLUGS[3]]
-        with pytest.raises(InvalidOverseerResponse, match=SLUGS[3]):
-            parse_joint_response(json.dumps(payload))
+        evals, _ = parse_joint_response(json.dumps(payload))
+        assert SLUGS[3] not in evals
+        assert len(evals) == len(SLUGS) - 1
 
-    def test_out_of_scale_severity_rejected(self):
+    def test_out_of_scale_severity_omitted_not_rejected(self):
+        # tolerant: one off-scale severity voids only that slug, not the turn
         payload = joint_payload()
         payload[SLUGS[0]]["severity"] = 0.0
-        with pytest.raises(Exception):
-            parse_joint_response(json.dumps(payload))
+        evals, _ = parse_joint_response(json.dumps(payload))
+        assert SLUGS[0] not in evals
+        assert len(evals) == len(SLUGS) - 1
+
+    def test_no_json_raises(self):
+        # only a total JSON-extraction failure raises (so the judge call retries)
+        with pytest.raises(InvalidOverseerResponse):
+            parse_joint_response("I could not produce JSON.")
 
     def test_json_embedded_in_prose(self):
         text = "Here is my evaluation:\n" + json.dumps(joint_payload()) + "\nDone."
         evals, _ = parse_joint_response(text)
         assert set(evals) == set(SLUGS)
+
+
+class TestStrictEnsemble:
+    def test_all_judges_scored_slug_means(self):
+        maps = [{s: 0.5 for s in SLUGS}, {s: -0.5 for s in SLUGS},
+                {s: 0.5 for s in SLUGS}]
+        value = strict_ensemble_mean(maps, 3, SLUGS)
+        assert value[SLUGS[0]] == pytest.approx((0.5 - 0.5 + 0.5) / 3)
+
+    def test_slug_missing_from_one_judge_is_nan_only_for_that_slug(self):
+        maps = [
+            {s: 0.5 for s in SLUGS},
+            {s: 0.5 for s in SLUGS if s != SLUGS[2]},  # judge 2 missed slug 2
+            {s: 0.5 for s in SLUGS},
+        ]
+        value = strict_ensemble_mean(maps, 3, SLUGS)
+        assert math.isnan(value[SLUGS[2]])          # only slug 2 voided
+        assert value[SLUGS[0]] == pytest.approx(0.5)  # the rest survive
+
+    def test_invalid_judge_empty_map_voids_all_slugs(self):
+        maps = [{s: 0.5 for s in SLUGS}, {s: 0.5 for s in SLUGS}, {}]  # judge 3 invalid
+        value = strict_ensemble_mean(maps, 3, SLUGS)
+        assert all(math.isnan(v) for v in value.values())
 
 
 class TestMetric:

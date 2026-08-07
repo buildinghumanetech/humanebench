@@ -90,6 +90,11 @@ def convert_row_joint(row: dict) -> dict:
     """One sample per turn for the joint-prompt task (all 8 principles in one
     judge call). The joint scorer ignores target; original judgments ride in
     metadata for the comparison analysis."""
+    unknown = set(row["principles"]) - KNOWN_SLUGS
+    if unknown:
+        raise ValueError(
+            f"sample {row['sample_id']}: unknown principle slug(s) {sorted(unknown)}"
+        )
     return {
         "id": row["sample_id"],
         "input": row["user_message"],
@@ -126,6 +131,12 @@ def main() -> None:
     parser.add_argument("--sample-seed", type=int, default=7)
     args = parser.parse_args()
 
+    if args.sample_turns is not None and not args.joint:
+        parser.error(
+            "--sample-turns only applies to --joint mode; the per-principle path "
+            "never subsamples. Pass --joint, or drop --sample-turns."
+        )
+
     rows = []
     skipped_empty: list[str] = []
     with open(args.input) as fin:
@@ -137,16 +148,20 @@ def main() -> None:
                 skipped_empty.append(row.get("sample_id", "<no id>"))
                 continue
             rows.append(row)
-    n_rows = len(rows) + len(skipped_empty)
+    n_input = len(rows) + len(skipped_empty)
 
     if args.joint:
         # Repeat-slice copies measure within/between-run reliability of the
         # per-principle arm; the joint slice uses base turns only.
-        rows = [r for r in rows if not r["sample_id"].endswith(("__rep2", "__rep3"))]
+        n_judgeable = len(rows)
+        rows = [r for r in rows
+                if not str(r["sample_id"]).endswith(("__rep2", "__rep3"))]
+        n_after_reps = len(rows)
         if args.sample_turns is not None and args.sample_turns < len(rows):
             rows = random.Random(args.sample_seed).sample(rows, args.sample_turns)
         samples = [convert_row_joint(r) for r in rows]
-        mode = f"joint, {len(rows)} turns"
+        mode = (f"joint: {n_judgeable} judgeable turns -> {n_after_reps} after "
+                f"rep-exclusion -> {len(rows)} converted")
     else:
         samples = [s for r in rows for s in convert_row(r, args.principles)]
         mode = args.principles
@@ -157,7 +172,7 @@ def main() -> None:
             fout.write(json.dumps(sample, ensure_ascii=False) + "\n")
 
     print(
-        f"Converted {n_rows} turns -> {len(samples)} samples "
+        f"Read {n_input} input rows -> wrote {len(samples)} samples "
         f"(mode={mode}) into {args.output}"
     )
     if skipped_empty:

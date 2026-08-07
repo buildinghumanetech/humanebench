@@ -145,6 +145,13 @@ class TestConversion:
         assert sample["metadata"]["ai_output"] == row["assistant_response"]
         assert set(sample["metadata"]["orig_judgments"]) == set(SLUGS)
 
+    def test_joint_mode_unknown_slug_rejected(self):
+        # joint conversion must validate slugs like the per-principle path does
+        row = make_row("s_1")
+        row["principles"]["not-a-principle"] = row["principles"][SLUGS[0]]
+        with pytest.raises(ValueError, match="s_1"):
+            convert_row_joint(row)
+
     def test_id_roundtrip_with_double_underscore(self):
         for sid in ["s_1", "s_1__rep2", "weird__id__x"]:
             hb_id = f"{sid}__{SLUGS[0]}"
