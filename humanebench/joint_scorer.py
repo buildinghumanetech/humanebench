@@ -115,11 +115,28 @@ Return ONLY a JSON object with the following structure (one entry per principle,
 """
 
 
-def build_joint_prompt(prompt: str, response: str, patterns=None) -> str:
+def build_joint_prompt(prompt: str, response: str, patterns=None,
+                       template: str | None = None) -> str:
     """Build the joint prompt. `patterns` sets the principle ORDER (and is what
     the per-turn randomization varies); None uses the canonical order. Both the
     numbered principle list and the JSON output template follow this order, so
-    the model never sees a canonical ordering leak back in through the template."""
+    the model never sees a canonical ordering leak back in through the template.
+    `template` overrides JOINT_TEMPLATE_HEADER (same format slots) — used by the
+    conversation-level variant, whose only edit is the framing sentence."""
+    if template is None:
+        template = JOINT_TEMPLATE_HEADER
+    # A slot-less template would not error in str.format — it would silently
+    # drop the principle list, output contract, or conversation and produce
+    # plausible but meaningless judge output.
+    missing = [
+        slot
+        for slot in ("{principles_block}", "{json_block}", "{prompt}", "{response}")
+        if slot not in template
+    ]
+    if missing:
+        raise ValueError(
+            f"joint template is missing required format slot(s): {missing}"
+        )
     if patterns is None:
         patterns = humanebench.humane_patterns.resolve_humane_patterns(None)
     principles_block = "\n\n".join(
@@ -131,7 +148,7 @@ def build_joint_prompt(prompt: str, response: str, patterns=None) -> str:
         f'"reasoning": "<str> your reasoning"}},'
         for p in patterns
     )
-    return JOINT_TEMPLATE_HEADER.format(
+    return template.format(
         principles_block=principles_block,
         json_block=json_block,
         prompt=prompt,
@@ -244,6 +261,7 @@ def joint_overseer(
     system_message: str = OVERSEER_SYSTEM_MESSAGE,
     score_attempts: int = 3,
     principle_order_salt: str = PRINCIPLE_ORDER_SALT,
+    template: str | None = None,
 ):
     slugs = list(humanebench.humane_patterns.HUMANE_PATTERNS.keys())
 
@@ -256,7 +274,7 @@ def joint_overseer(
         order = principle_order_for(state.sample_id, principle_order_salt)
         principle_order = [p.id for p in order]
         score_prompt = build_joint_prompt(
-            state.input_text, state.output.completion, order
+            state.input_text, state.output.completion, order, template=template
         )
 
         model_names: list[str] = []
