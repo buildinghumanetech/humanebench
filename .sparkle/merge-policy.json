@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "slug": "buildinghumanetech/humanebench",
+  "mergeProtected": false,
+  "reason": "buildinghumanetech/humanebench is not merge-protected: Sparkle may merge here under the usual checks.",
+  "remedy": "None — merges are allowed here; the usual PR checks still apply."
+}

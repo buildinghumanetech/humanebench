@@ -280,6 +280,19 @@ class TestBuildPayload(unittest.TestCase):
         # The nested marker is echoed raw and documented as such (unverified self-report).
         self.assertEqual(p["aggregate"]["ensemble"]["n_judges_used"], 3)
 
+    def test_payload_attempted_marker_is_passed_through(self):
+        # Asymmetry by design: n_used is re-counted (overrides its marker), but n_attempted is
+        # passed through from the aggregate's marker, not independently verified. An inflated
+        # attempted marker just makes degraded MORE conservative, so it's safe to trust.
+        agg = self._agg(["Claude Sonnet 4.5", "GPT-5.1"],
+                        ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"])
+        agg["ensemble"]["n_judges_attempted"] = 7      # inflated marker (2 present, 3 requested)
+        p = hb._build_payload({"judges_attempted":
+                               ["Claude Sonnet 4.5", "GPT-5.1", "Gemini 2.5 Pro"]}, agg)
+        self.assertEqual(p["n_judges_attempted"], 7)   # passed through from the marker
+        self.assertEqual(p["n_judges_used"], 2)        # still counted from present judges
+        self.assertTrue(p["degraded"])                 # 2 < 7
+
     def test_payload_untrusted_names_dropped_from_meta_too(self):
         # When judges_attempted is untrusted (wrong membership), it's null at top level AND
         # scrubbed from the echoed meta, so a scraper can't recover the rejected value.

@@ -209,10 +209,12 @@ def aggregate(judge_results: dict, judges_attempted: list | None = None) -> dict
     ``is_full_ensemble`` (``bool | None`` — ``True`` = every requested judge succeeded,
     ``False`` = at least one was dropped, ``None`` = ``judges_attempted`` not supplied so
     full/partial is unknown), ``n_judges_used`` / ``n_judges_attempted`` (ints). These nested
-    counts are the aggregate's own raw self-report; for any aggregate this function builds
-    they equal the resolved top-level ``n_judges_*`` in the JSON payload, but a hand-built
-    aggregate can carry a marker that disagrees — the payload's TOP-LEVEL counts (from
-    ``_resolve_counts``, which counts the judges actually present) are the authoritative ones.
+    counts are the aggregate's own raw self-report. In the JSON payload, top-level
+    ``n_judges_used`` is re-derived by ``_resolve_counts`` from the judges actually present and
+    OVERRIDES this ``n_judges_used`` marker (which a hand-built aggregate could inflate);
+    top-level ``n_judges_attempted`` is read straight from this ``n_judges_attempted`` marker
+    (or meta's recorded count when absent), so it is passed through, not independently
+    verified — an inflated attempted marker only makes ``degraded`` more conservative.
     """
     per_judge = {}
     for name, result in judge_results.items():
