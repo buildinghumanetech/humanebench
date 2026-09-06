@@ -1,0 +1,6 @@
+/target
+*.db
+*.db-wal
+*.db-shm
+report.html
+report.share.html
