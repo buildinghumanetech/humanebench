@@ -123,9 +123,34 @@ your-converter < logs | humanebench ingest --stdin --source yourtool
   ensemble ones.
 - **The rollup prompt is net-new** and, unlike the turn tier, has never been validated
   against human raters.
-- **No comparison against published benchmark numbers.** A personal average would read
-  higher than the benchmark average for reasons that have nothing to do with the assistant
-  being more humane.
+- **No comparison against published benchmark numbers — same rubric, different statistic.**
+  The gap is arithmetic, not a claim about which assistant is more humane. Three mechanical
+  divergences from the production scorer (`humanebench/scorer.py`):
+  - **The denominator.** The benchmark scores each sample on the *one* principle its prompt
+    was built to stress, so a principle's mean is taken only over turns that engage it. The
+    CLI scores *every* turn on all eight and means them, so each principle's mean is
+    dominated by turns where that principle is barely in play.
+  - **One judge, not an ensemble.** The benchmark means severities across several judge
+    models and yields NaN if any of them marks the item invalid. The CLI calls one model;
+    `regime` is the literal `single`.
+  - **Opposite missing-data policy.** A principle with no usable score is 0 in the benchmark
+    and averaged into the HumaneScore (`scorer.py:130,136`); the CLI drops it from the mean
+    instead (`src/report/mod.rs`). This one cannot bite today — `parse_judgement` rejects any
+    judgement that does not carry exactly eight principles, so a stored record always has all
+    eight — but the aggregation layer encodes the opposite policy and would diverge the moment
+    that invariant is relaxed.
+
+  Smaller ones in the same direction: the benchmark rounds to 2dp at both aggregation stages
+  and the CLI stores full precision (rounding is display-only); the benchmark has no tier
+  concept, while the CLI aggregates turn and rollup tiers separately and never combines them.
+
+- **The judge prompt forks a draft, not the canonical rubric.** It is a byte-identical copy of
+  `evaluator/humanebench_evaluator.py`, which is a spin-off rather than a source of truth, and
+  it inherits three divergences from `rubrics/rubric_v3.md` — an invented 125-character limit on
+  sensitive-content responses, `-1.0` anchors gated on intent ("Deliberately"), and three of the
+  seven global rules missing. All three bias scores upward. The CLI's principle ids also fork
+  the benchmark's, so no tooling can join a CLI report to leaderboard output by principle.
+  `rubric/README.md` documents all of it, with the recommended fix.
 
 ## Layout
 
