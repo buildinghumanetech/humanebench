@@ -295,9 +295,123 @@ fn cmd_ingest(
     Ok(())
 }
 
+/// One judge call and every score row it will produce.
+///
+/// Subjects share a job when their assembled prompts are byte-identical. That happens for
+/// real: "thanks" answered "You're welcome!" in two different sessions assembles to the
+/// same bytes, and both turns deserve a score even though only one call is warranted.
+struct Job<T> {
+    prompt: String,
+    hash: String,
+    subjects: Vec<T>,
+    /// A judgement the store already holds for these exact bytes. When it is present the
+    /// rows are filled from it and nothing is sent — the prompt has already been paid for.
+    reuse: Option<judge::Judgement>,
+}
+
+impl<T> Job<T> {
+    fn needs_a_call(&self) -> bool {
+        self.reuse.is_none()
+    }
+}
+
 struct Plan {
-    turns: Vec<(transcript::ScorableTurn, String, String)>,
-    rollups: Vec<(transcript::Session, String, String)>,
+    turns: Vec<Job<transcript::ScorableTurn>>,
+    rollups: Vec<Job<transcript::Session>>,
+}
+
+/// Jobs that would cost a call.
+fn pending_calls<T>(jobs: &[Job<T>]) -> usize {
+    jobs.iter().filter(|j| j.needs_a_call()).count()
+}
+
+/// Estimated input tokens for the jobs that would cost a call.
+fn pending_tokens<T>(jobs: &[Job<T>]) -> usize {
+    jobs.iter()
+        .filter(|j| j.needs_a_call())
+        .map(|j| judge::estimate_tokens(&j.prompt))
+        .sum()
+}
+
+impl Plan {
+    /// What a run would actually spend.
+    fn calls(&self) -> usize {
+        pending_calls(&self.turns) + pending_calls(&self.rollups)
+    }
+
+    /// Rows a run would write. Never fewer than [`Plan::calls`], and more whenever the
+    /// corpus repeats itself.
+    fn rows(&self) -> usize {
+        self.turns.iter().map(|j| j.subjects.len()).sum::<usize>()
+            + self.rollups.iter().map(|j| j.subjects.len()).sum::<usize>()
+    }
+}
+
+/// Add a subject to the plan, folding it into an existing job when another subject has
+/// already produced these exact bytes.
+fn enqueue<T>(
+    jobs: &mut Vec<Job<T>>,
+    by_hash: &mut BTreeMap<String, usize>,
+    store: &Store,
+    prompt: String,
+    hash: String,
+    subject: T,
+) -> Result<()> {
+    if let Some(&i) = by_hash.get(&hash) {
+        jobs[i].subjects.push(subject);
+        return Ok(());
+    }
+    let reuse = store.judgement_for_hash(&hash)?;
+    by_hash.insert(hash.clone(), jobs.len());
+    jobs.push(Job {
+        prompt,
+        hash,
+        subjects: vec![subject],
+        reuse,
+    });
+    Ok(())
+}
+
+/// The stable identity of a session's rollup row — see [`store::rollup_identity`].
+fn rollup_identity_of(session: &transcript::Session) -> String {
+    store::rollup_identity(
+        &session.session_id,
+        session.started_at().unwrap_or_else(Utc::now),
+    )
+}
+
+/// The session as the rollup judge is shown it: labelled with the thread root rather than
+/// the sub-session number.
+///
+/// `assemble_rollup_prompt` prints the session id as context, so the positional `#N` that
+/// `sessionize` assigns lands inside the hashed bytes. The first idle-gap split of a
+/// thread renames `sA` to `sA#1`, and a chunk whose content has not changed by a single
+/// character re-hashes and is billed all over again. Labelling every chunk with the
+/// thread root keeps those bytes stable across the split. Nothing is lost: the id is
+/// context the prompt itself calls "not itself scored", and the sub-session number is
+/// what the row's `session_id` column records.
+fn as_rollup_subject(session: &transcript::Session) -> transcript::Session {
+    transcript::Session {
+        session_id: store::thread_root(&session.session_id).to_string(),
+        source: session.source.clone(),
+        records: session.records.clone(),
+    }
+}
+
+/// A rollup row is stamped at the *end* of the arc it judges, not the start.
+///
+/// `score --since T` rolls a straddling session up whole, so a session that began long
+/// before `T` can be judged entirely because of turns after it. Stamping that row at the
+/// session start put it outside the very window that selected it, and `report --since T`
+/// then filtered out the rollup just paid for. The last instant the arc covers is always
+/// inside the window that selected the session.
+fn rollup_timestamp(session: &transcript::Session) -> DateTime<Utc> {
+    session
+        .records
+        .last()
+        .map(|r| r.timestamp)
+        .or_else(|| session.started_at())
+        .unwrap_or_else(Utc::now)
 }
 
 /// Work out what still needs judging. Cache hits never appear here.
@@ -318,6 +432,10 @@ fn build_plan(
 
     let mut turns = Vec::new();
     let mut rollups = Vec::new();
+    // Deduplication runs across the whole corpus, not per session — the whole point is
+    // that the repeat lives in a *different* session.
+    let mut turns_by_hash = BTreeMap::new();
+    let mut rollups_by_hash = BTreeMap::new();
 
     for session in sessions {
         // Sessionizing and prompt-pairing both run over the whole corpus first: the
@@ -334,16 +452,25 @@ fn build_plan(
             for turn in in_window {
                 let prompt = judge::assemble_turn_prompt(&turn);
                 let hash = judge::content_hash(&prompt, judge_model);
-                if !store.has_score(&hash)? {
-                    turns.push((turn, prompt, hash));
+                if store.is_scored(&turn.turn_id, Tier::Turn, judge_model, &hash)? {
+                    continue;
                 }
+                enqueue(&mut turns, &mut turns_by_hash, store, prompt, hash, turn)?;
             }
         }
         if (tier == "both" || tier == "rollup") && worth_rolling_up {
-            let prompt = judge::rollup::assemble_rollup_prompt(&session);
+            let prompt = judge::rollup::assemble_rollup_prompt(&as_rollup_subject(&session));
             let hash = judge::content_hash(&prompt, judge_model);
-            if !store.has_score(&hash)? {
-                rollups.push((session, prompt, hash));
+            let identity = rollup_identity_of(&session);
+            if !store.is_scored(&identity, Tier::Rollup, judge_model, &hash)? {
+                enqueue(
+                    &mut rollups,
+                    &mut rollups_by_hash,
+                    store,
+                    prompt,
+                    hash,
+                    session,
+                )?;
             }
         }
     }
@@ -383,19 +510,14 @@ fn cmd_score(
     let window = since.map(|s| format!("since {}", s.format("%Y-%m-%d %H:%M UTC")));
 
     let plan = build_plan(store, &judge_model, idle_gap_hours, &tier, since)?;
-    let total = plan.turns.len() + plan.rollups.len();
+    let total = plan.calls();
+    let rows = plan.rows();
 
     if dry_run {
-        let turn_tokens: usize = plan
-            .turns
-            .iter()
-            .map(|(_, p, _)| judge::estimate_tokens(p))
-            .sum();
-        let rollup_tokens: usize = plan
-            .rollups
-            .iter()
-            .map(|(_, p, _)| judge::estimate_tokens(p))
-            .sum();
+        let turn_tokens = pending_tokens(&plan.turns);
+        let rollup_tokens = pending_tokens(&plan.rollups);
+        let turn_calls = pending_calls(&plan.turns);
+        let rollup_calls = pending_calls(&plan.rollups);
 
         println!("Judge model: {judge_model}");
         println!("Regime:      {} (single judge)", judge::REGIME);
@@ -404,14 +526,22 @@ fn cmd_score(
             None => println!("Window:      the whole pending corpus"),
         }
         println!();
-        println!("Turn-tier calls needed:   {}", plan.turns.len());
-        println!("Rollup calls needed:      {}", plan.rollups.len());
+        println!("Turn-tier calls needed:   {turn_calls}");
+        println!("Rollup calls needed:      {rollup_calls}");
         println!("Total calls:              {total}");
+        println!("Scores this would write:  {rows}");
         println!();
         println!("Estimated input tokens:   ~{}", turn_tokens + rollup_tokens);
         println!("  turn tier:              ~{turn_tokens}");
         println!("  rollups:                ~{rollup_tokens}");
         println!();
+        if rows > total {
+            println!(
+                "{} score(s) need no call of their own: the corpus repeats itself, and \n\
+                 identical text is judged once and recorded against every turn it covers.\n",
+                rows - total
+            );
+        }
         println!(
             "Token counts are a crude estimate (chars/4) and exclude output. Multiply by your \n\
              judge model's input price to get a cost. Cached turns are already excluded, so \n\
@@ -420,7 +550,7 @@ fn cmd_score(
         return Ok(());
     }
 
-    if total == 0 {
+    if rows == 0 {
         match &window {
             Some(w) => println!("Nothing pending {w} — that slice is already scored."),
             None => println!("Everything is already scored — nothing to do."),
@@ -432,112 +562,214 @@ fn cmd_score(
     // Above the consent prompt on purpose: the call count it quotes is meaningless
     // without the slice it covers.
     match &window {
-        Some(w) => println!("Scoring {total} pending item(s) {w}; everything older stays pending."),
-        None => println!("Scoring {total} pending item(s) — the whole pending corpus."),
+        Some(w) => println!("Scoring {rows} pending item(s) {w}; everything older stays pending."),
+        None => println!("Scoring {rows} pending item(s) — the whole pending corpus."),
+    }
+    if rows > total {
+        println!(
+            "{} of them repeat text already judged and will be filled from the store.",
+            rows - total
+        );
     }
 
-    let judge = Judge::new(provider, &model)?;
-    let destination = judge.destination();
-    let judge_model = judge.labelled_model();
+    // Only build a judge — and only ask for consent — if something actually has to be
+    // sent. A run that is entirely reuse must work on a machine with no credentials.
+    let judge = if total > 0 {
+        let judge = Judge::new(provider, &model)?;
+        let destination = judge.destination();
+        if !store.consent_granted(&destination)? {
+            if yes {
+                store.grant_consent(&destination)?;
+            } else if prompt_consent(&destination, judge.model(), total)? {
+                store.grant_consent(&destination)?;
+                println!("Consent recorded for {destination}. This will not be asked again.\n");
+            } else {
+                println!("No consent given. Nothing was sent and nothing was scored.");
+                return Ok(());
+            }
+        }
+        Some(judge)
+    } else {
+        None
+    };
+    let judge_model = match &judge {
+        Some(j) => j.labelled_model(),
+        None => judge_model,
+    };
 
-    if !store.consent_granted(&destination)? {
-        if yes {
-            store.grant_consent(&destination)?;
-        } else if prompt_consent(&destination, judge.model(), total)? {
-            store.grant_consent(&destination)?;
-            println!("Consent recorded for {destination}. This will not be asked again.\n");
-        } else {
-            println!("No consent given. Nothing was sent and nothing was scored.");
-            return Ok(());
+    let mut run = Run {
+        judge: judge.as_ref(),
+        cap: limit.unwrap_or(usize::MAX),
+        total,
+        calls: 0,
+        failed: 0,
+        written: 0,
+        reused: 0,
+        spent: judge::Usage::default(),
+    };
+
+    for job in &plan.turns {
+        let judgement = match run.step(job, "turn", &job.subjects[0].turn_id) {
+            Step::Judged(j) => j,
+            Step::Skip => continue,
+            Step::Stop => break,
+        };
+        for turn in &job.subjects {
+            let rec = store::score_record(
+                &turn.turn_id,
+                &turn.session_id,
+                Tier::Turn,
+                &job.hash,
+                &judge_model,
+                judge::REGIME,
+                judgement.clone(),
+            );
+            store
+                .insert_score_at(&rec, &turn.source, turn.model.as_deref(), turn.timestamp)
+                .with_context(|| format!("storing the score for turn {}", turn.turn_id))?;
+            run.written += 1;
         }
     }
 
-    let cap = limit.unwrap_or(usize::MAX);
-    let mut done = 0usize;
-    let mut failed = 0usize;
-    let mut spent = judge::Usage::default();
-
-    for (turn, prompt, hash) in &plan.turns {
-        if done >= cap {
-            break;
+    for job in &plan.rollups {
+        let judgement = match run.step(job, "rollup", &job.subjects[0].session_id) {
+            Step::Judged(j) => j,
+            Step::Skip => continue,
+            Step::Stop => break,
+        };
+        for session in &job.subjects {
+            let rec = store::score_record(
+                &format!("{}:rollup", session.session_id),
+                &session.session_id,
+                Tier::Rollup,
+                &job.hash,
+                &judge_model,
+                judge::REGIME,
+                judgement.clone(),
+            );
+            store
+                .insert_score_as(
+                    &rec,
+                    &rollup_identity_of(session),
+                    &session.source,
+                    None,
+                    rollup_timestamp(session),
+                )
+                .with_context(|| {
+                    format!(
+                        "storing the rollup score for session {}",
+                        session.session_id
+                    )
+                })?;
+            run.written += 1;
         }
-        eprint!("\r  scoring turn {}/{}…", done + 1, total.min(cap));
-        match judge_one(&judge, prompt) {
-            Ok((j, usage)) => {
-                spent.prompt_tokens += usage.prompt_tokens;
-                spent.completion_tokens += usage.completion_tokens;
-                let rec = store::score_record(
-                    &turn.turn_id,
-                    &turn.session_id,
-                    Tier::Turn,
-                    hash,
-                    &judge_model,
-                    judge::REGIME,
-                    j,
-                );
-                store
-                    .insert_score_at(&rec, &turn.source, turn.model.as_deref(), turn.timestamp)
-                    .with_context(|| format!("storing the score for turn {}", turn.turn_id))?;
-            }
-            Err(e) => {
-                failed += 1;
-                eprintln!("\n  ! turn {} failed: {e}", turn.turn_id);
-            }
-        }
-        done += 1;
-    }
-
-    for (session, prompt, hash) in &plan.rollups {
-        if done >= cap {
-            break;
-        }
-        eprint!("\r  scoring rollup {}/{}…", done + 1, total.min(cap));
-        match judge_one(&judge, prompt) {
-            Ok((j, usage)) => {
-                spent.prompt_tokens += usage.prompt_tokens;
-                spent.completion_tokens += usage.completion_tokens;
-                let rec = store::score_record(
-                    &format!("{}:rollup", session.session_id),
-                    &session.session_id,
-                    Tier::Rollup,
-                    hash,
-                    &judge_model,
-                    judge::REGIME,
-                    j,
-                );
-                let ts = session.started_at().unwrap_or_else(Utc::now);
-                store
-                    .insert_score_at(&rec, &session.source, None, ts)
-                    .with_context(|| {
-                        format!(
-                            "storing the rollup score for session {}",
-                            session.session_id
-                        )
-                    })?;
-            }
-            Err(e) => {
-                failed += 1;
-                eprintln!("\n  ! rollup {} failed: {e}", session.session_id);
-            }
-        }
-        done += 1;
     }
 
     eprintln!("\r                                          ");
-    println!("Scored {} of {total} pending item(s).", done - failed);
-    if failed > 0 {
-        println!("{failed} failed and were not cached; re-run to retry just those.");
+    println!(
+        "Scored {} pending item(s) in {} judge call(s).",
+        run.written,
+        run.calls - run.failed
+    );
+    if run.reused > 0 {
+        println!(
+            "{} of them reused a judgement already in the store — no call, no cost.",
+            run.reused
+        );
+    }
+    if run.failed > 0 {
+        println!(
+            "{} call(s) failed and were not cached; re-run to retry just those.",
+            run.failed
+        );
     }
     // The real number, as reported by the API — not the crude dry-run estimate.
-    if spent.prompt_tokens > 0 || spent.completion_tokens > 0 {
+    if run.spent.prompt_tokens > 0 || run.spent.completion_tokens > 0 {
         println!(
             "Tokens actually used: {} input + {} output. Multiply by your judge model's \
              prices for the real cost of this run.",
-            spent.prompt_tokens, spent.completion_tokens
+            run.spent.prompt_tokens, run.spent.completion_tokens
         );
     }
+    // A run in which nothing survived is a failed run, and must not exit 0.
+    score_outcome(run.calls, run.failed)?;
     println!("\nNext: `humanebench report --out report.html`");
     Ok(())
+}
+
+/// Whether a completed `score` run counts as a success.
+///
+/// A partial failure stays a success: the scores that landed are real, they are cached,
+/// and the printout says to re-run for the rest. A run where every single call failed has
+/// nothing to show and almost always means a bad key, no network, or a wrong model id —
+/// exiting 0 there reports success to a script that has just scored nothing.
+fn score_outcome(calls: usize, failed: usize) -> Result<()> {
+    if calls > 0 && failed == calls {
+        bail!(
+            "every judge call failed ({failed} of {calls}) — nothing was scored. Check the \
+             API key, the network, and the --model id, then re-run."
+        );
+    }
+    Ok(())
+}
+
+/// What a job produced.
+enum Step {
+    /// Record this judgement against every subject of the job.
+    Judged(judge::Judgement),
+    /// This job failed. Nothing is recorded for it and the run carries on.
+    Skip,
+    /// The `--limit` budget is spent.
+    Stop,
+}
+
+/// The running totals of one `score` invocation.
+struct Run<'a> {
+    judge: Option<&'a Judge>,
+    cap: usize,
+    total: usize,
+    calls: usize,
+    failed: usize,
+    written: usize,
+    reused: usize,
+    spent: judge::Usage,
+}
+
+impl Run<'_> {
+    /// The judgement for one job: the one the store already holds for these bytes, or a
+    /// fresh call.
+    fn step<T>(&mut self, job: &Job<T>, label: &str, subject: &str) -> Step {
+        if let Some(j) = &job.reuse {
+            self.reused += job.subjects.len();
+            return Step::Judged(j.clone());
+        }
+        if self.calls >= self.cap {
+            return Step::Stop;
+        }
+        // `total > 0` is what built the judge, and `total` counts exactly the jobs that
+        // reach this line — so this is unreachable rather than a silent no-op.
+        let Some(judge) = self.judge else {
+            return Step::Stop;
+        };
+        eprint!(
+            "\r  scoring {label} {}/{}…",
+            self.calls + 1,
+            self.total.min(self.cap)
+        );
+        self.calls += 1;
+        match judge_one(judge, &job.prompt) {
+            Ok((j, usage)) => {
+                self.spent.prompt_tokens += usage.prompt_tokens;
+                self.spent.completion_tokens += usage.completion_tokens;
+                Step::Judged(j)
+            }
+            Err(e) => {
+                self.failed += 1;
+                eprintln!("\n  ! {label} {subject} failed: {e}");
+                Step::Skip
+            }
+        }
+    }
 }
 
 fn judge_one(judge: &Judge, prompt: &str) -> Result<(judge::Judgement, judge::Usage)> {
@@ -820,6 +1052,366 @@ mod tests {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
+    fn a_judgement() -> judge::Judgement {
+        judge::Judgement {
+            principles: judge::PRINCIPLES
+                .iter()
+                .map(|n| judge::PrincipleScore {
+                    name: n.to_string(),
+                    score: 0.5,
+                    rationale: None,
+                })
+                .collect(),
+            global_violations: vec![],
+            confidence: 0.8,
+        }
+    }
+
+    /// Record a judgement for everything in a plan, exactly the way `cmd_score` does —
+    /// same identities, same timestamps, one judgement fanned out over every subject of a
+    /// job. Tests that reach into the store by hand instead would not prove the caching
+    /// they claim to.
+    fn pay_for(store: &Store, plan: &Plan, judge_model: &str) {
+        for job in &plan.turns {
+            for turn in &job.subjects {
+                let rec = store::score_record(
+                    &turn.turn_id,
+                    &turn.session_id,
+                    Tier::Turn,
+                    &job.hash,
+                    judge_model,
+                    judge::REGIME,
+                    a_judgement(),
+                );
+                store
+                    .insert_score_at(&rec, &turn.source, turn.model.as_deref(), turn.timestamp)
+                    .unwrap();
+            }
+        }
+        for job in &plan.rollups {
+            for session in &job.subjects {
+                let rec = store::score_record(
+                    &format!("{}:rollup", session.session_id),
+                    &session.session_id,
+                    Tier::Rollup,
+                    &job.hash,
+                    judge_model,
+                    judge::REGIME,
+                    a_judgement(),
+                );
+                store
+                    .insert_score_as(
+                        &rec,
+                        &rollup_identity_of(session),
+                        &session.source,
+                        None,
+                        rollup_timestamp(session),
+                    )
+                    .unwrap();
+            }
+        }
+    }
+
+    fn turn_ids_in(plan: &Plan) -> Vec<&str> {
+        plan.turns
+            .iter()
+            .flat_map(|j| j.subjects.iter().map(|t| t.turn_id.as_str()))
+            .collect()
+    }
+
+    fn rollup_ids_in(plan: &Plan) -> Vec<&str> {
+        plan.rollups
+            .iter()
+            .flat_map(|j| j.subjects.iter().map(|s| s.session_id.as_str()))
+            .collect()
+    }
+
+    fn turn_hash(plan: &Plan, turn_id: &str) -> String {
+        plan.turns
+            .iter()
+            .find(|j| j.subjects.iter().any(|t| t.turn_id == turn_id))
+            .map(|j| j.hash.clone())
+            .unwrap()
+    }
+
+    fn rollup_hash(plan: &Plan, session_id: &str) -> String {
+        plan.rollups
+            .iter()
+            .find(|j| j.subjects.iter().any(|s| s.session_id == session_id))
+            .map(|j| j.hash.clone())
+            .unwrap()
+    }
+
+    fn exchange(session: &str, n: &str, prompt: &str, reply: &str, at: &str) -> Vec<Record> {
+        let at = ts(at);
+        vec![
+            Record::new(
+                "claude-code",
+                session,
+                format!("u{n}"),
+                Role::User,
+                prompt,
+                at,
+            ),
+            Record::new(
+                "claude-code",
+                session,
+                format!("a{n}"),
+                Role::Assistant,
+                reply,
+                at + Duration::minutes(1),
+            ),
+        ]
+    }
+
+    // ---- F2: identical turns in different sessions --------------------------
+
+    /// Two sessions containing the same exchange assemble to the same bytes. One judge
+    /// call is right; one score row is not — the second turn would be billed for and then
+    /// be invisible to every report.
+    #[test]
+    fn identical_turns_in_two_sessions_are_one_call_and_two_scores() {
+        let mut store = Store::open_in_memory().unwrap();
+        let mut recs = exchange(
+            "sA",
+            "1",
+            "thanks",
+            "You're welcome!",
+            "2026-01-01T00:00:00Z",
+        );
+        recs.extend(exchange(
+            "sB",
+            "2",
+            "thanks",
+            "You're welcome!",
+            "2026-03-01T00:00:00Z",
+        ));
+        store.upsert_records(&recs).unwrap();
+
+        let plan = build_plan(&store, "m", 6, "turn", None).unwrap();
+        assert_eq!(
+            plan.turns.len(),
+            1,
+            "byte-identical prompts must collapse to a single judge call"
+        );
+        assert_eq!(plan.calls(), 1);
+        assert_eq!(
+            plan.rows(),
+            2,
+            "…and still produce a score for each of the two turns"
+        );
+        assert_eq!(turn_ids_in(&plan), ["a1", "a2"]);
+
+        pay_for(&store, &plan, "m");
+
+        let scored = store.scores(&Filter::default()).unwrap();
+        let ids: Vec<&str> = scored.iter().map(|s| s.record.turn_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["a1", "a2"],
+            "both turns must reach the report, not just the first one seen"
+        );
+        assert_eq!(
+            scored[0].record.content_hash, scored[1].record.content_hash,
+            "they share a content hash — that is what made them one call"
+        );
+
+        // And a second run must not re-judge either of them.
+        assert_eq!(build_plan(&store, "m", 6, "turn", None).unwrap().calls(), 0);
+    }
+
+    /// The same exchange appearing later, after the first was already paid for, costs
+    /// nothing: the judgement is already in the store.
+    #[test]
+    fn a_repeat_of_an_already_judged_exchange_costs_no_call() {
+        let mut store = Store::open_in_memory().unwrap();
+        store
+            .upsert_records(&exchange(
+                "sA",
+                "1",
+                "thanks",
+                "You're welcome!",
+                "2026-01-01T00:00:00Z",
+            ))
+            .unwrap();
+        let plan = build_plan(&store, "m", 6, "turn", None).unwrap();
+        pay_for(&store, &plan, "m");
+
+        store
+            .upsert_records(&exchange(
+                "sB",
+                "2",
+                "thanks",
+                "You're welcome!",
+                "2026-03-01T00:00:00Z",
+            ))
+            .unwrap();
+        let plan = build_plan(&store, "m", 6, "turn", None).unwrap();
+        assert_eq!(
+            turn_ids_in(&plan),
+            ["a2"],
+            "the new turn still needs a score"
+        );
+        assert_eq!(
+            plan.calls(),
+            0,
+            "but not a judge call — these exact bytes have already been paid for"
+        );
+        assert_eq!(plan.rows(), 1);
+
+        pay_for(&store, &plan, "m");
+        assert_eq!(store.scores(&Filter::default()).unwrap().len(), 2);
+    }
+
+    // ---- F3: rollups supersede ----------------------------------------------
+
+    /// Score, ingest more of the same session, re-score. The session must end up with one
+    /// rollup row, judged on the complete arc — not one per generation, averaged together.
+    #[test]
+    fn re_scoring_a_grown_session_leaves_one_rollup_carrying_the_latest_arc() {
+        let mut store = Store::open_in_memory().unwrap();
+        store
+            .upsert_records(&exchange(
+                "sA",
+                "1",
+                "first question",
+                "first answer",
+                "2026-01-01T00:00:00Z",
+            ))
+            .unwrap();
+        let first = build_plan(&store, "m", 6, "rollup", None).unwrap();
+        assert_eq!(first.calls(), 1);
+        pay_for(&store, &first, "m");
+        let first_hash = rollup_hash(&first, "sA");
+
+        // More of the same conversation arrives.
+        store
+            .upsert_records(&exchange(
+                "sA",
+                "2",
+                "second question",
+                "second answer",
+                "2026-01-01T00:30:00Z",
+            ))
+            .unwrap();
+        let second = build_plan(&store, "m", 6, "rollup", None).unwrap();
+        assert_eq!(
+            second.calls(),
+            1,
+            "the arc grew, so it genuinely needs re-judging"
+        );
+        assert_ne!(rollup_hash(&second, "sA"), first_hash);
+        pay_for(&store, &second, "m");
+
+        let rollups = store
+            .scores(&Filter {
+                tier: Some(Tier::Rollup),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            rollups.len(),
+            1,
+            "one rollup per session — the stub arc must not linger and be averaged in"
+        );
+        assert_eq!(
+            rollups[0].record.content_hash,
+            rollup_hash(&second, "sA"),
+            "the surviving row must be the one judged on the complete arc"
+        );
+    }
+
+    /// An idle gap renames `sA` to `sA#1`. The unchanged chunk must neither be re-billed
+    /// nor leave its pre-rename rollup behind as a row nothing can supersede.
+    #[test]
+    fn an_idle_gap_split_neither_rebills_nor_orphans_the_first_chunk() {
+        let mut store = Store::open_in_memory().unwrap();
+        store
+            .upsert_records(&exchange(
+                "sA",
+                "1",
+                "first question",
+                "first answer",
+                "2026-01-01T00:00:00Z",
+            ))
+            .unwrap();
+        let before = build_plan(&store, "m", 6, "rollup", None).unwrap();
+        assert_eq!(rollup_ids_in(&before), ["sA"]);
+        pay_for(&store, &before, "m");
+
+        // A week later the same thread resumes: `sessionize` now splits it in two, and
+        // the first chunk is renumbered `sA#1`.
+        store
+            .upsert_records(&exchange(
+                "sA",
+                "2",
+                "much later question",
+                "much later answer",
+                "2026-01-08T00:00:00Z",
+            ))
+            .unwrap();
+        let after = build_plan(&store, "m", 6, "rollup", None).unwrap();
+        assert_eq!(rollup_ids_in(&after), ["sA#2"], "only the new chunk is new");
+        pay_for(&store, &after, "m");
+
+        let rollups = store
+            .scores(&Filter {
+                tier: Some(Tier::Rollup),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            rollups.len(),
+            2,
+            "two chunks, two rollups — the renamed one must not become a third"
+        );
+    }
+
+    // ---- F18: a rollup survives the window that selected it -------------------
+
+    /// `score --since T` rolls a straddling session up whole. `report --since T` must then
+    /// still show it: paying for a rollup the same window hides is a broken round trip.
+    #[test]
+    fn a_rollup_survives_the_since_window_that_paid_for_it() {
+        let store = straddling_store();
+        let cutoff = ts("2026-01-01T01:00:00Z");
+
+        let plan = build_plan(&store, "m", 6, "both", Some(cutoff)).unwrap();
+        assert_eq!(rollup_ids_in(&plan), ["s1"]);
+        pay_for(&store, &plan, "m");
+
+        let visible = store
+            .scores(&Filter {
+                since: Some(cutoff),
+                tier: Some(Tier::Rollup),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            rollup_ids_in(&plan).len(),
+            visible.len(),
+            "every rollup the window billed for must be visible through the same window"
+        );
+        assert_eq!(visible[0].record.session_id, "s1");
+    }
+
+    // ---- F23: a run that scored nothing is not a success ----------------------
+
+    #[test]
+    fn a_run_where_every_call_failed_is_an_error() {
+        // A bad API key fails every call. Exiting 0 there tells a script the corpus is
+        // scored when not one score was written.
+        assert!(score_outcome(4, 4).is_err());
+        assert!(
+            score_outcome(4, 1).is_ok(),
+            "a partial failure still scored"
+        );
+        assert!(
+            score_outcome(0, 0).is_ok(),
+            "an all-cache run made no calls"
+        );
+    }
+
     /// With nothing to discover, the error has to carry every route forward: where it
     /// looked, and the two ways to ingest that don't rely on discovery at all.
     #[test]
@@ -893,43 +1485,8 @@ mod tests {
         assert_eq!(plan.turns.len(), 1);
         assert_eq!(plan.rollups.len(), 1);
 
-        // Cache both, then the plan must be empty.
-        let judgement = judge::Judgement {
-            principles: judge::PRINCIPLES
-                .iter()
-                .map(|n| judge::PrincipleScore {
-                    name: n.to_string(),
-                    score: 0.5,
-                    rationale: None,
-                })
-                .collect(),
-            global_violations: vec![],
-            confidence: 0.8,
-        };
-        for (_, _, hash) in &plan.turns {
-            let rec = store::score_record(
-                "a1",
-                "s1",
-                Tier::Turn,
-                hash,
-                "openrouter/m",
-                "single",
-                judgement.clone(),
-            );
-            store.insert_score(&rec, "claude-code", None).unwrap();
-        }
-        for (_, _, hash) in &plan.rollups {
-            let rec = store::score_record(
-                "s1:rollup",
-                "s1",
-                Tier::Rollup,
-                hash,
-                "openrouter/m",
-                "single",
-                judgement.clone(),
-            );
-            store.insert_score(&rec, "claude-code", None).unwrap();
-        }
+        // Pay for both, then the plan must be empty.
+        pay_for(&store, &plan, "openrouter/m");
 
         let plan2 = build_plan(&store, "openrouter/m", 6, "both", None).unwrap();
         assert_eq!(
@@ -964,30 +1521,7 @@ mod tests {
         store.upsert_records(&recs).unwrap();
 
         let plan = build_plan(&store, "openrouter/model-a", 6, "both", None).unwrap();
-        let judgement = judge::Judgement {
-            principles: judge::PRINCIPLES
-                .iter()
-                .map(|n| judge::PrincipleScore {
-                    name: n.to_string(),
-                    score: 0.5,
-                    rationale: None,
-                })
-                .collect(),
-            global_violations: vec![],
-            confidence: 0.8,
-        };
-        for (_, _, hash) in &plan.turns {
-            let rec = store::score_record(
-                "a1",
-                "s1",
-                Tier::Turn,
-                hash,
-                "openrouter/model-a",
-                "single",
-                judgement.clone(),
-            );
-            store.insert_score(&rec, "claude-code", None).unwrap();
-        }
+        pay_for(&store, &plan, "openrouter/model-a");
 
         let plan_b = build_plan(&store, "openrouter/model-b", 6, "turn", None).unwrap();
         assert_eq!(
@@ -1103,18 +1637,10 @@ mod tests {
         assert_eq!(all.rollups.len(), 2);
 
         let windowed = build_plan(&store, "m", 6, "both", Some(cutoff)).unwrap();
-        let turn_ids: Vec<&str> = windowed
-            .turns
-            .iter()
-            .map(|(t, _, _)| t.turn_id.as_str())
-            .collect();
+        let turn_ids = turn_ids_in(&windowed);
         assert_eq!(turn_ids, ["a2"]);
 
-        let rollup_ids: Vec<&str> = windowed
-            .rollups
-            .iter()
-            .map(|(s, _, _)| s.session_id.as_str())
-            .collect();
+        let rollup_ids = rollup_ids_in(&windowed);
         assert_eq!(
             rollup_ids,
             ["s1"],
@@ -1131,64 +1657,14 @@ mod tests {
         let windowed =
             build_plan(&store, "m", 6, "both", Some(ts("2026-01-01T01:00:00Z"))).unwrap();
 
-        let hash_of = |plan: &Plan, id: &str| {
-            plan.turns
-                .iter()
-                .find(|(t, _, _)| t.turn_id == id)
-                .map(|(_, _, h)| h.clone())
-                .unwrap()
-        };
-        assert_eq!(hash_of(&all, "a2"), hash_of(&windowed, "a2"));
-
-        let rollup_hash_of = |plan: &Plan, id: &str| {
-            plan.rollups
-                .iter()
-                .find(|(s, _, _)| s.session_id == id)
-                .map(|(_, _, h)| h.clone())
-                .unwrap()
-        };
-        assert_eq!(rollup_hash_of(&all, "s1"), rollup_hash_of(&windowed, "s1"));
+        assert_eq!(turn_hash(&all, "a2"), turn_hash(&windowed, "a2"));
+        assert_eq!(rollup_hash(&all, "s1"), rollup_hash(&windowed, "s1"));
 
         // Pay for the narrow window, then widen it: the overlap must not come back.
-        let judgement = judge::Judgement {
-            principles: judge::PRINCIPLES
-                .iter()
-                .map(|n| judge::PrincipleScore {
-                    name: n.to_string(),
-                    score: 0.5,
-                    rationale: None,
-                })
-                .collect(),
-            global_violations: vec![],
-            confidence: 0.8,
-        };
-        for (turn, _, hash) in &windowed.turns {
-            let rec = store::score_record(
-                &turn.turn_id,
-                &turn.session_id,
-                Tier::Turn,
-                hash,
-                "m",
-                "single",
-                judgement.clone(),
-            );
-            store.insert_score(&rec, "claude-code", None).unwrap();
-        }
-        for (session, _, hash) in &windowed.rollups {
-            let rec = store::score_record(
-                &format!("{}:rollup", session.session_id),
-                &session.session_id,
-                Tier::Rollup,
-                hash,
-                "m",
-                "single",
-                judgement.clone(),
-            );
-            store.insert_score(&rec, "claude-code", None).unwrap();
-        }
+        pay_for(&store, &windowed, "m");
 
         let widened = build_plan(&store, "m", 6, "both", None).unwrap();
-        assert!(widened.turns.iter().all(|(t, _, _)| t.turn_id != "a2"));
-        assert!(widened.rollups.iter().all(|(s, _, _)| s.session_id != "s1"));
+        assert!(!turn_ids_in(&widened).contains(&"a2"));
+        assert!(!rollup_ids_in(&widened).contains(&"s1"));
     }
 }
