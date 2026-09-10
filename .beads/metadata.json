@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "humanebench",
+  "project_id": "ed3bd3c2-b69c-452f-8ccd-9897414bd222"
+}

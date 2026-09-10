@@ -1,0 +1,32 @@
+#!/bin/sh
+# roborev post-rewrite — vendored copy owned by the Sparkle app.
+#
+# git fires post-rewrite after a commit-rewriting operation (`git commit --amend`,
+# `git rebase`) with the rewrite kind ("amend" or "rebase") as $1, and — the part
+# that matters — it writes the OLD-SHA/NEW-SHA pairs to the hook's STDIN, one per
+# line. roborev remaps its pending/completed reviews from the old shas onto the new
+# ones so an amend or rebase doesn't strand or duplicate reviews.
+#
+# THE COMMAND IS `remap`, AND IT READS STDIN. This is easy to get wrong in a way
+# nothing reports: there is no `roborev post-rewrite` subcommand (`roborev
+# post-rewrite amend` exits 1 with `unknown command`), and because a hook like this
+# suppresses stderr and git ignores post-rewrite's exit status, calling the wrong
+# name is a SILENT no-op — every amend and rebase would strand its reviews on the
+# old shas with nothing logged. `roborev remap --help` states it plainly: "Reads
+# old-sha/new-sha pairs from stdin (one per line, space-separated) ... Called
+# automatically by the post-rewrite hook."
+#
+# So: do NOT pass "$@" in place of stdin. The rewrite kind is not what remap wants;
+# the sha pairs on stdin are, and they reach roborev only because this script does
+# not redirect or consume them.
+#
+# Resolve roborev the same way post-commit does: the seed's pinned user-scope path
+# first, then PATH; a missing binary is a silent no-op.
+ROBOREV="$HOME/.local/bin/roborev"
+if [ ! -x "$ROBOREV" ]; then
+    ROBOREV=$(command -v roborev 2>/dev/null)
+    [ -x "$ROBOREV" ] || exit 0
+fi
+# stdin is inherited untouched so the sha pairs reach remap. stderr suppressed like
+# the post-commit wrapper; git ignores our exit status either way.
+"$ROBOREV" remap --quiet 2>/dev/null
