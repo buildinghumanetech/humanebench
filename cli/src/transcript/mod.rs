@@ -130,11 +130,74 @@ pub fn parse_jsonl(input: &str) -> Result<Vec<Record>> {
     Ok(out)
 }
 
+/// Walk up `parent_of` from `start` until a surviving id is found.
+fn nearest_kept_ancestor(
+    start: Option<&str>,
+    parent_of: &HashMap<String, Option<String>>,
+    kept: &HashSet<String>,
+) -> Option<String> {
+    let mut cursor = start.map(str::to_string);
+    let mut guard = 0usize;
+    while let Some(id) = cursor {
+        // Cycle / runaway guard: logs are machine-written but not guaranteed sane.
+        guard += 1;
+        if guard > 10_000 {
+            return None;
+        }
+        if kept.contains(&id) {
+            return Some(id);
+        }
+        cursor = parent_of.get(&id).cloned().flatten();
+    }
+    None
+}
+
+/// Re-link every record to its nearest *kept* ancestor.
+///
+/// Adapters drop most of what they read — tool_result envelopes, tool-only assistant
+/// turns, system and harness records — and every one of those is a link in the source's
+/// parent chain. Leaving `parent_id` pointing at a dropped id orphans the chain, and
+/// [`flatten`]'s walk then terminates at the first gap, discarding almost the entire
+/// conversation. Walking up to the nearest survivor keeps genuine branch discarding intact
+/// without inventing a break that was never in the data.
+///
+/// Any adapter that drops nodes from the middle of a tree must call this, passing the
+/// complete id → parent map read off the source — dropped links included.
+pub fn relink_to_kept_ancestors(
+    records: &mut [Record],
+    parent_of: &HashMap<String, Option<String>>,
+) {
+    let kept: HashSet<String> = records.iter().map(|r| r.turn_id.clone()).collect();
+    for rec in records.iter_mut() {
+        rec.parent_id = nearest_kept_ancestor(rec.parent_id.as_deref(), parent_of, &kept);
+    }
+}
+
+/// Union-find root of `x`, with path halving. Small enough to live here; `flatten` is the
+/// only caller.
+fn dsu_find(dsu: &mut [usize], mut x: usize) -> usize {
+    while dsu[x] != x {
+        dsu[x] = dsu[dsu[x]];
+        x = dsu[x];
+    }
+    x
+}
+
 /// The flattening rule.
 ///
 /// Walk from the newest leaf to the root via `parent_id`; that path IS the conversation,
 /// and every unreferenced branch is discarded. Score what the person actually saw — a
 /// regeneration they scrolled past and abandoned never treated them any way at all.
+///
+/// **A session is a forest, not a tree.** Claude Code writes a separate file — with its
+/// own null-parented root — for every subagent and every resume under a single
+/// `sessionId`, and a compaction starts a fresh root inside the same thread. Electing ONE
+/// global newest leaf therefore discards whole conversations under the label "abandoned
+/// branch", and a sidechain that happens to end later than the main chain can win that
+/// election and zero the session out. So the rule runs PER CONNECTED COMPONENT: every
+/// component elects its own newest leaf, and the surviving paths are merged back in
+/// timestamp order. Discarding stays confined to genuine branches — sibling paths that
+/// share an ancestor.
 ///
 /// Records with no `parent_id` anywhere are already linear and are returned in timestamp
 /// order. Returns `(kept, discarded_count)`.
@@ -152,43 +215,75 @@ pub fn flatten(records: Vec<Record>) -> (Vec<Record>, usize) {
 
     let total = records.len();
     let by_id: HashMap<&str, &Record> = records.iter().map(|r| (r.turn_id.as_str(), r)).collect();
+    let index_of: HashMap<&str, usize> = records
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (r.turn_id.as_str(), i))
+        .collect();
 
-    // A leaf is a record nobody names as parent.
+    // Only a parent link that resolves inside this set is an edge. A link naming an id
+    // that isn't here — a dropped record, another file — means "root", not "orphan".
+    let mut dsu: Vec<usize> = (0..total).collect();
+    for (i, rec) in records.iter().enumerate() {
+        let Some(&p) = rec.parent_id.as_deref().and_then(|pid| index_of.get(pid)) else {
+            continue;
+        };
+        let (a, b) = (dsu_find(&mut dsu, i), dsu_find(&mut dsu, p));
+        if a != b {
+            dsu[a] = b;
+        }
+    }
+
+    // A leaf is a record nobody in this set names as parent.
     let referenced: HashSet<&str> = records
         .iter()
         .filter_map(|r| r.parent_id.as_deref())
+        .filter(|pid| by_id.contains_key(pid))
         .collect();
 
-    // Newest leaf wins; turn_id breaks ties so the choice is deterministic across runs.
-    let newest_leaf = records
-        .iter()
-        .filter(|r| !referenced.contains(r.turn_id.as_str()))
-        .max_by_key(|r| (r.timestamp, r.turn_id.clone()));
-
-    let Some(leaf) = newest_leaf else {
-        // Every record is referenced => the parent links form a cycle. Refuse to guess;
-        // fall back to timestamp order rather than looping forever.
-        let mut linear = records;
-        linear.sort_by_key(|r| (r.timestamp, r.turn_id.clone()));
-        return (linear, 0);
-    };
-
-    let mut path: Vec<Record> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut cursor: Option<&Record> = Some(leaf);
-
-    while let Some(rec) = cursor {
-        if !seen.insert(rec.turn_id.clone()) {
-            break; // cycle guard
-        }
-        path.push(rec.clone());
-        cursor = rec
-            .parent_id
-            .as_deref()
-            .and_then(|pid| by_id.get(pid).copied());
+    let mut components: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..total {
+        let root = dsu_find(&mut dsu, i);
+        components.entry(root).or_default().push(i);
     }
 
-    path.reverse();
+    let mut kept: HashSet<String> = HashSet::new();
+    for members in components.values() {
+        // Newest leaf wins; turn_id breaks ties so the choice is deterministic across runs.
+        let newest_leaf = members
+            .iter()
+            .map(|&i| &records[i])
+            .filter(|r| !referenced.contains(r.turn_id.as_str()))
+            .max_by_key(|r| (r.timestamp, r.turn_id.clone()));
+
+        let Some(leaf) = newest_leaf else {
+            // Every record in this component is referenced => its parent links form a
+            // cycle. Refuse to guess: keep the component whole rather than looping forever
+            // or silently dropping it.
+            kept.extend(members.iter().map(|&i| records[i].turn_id.clone()));
+            continue;
+        };
+
+        let mut cursor: Option<&Record> = Some(leaf);
+        while let Some(rec) = cursor {
+            if !kept.insert(rec.turn_id.clone()) {
+                break; // cycle guard
+            }
+            cursor = rec
+                .parent_id
+                .as_deref()
+                .and_then(|pid| by_id.get(pid).copied());
+        }
+    }
+
+    // Components are merged by timestamp so the result stays monotonic — `sessionize`
+    // splits on the gap between consecutive records and would misread a rewound clock.
+    let mut path: Vec<Record> = records
+        .into_iter()
+        .filter(|r| kept.contains(&r.turn_id))
+        .collect();
+    path.sort_by_key(|r| (r.timestamp, r.turn_id.clone()));
+
     let discarded = total - path.len();
     (path, discarded)
 }
@@ -391,6 +486,77 @@ mod tests {
         let ids: Vec<&str> = kept.iter().map(|r| r.turn_id.as_str()).collect();
         assert_eq!(ids, vec!["a", "b"]);
         assert_eq!(discarded, 0);
+    }
+
+    /// F1 regression. Claude Code writes one file per subagent or resume under a single
+    /// sessionId, each with a null parent, so a session is a FOREST. Electing one global
+    /// newest leaf discarded every other tree as an "abandoned branch"; on a real corpus
+    /// that lost 755 of 6557 records and 413 main-chain assistant turns.
+    #[test]
+    fn flatten_keeps_every_component_not_just_the_globally_newest() {
+        // Component 1: a -> b -> c, plus abandoned sibling b2.
+        // Component 2: d -> e (a resume, own null-parented root).
+        // Component 3: f (a lone root).
+        let records = vec![
+            rec("a", None, Role::User, "2026-01-01T00:00:00Z"),
+            rec("b", Some("a"), Role::Assistant, "2026-01-01T00:01:00Z"),
+            rec("b2", Some("a"), Role::Assistant, "2026-01-01T00:02:00Z"),
+            rec("c", Some("b"), Role::User, "2026-01-01T00:03:00Z"),
+            rec("d", None, Role::User, "2026-01-01T01:00:00Z"),
+            rec("e", Some("d"), Role::Assistant, "2026-01-01T01:01:00Z"),
+            rec("f", None, Role::User, "2026-01-01T02:00:00Z"),
+        ];
+        let (kept, discarded) = flatten(records);
+        let ids: Vec<&str> = kept.iter().map(|r| r.turn_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["a", "b", "c", "d", "e", "f"],
+            "every component's newest-leaf path must survive, merged in timestamp order"
+        );
+        assert_eq!(discarded, 1, "only the real sibling branch b2 is a branch");
+    }
+
+    /// F1 regression, the destructive half: a sidechain that ends after the main chain
+    /// used to win the global election and zero the session out.
+    #[test]
+    fn late_ending_sidechain_does_not_evict_the_main_chain() {
+        let mut side_root = rec("s1", None, Role::User, "2026-01-01T00:02:00Z");
+        side_root.sidechain = true;
+        let mut side_leaf = rec("s2", Some("s1"), Role::Assistant, "2026-01-01T09:00:00Z");
+        side_leaf.sidechain = true;
+
+        let records = vec![
+            rec("u1", None, Role::User, "2026-01-01T00:00:00Z"),
+            rec("a1", Some("u1"), Role::Assistant, "2026-01-01T00:01:00Z"),
+            rec("u2", Some("a1"), Role::User, "2026-01-01T00:03:00Z"),
+            rec("a2", Some("u2"), Role::Assistant, "2026-01-01T00:04:00Z"),
+            side_root,
+            side_leaf,
+        ];
+        let (kept, discarded) = flatten(records);
+        let ids: Vec<&str> = kept.iter().map(|r| r.turn_id.as_str()).collect();
+        assert!(
+            ["u1", "a1", "u2", "a2"].iter().all(|id| ids.contains(id)),
+            "the main chain must survive a later-ending sidechain; got {ids:?}"
+        );
+        assert_eq!(discarded, 0);
+    }
+
+    /// The forest fix must not weaken branch discarding WITHIN a component.
+    #[test]
+    fn flatten_still_discards_sibling_branches_inside_a_component() {
+        let records = vec![
+            rec("a", None, Role::User, "2026-01-01T00:00:00Z"),
+            rec("b", Some("a"), Role::Assistant, "2026-01-01T00:01:00Z"),
+            rec("c", Some("b"), Role::User, "2026-01-01T00:02:00Z"),
+            // An abandoned regeneration hanging off a, older than the live leaf.
+            rec("x", Some("a"), Role::Assistant, "2026-01-01T00:01:30Z"),
+            rec("y", Some("x"), Role::User, "2026-01-01T00:01:40Z"),
+        ];
+        let (kept, discarded) = flatten(records);
+        let ids: Vec<&str> = kept.iter().map(|r| r.turn_id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+        assert_eq!(discarded, 2, "x and y are one abandoned branch");
     }
 
     #[test]

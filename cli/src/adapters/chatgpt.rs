@@ -11,6 +11,7 @@ use crate::transcript::{Record, Role, SCHEMA};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub const SOURCE: &str = "chatgpt";
 
@@ -49,6 +50,10 @@ pub fn parse(input: &str) -> Result<Vec<Record>> {
     };
 
     let mut out = Vec::new();
+    // Every node -> parent link in every mapping, kept and dropped alike. A ChatGPT
+    // mapping holds system and tool nodes in the middle of the chain and this adapter
+    // drops them; without the full map the re-link below has nothing to walk through.
+    let mut parent_of: HashMap<String, Option<String>> = HashMap::new();
 
     for conv in conversations {
         let session_id = conv
@@ -63,6 +68,14 @@ pub fn parse(input: &str) -> Result<Vec<Record>> {
         };
 
         for (node_id, node) in mapping {
+            // Record the link before any filtering: dropped nodes are still chain links.
+            parent_of.insert(
+                format!("{session_id}:{node_id}"),
+                node.get("parent")
+                    .and_then(|p| p.as_str())
+                    .map(|p| format!("{session_id}:{p}")),
+            );
+
             let Some(msg) = node.get("message") else {
                 continue;
             };
@@ -102,6 +115,7 @@ pub fn parse(input: &str) -> Result<Vec<Record>> {
                 timestamp,
                 // Tree-shaped: emit parent_id and let the engine flatten. ChatGPT branches
                 // on edits and regenerations; the newest-leaf path is what the person saw.
+                // Re-linked across dropped nodes after the loop.
                 parent_id: node
                     .get("parent")
                     .and_then(|p| p.as_str())
@@ -116,6 +130,11 @@ pub fn parse(input: &str) -> Result<Vec<Record>> {
             });
         }
     }
+
+    // System and tool nodes sit in the middle of a ChatGPT chain, not just at its edges.
+    // Emitting their ids raw left every record below one pointing at a node that is not
+    // in the set, so the newest-leaf walk stopped there and truncated the conversation.
+    crate::transcript::relink_to_kept_ancestors(&mut out, &parent_of);
 
     Ok(out)
 }
@@ -152,5 +171,39 @@ mod tests {
         assert_eq!(n2.turn_id, "c1:n2");
         assert_eq!(n2.parent_id.as_deref(), Some("c1:n1"));
         assert_eq!(n2.model.as_deref(), Some("gpt-4o"));
+    }
+
+    /// F8 regression. A tool node sits in the MIDDLE of the chain, not just at its edges.
+    /// Emitting its id raw left the record below it pointing at something that is not in
+    /// the set, so `flatten`'s newest-leaf walk stopped there and threw the rest away.
+    const MID_CHAIN_DROP: &str = r#"[{
+      "conversation_id":"c1","title":"t","create_time":1730000000.0,
+      "mapping":{
+        "root":{"id":"root","message":null,"parent":null},
+        "n1":{"id":"n1","parent":"root","message":{"author":{"role":"user"},"create_time":1730000001.0,"content":{"content_type":"text","parts":["first question"]}}},
+        "n2":{"id":"n2","parent":"n1","message":{"author":{"role":"assistant"},"create_time":1730000002.0,"content":{"content_type":"text","parts":["first answer"]}}},
+        "n3":{"id":"n3","parent":"n2","message":{"author":{"role":"tool"},"create_time":1730000003.0,"content":{"content_type":"text","parts":["search results"]}}},
+        "n4":{"id":"n4","parent":"n3","message":{"author":{"role":"assistant"},"create_time":1730000004.0,"content":{"content_type":"text","parts":["second answer"]}}},
+        "n5":{"id":"n5","parent":"n4","message":{"author":{"role":"user"},"create_time":1730000005.0,"content":{"content_type":"text","parts":["thanks"]}}}
+      }}]"#;
+
+    #[test]
+    fn relinks_across_dropped_mid_chain_nodes() {
+        let recs = parse(MID_CHAIN_DROP).unwrap();
+        let n4 = recs.iter().find(|r| r.text == "second answer").unwrap();
+        assert_eq!(
+            n4.parent_id.as_deref(),
+            Some("c1:n2"),
+            "must re-link to the nearest KEPT ancestor, not the dropped tool node"
+        );
+
+        // The root node is dropped too, so the first real turn must read as a root.
+        let n1 = recs.iter().find(|r| r.text == "first question").unwrap();
+        assert!(n1.parent_id.is_none());
+
+        // And the whole conversation must survive flattening.
+        let (kept, discarded) = crate::transcript::flatten(recs);
+        assert_eq!(kept.len(), 4, "flatten truncated the conversation");
+        assert_eq!(discarded, 0);
     }
 }
