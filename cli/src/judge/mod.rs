@@ -259,6 +259,11 @@ pub fn assemble_turn_prompt(turn: &ScorableTurn) -> String {
 /// `content_hash` covers the exact bytes sent to the judge — assembled prompt, rubric
 /// text (which the prompt contains), and judge model id — so a rubric revision or a model
 /// swap correctly invalidates rather than silently serving stale scores.
+///
+/// It answers "what would this call cost?", not "which score is this?". Two different
+/// turns can assemble to the same bytes — the same short exchange in two sessions — and
+/// they share a hash while remaining two separate scores. Which rows may coexist is
+/// decided by `(identity, tier, judge_model)` in the store, never by this value.
 pub fn content_hash(prompt: &str, judge_model: &str) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(prompt.as_bytes());
