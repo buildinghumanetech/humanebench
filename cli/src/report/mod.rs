@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 pub fn principle_label(code: &str) -> &'static str {
     match code {
         "respect_attention" => "Respect User Attention",
-        "meaningful_choices" => "Empower Meaningful Choices",
+        "meaningful_choices" => "Enable Meaningful Choices",
         "enhance_capabilities" => "Enhance Human Capabilities",
         "dignity_safety" => "Protect Dignity & Safety",
         "healthy_relationships" => "Foster Healthy Relationships",
@@ -82,6 +82,14 @@ pub fn aggregate(scores: &[ScoredTurn]) -> Aggregates {
         .filter(|s| s.record.tier == Tier::Rollup)
         .collect();
 
+    // Missing-principle policy, and it is the *opposite* of the Python scorer's.
+    // `humanebench/scorer.py:130,136` treats a principle with no usable scores as 0 and
+    // averages that 0 into the HumaneScore; the filter_map below EXCLUDES it, and `mean`
+    // returns None for an empty set so the principle is omitted from the report entirely.
+    // This cannot currently produce a divergence: `judge::parse_judgement` rejects any
+    // judgement that does not carry exactly the eight expected principles, so a stored
+    // record always has all eight. The invariant is upstream, though, and this layer would
+    // diverge the moment it is relaxed. See `rubric/README.md` and the report caveats.
     let by_principle = |set: &[&ScoredTurn]| -> BTreeMap<String, f64> {
         let mut out = BTreeMap::new();
         for code in PRINCIPLES {
@@ -515,10 +523,15 @@ fn caveats(input: &ReportInput, agg: &Aggregates) -> String {
     }
 
     notes.push(
-        "<strong>Not comparable to published benchmark numbers.</strong> The benchmark's 800 \
-         prompts are principle-targeted probes; real history is mostly mundane requests where \
-         most principles score neutral-to-good. A personal average reads higher for reasons that \
-         have nothing to do with the assistant being more humane."
+        "<strong>Not comparable to published benchmark numbers — it is a different \
+         statistic.</strong> The benchmark scores each sample on the <em>one</em> principle its \
+         prompt was built to stress, so a principle's mean is taken only over turns that \
+         actually engage it. This report scores <em>every</em> turn on all eight and means \
+         them, so each principle's denominator is dominated by turns where that principle is \
+         barely in play. It also uses one judge where the benchmark ensembles across models, \
+         and it drops a missing principle from the mean where the benchmark scores it 0 and \
+         averages it in. Same rubric, same −1.0…+1.0 scale, incomparable numbers — the gap is \
+         arithmetic, not a claim about which assistant is more humane."
             .to_string(),
     );
 
@@ -939,6 +952,40 @@ mod tests {
         assert!(html.contains("noisier"));
         assert!(html.contains("Alternatives dropped"));
         assert!(html.contains("3 branch record"));
+    }
+
+    /// The benchmark, the root rubric and this CLI's own judge prompt all say "Enable".
+    /// A drifted label here silently renames a principle in every report and MCP payload.
+    #[test]
+    fn principle_labels_match_the_rubric_wording() {
+        assert_eq!(
+            principle_label("meaningful_choices"),
+            "Enable Meaningful Choices"
+        );
+        for code in PRINCIPLES {
+            assert_ne!(
+                principle_label(code),
+                "Unknown Principle",
+                "no label for {code}"
+            );
+        }
+    }
+
+    /// The caveat has to give the *mechanical* reason the numbers differ, not a story about
+    /// corpus composition — the arithmetic is what makes them incomparable.
+    #[test]
+    fn report_states_why_scores_are_not_benchmark_comparable() {
+        let html = render_full(&input(sample()));
+        assert!(html.contains("it is a different statistic"));
+        assert!(html.contains("all eight"), "must name the denominator");
+        assert!(
+            html.contains("ensembles across models"),
+            "must name the single-judge divergence"
+        );
+        assert!(
+            html.contains("scores it 0 and averages it in"),
+            "must name the opposite missing-data policy"
+        );
     }
 
     #[test]
