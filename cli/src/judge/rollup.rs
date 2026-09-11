@@ -154,6 +154,24 @@ mod tests {
         }
     }
 
+    /// `rubric_preamble` falls back to the whole rubric when the marker is absent, which is
+    /// silent. Re-deriving the prompt from the canonical rubric (see `rubric/README.md`) is
+    /// planned work, so guard the marker directly: without this, dropping it fails as an
+    /// opaque `!contains("{{.UserPrompt}}")` assertion that names no cause.
+    #[test]
+    fn the_split_marker_the_rollup_depends_on_is_present_and_unique() {
+        const MARKER: &str = "Now, evaluate the following";
+        assert_eq!(
+            RUBRIC.matches(MARKER).count(),
+            1,
+            "rollup splits the rubric on {MARKER:?}; it must appear exactly once"
+        );
+        assert!(
+            rubric_preamble().len() < RUBRIC.len(),
+            "preamble is the whole rubric — the split silently fell back"
+        );
+    }
+
     #[test]
     fn preamble_keeps_schema_but_drops_the_two_slots() {
         let p = rubric_preamble();
