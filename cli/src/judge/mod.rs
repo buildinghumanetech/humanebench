@@ -124,9 +124,14 @@ fn truncate(s: &str, max: usize) -> String {
     format!("{}…", &s[..end])
 }
 
-/// The two slots. These are the Go template markers from the upstream evaluator; keeping
-/// them verbatim means the embedded file stays byte-identical to its source and drift is
-/// detectable by diff.
+/// The two slots, and the *only* part of the embedded prompt that is not verbatim from its
+/// source. `rubric/judge_prompt_v3.md` is a byte-identical fork of the draft template in
+/// `evaluator/humanebench_evaluator.py:49-406`, which spells these slots the Python
+/// `str.format` way — `{user_prompt}` and `{message_content}` (py lines 395 and 401). The
+/// Go-template spelling below is this CLI's own canonicalisation, chosen so the markers
+/// cannot collide with the JSON braces the prompt asks the judge to emit. Undo it, undo
+/// `str.format`'s brace doubling, and the two files diff to nothing — see
+/// `rubric/README.md`, which documents the ancestry and the divergences it carries.
 const SLOT_USER_PROMPT: &str = "{{.UserPrompt}}";
 const SLOT_MESSAGE_CONTENT: &str = "{{.MessageContent}}";
 
