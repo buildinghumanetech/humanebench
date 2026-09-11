@@ -893,6 +893,7 @@ a first-class citizen with no code in the binary.
 
   schema      req  Literal "humanebench.transcript/v1".
   source      req  Free-form origin tag ("codex", "chatgpt"). Surfaced, never parsed.
+                   This is the record field, not the --source flag, which names an adapter.
   session_id  req  Groups records into one thread before idle-gap splitting.
   turn_id     req  Stable and unique ACROSS RUNS. Re-running an adapter must produce the
                    same ids or the cache misses and you pay twice.
@@ -914,7 +915,10 @@ Example:
 
 Pipe it in:
 
-  your-converter < logs | humanebench ingest --stdin --source yourtool
+  your-converter < logs | humanebench ingest --stdin --source normalized
+
+--source picks the adapter, so already-normalized JSONL uses "normalized". It is an
+allowlist; an invented name is refused. Your own tag goes in each record's source field.
 
 Flattening: for tree-shaped sources, either emit parent_id and let the binary walk from
 the newest leaf to the root, or flatten yourself and emit a linear file. Both are valid;
