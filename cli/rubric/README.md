@@ -80,7 +80,7 @@ systematic upward bias, not a wash.
 (`humanebench/humane_patterns.py`, documented at the repo `README.md:311` as the `--principle`
 values, and consumed by `scripts/vp_tables_and_figure.py`, `scripts/create_scoregrid_svg.py` and a
 dozen other scripts). The CLI's are snake_case abbreviations, copied from the draft at
-`evaluator/humanebench_evaluator.py:410–419` into `src/judge/mod.rs:134–143`:
+`evaluator/humanebench_evaluator.py:410–419` into `src/judge/mod.rs:140–149`:
 
 | Benchmark (canonical) | CLI |
 |---|---|

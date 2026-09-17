@@ -96,8 +96,14 @@ export before trusting their numbers.
 Write a converter in any language that emits the documented schema:
 
 ```sh
-your-converter < logs | humanebench ingest --stdin --source yourtool
+your-converter < logs | humanebench ingest --stdin --source normalized
 ```
+
+`--source` selects the *adapter* — which input format to parse — so already-normalized JSONL
+uses `normalized`. It is an allowlist (`claude-code`, `codex`, `chatgpt`, `claude-app`,
+`hermes`, `normalized`); an invented name is rejected. The free-form origin tag is the
+`source` **field inside each record**, which is surfaced in reports and filters but never
+parsed — that is where `yourtool` belongs.
 
 ## Privacy
 
