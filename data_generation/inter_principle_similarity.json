@@ -1,0 +1,250 @@
+{
+  "embedding_model": "text-embedding-3-large",
+  "methodology": "Diagonal = upper-triangle mean cosine similarity within each principle (self-pairs excluded), matching qa_analysis.ipynb. Off-diagonal = mean of the full 100x100 cross-similarity block between two principles. Embeddings from OpenAI text-embedding-3-large on the raw `input` field of data/humane_bench.jsonl (100 items per principle).",
+  "principle_order": [
+    "bath",
+    "dei",
+    "emc",
+    "ehc",
+    "fhr",
+    "pltw",
+    "pds",
+    "rua"
+  ],
+  "principle_order_full": [
+    "be-transparent-and-honest",
+    "design-for-equity-and-inclusion",
+    "enable-meaningful-choices",
+    "enhance-human-capabilities",
+    "foster-healthy-relationships",
+    "prioritize-long-term-wellbeing",
+    "protect-dignity-and-safety",
+    "respect-user-attention"
+  ],
+  "matrix": [
+    [
+      0.2549,
+      0.1412,
+      0.1222,
+      0.1592,
+      0.1303,
+      0.1363,
+      0.1237,
+      0.1682
+    ],
+    [
+      0.1412,
+      0.1775,
+      0.1199,
+      0.1566,
+      0.1369,
+      0.1299,
+      0.1285,
+      0.1212
+    ],
+    [
+      0.1222,
+      0.1199,
+      0.203,
+      0.1579,
+      0.1735,
+      0.2057,
+      0.1695,
+      0.1156
+    ],
+    [
+      0.1592,
+      0.1566,
+      0.1579,
+      0.2342,
+      0.1551,
+      0.176,
+      0.1365,
+      0.1536
+    ],
+    [
+      0.1303,
+      0.1369,
+      0.1735,
+      0.1551,
+      0.267,
+      0.2107,
+      0.2046,
+      0.1565
+    ],
+    [
+      0.1363,
+      0.1299,
+      0.2057,
+      0.176,
+      0.2107,
+      0.2623,
+      0.1963,
+      0.1555
+    ],
+    [
+      0.1237,
+      0.1285,
+      0.1695,
+      0.1365,
+      0.2046,
+      0.1963,
+      0.2326,
+      0.1198
+    ],
+    [
+      0.1682,
+      0.1212,
+      0.1156,
+      0.1536,
+      0.1565,
+      0.1555,
+      0.1198,
+      0.2741
+    ]
+  ],
+  "summary": {
+    "mean_intra": 0.23819442575008481,
+    "mean_inter": 0.15217859996252278,
+    "intra_inter_ratio": 1.5652294462476672,
+    "top3_pairs": [
+      {
+        "a": "foster-healthy-relationships",
+        "b": "prioritize-long-term-wellbeing",
+        "a_code": "fhr",
+        "b_code": "pltw",
+        "similarity": 0.21066034091480973
+      },
+      {
+        "a": "enable-meaningful-choices",
+        "b": "prioritize-long-term-wellbeing",
+        "a_code": "emc",
+        "b_code": "pltw",
+        "similarity": 0.20572951409172646
+      },
+      {
+        "a": "foster-healthy-relationships",
+        "b": "protect-dignity-and-safety",
+        "a_code": "fhr",
+        "b_code": "pds",
+        "similarity": 0.2045984832612628
+      }
+    ],
+    "bottom3_pairs": [
+      {
+        "a": "enable-meaningful-choices",
+        "b": "respect-user-attention",
+        "a_code": "emc",
+        "b_code": "rua",
+        "similarity": 0.11556337262339485
+      },
+      {
+        "a": "protect-dignity-and-safety",
+        "b": "respect-user-attention",
+        "a_code": "pds",
+        "b_code": "rua",
+        "similarity": 0.11984786436065122
+      },
+      {
+        "a": "design-for-equity-and-inclusion",
+        "b": "enable-meaningful-choices",
+        "a_code": "dei",
+        "b_code": "emc",
+        "similarity": 0.11992404719041365
+      }
+    ],
+    "nearest_by_principle": {
+      "be-transparent-and-honest": {
+        "other": "respect-user-attention",
+        "other_code": "rua",
+        "similarity": 0.1681664357628141
+      },
+      "design-for-equity-and-inclusion": {
+        "other": "enhance-human-capabilities",
+        "other_code": "ehc",
+        "similarity": 0.15658907545669526
+      },
+      "enable-meaningful-choices": {
+        "other": "prioritize-long-term-wellbeing",
+        "other_code": "pltw",
+        "similarity": 0.20572951409172646
+      },
+      "enhance-human-capabilities": {
+        "other": "prioritize-long-term-wellbeing",
+        "other_code": "pltw",
+        "similarity": 0.17600790411572295
+      },
+      "foster-healthy-relationships": {
+        "other": "prioritize-long-term-wellbeing",
+        "other_code": "pltw",
+        "similarity": 0.21066034091480973
+      },
+      "prioritize-long-term-wellbeing": {
+        "other": "foster-healthy-relationships",
+        "other_code": "fhr",
+        "similarity": 0.21066034091480973
+      },
+      "protect-dignity-and-safety": {
+        "other": "foster-healthy-relationships",
+        "other_code": "fhr",
+        "similarity": 0.2045984832612628
+      },
+      "respect-user-attention": {
+        "other": "be-transparent-and-honest",
+        "other_code": "bath",
+        "similarity": 0.1681664357628141
+      }
+    },
+    "farthest_by_principle": {
+      "be-transparent-and-honest": {
+        "other": "enable-meaningful-choices",
+        "other_code": "emc",
+        "similarity": 0.12222432836977719
+      },
+      "design-for-equity-and-inclusion": {
+        "other": "enable-meaningful-choices",
+        "other_code": "emc",
+        "similarity": 0.11992404719041365
+      },
+      "enable-meaningful-choices": {
+        "other": "respect-user-attention",
+        "other_code": "rua",
+        "similarity": 0.11556337262339485
+      },
+      "enhance-human-capabilities": {
+        "other": "protect-dignity-and-safety",
+        "other_code": "pds",
+        "similarity": 0.1364921882319006
+      },
+      "foster-healthy-relationships": {
+        "other": "be-transparent-and-honest",
+        "other_code": "bath",
+        "similarity": 0.13026008583865092
+      },
+      "prioritize-long-term-wellbeing": {
+        "other": "design-for-equity-and-inclusion",
+        "other_code": "dei",
+        "similarity": 0.12992826626259593
+      },
+      "protect-dignity-and-safety": {
+        "other": "respect-user-attention",
+        "other_code": "rua",
+        "similarity": 0.11984786436065122
+      },
+      "respect-user-attention": {
+        "other": "enable-meaningful-choices",
+        "other_code": "emc",
+        "similarity": 0.11556337262339485
+      }
+    },
+    "bath_rua_ehc_triangle": {
+      "bath_rua": 0.1681664357628141,
+      "bath_ehc": 0.15924581277262798,
+      "rua_ehc": 0.15357718175831372,
+      "mean_inter_all": 0.15217859996252278,
+      "bath_intra": 0.25488708424375256,
+      "rua_intra": 0.2741032952511903,
+      "ehc_intra": 0.23419745833230243
+    }
+  }
+}
