@@ -1,0 +1,189 @@
+{
+  "schema": "humanebench-decomposition-subsample/1",
+  "generated_at": "2026-07-27T22:01:18.751892+00:00",
+  "seed": 20260407,
+  "per_principle": 24,
+  "n_scenarios": 192,
+  "stratification": "24 per principle; domain apportioned to hit pooled-36 target via largest-remainder over full-800 domain counts, no VP strata",
+  "vp_strata": false,
+  "source_dataset": "data/humane_bench.jsonl",
+  "source_dataset_sha256": "3ca6145ec60981dd6e184261e75cd71f7616352aeec7de89195efb9c70ee8bc3",
+  "n_excluded_in_source": 12,
+  "extra_excluded_ids": [
+    "protect-dignity-and-safety-084"
+  ],
+  "subset_prompt_hash": "adee501bfdf010b224270198d4f558d849d0221be51d8f696a2b4ed8ee71bbd1",
+  "n_prompts_hashed": 192,
+  "ids_file": "data/decomposition/discriminant_expansion_192_ids.txt",
+  "parent_ids_file": null,
+  "parent_ids_sha256": null,
+  "sibling_ids_file": "data/decomposition/discriminant_96_ids.txt",
+  "sibling_ids_sha256": "039c96c62d4dbf4db4d1b16dff2ebd02b681b9f4eebb64ca5c69efebff8ff515",
+  "nested_in_parent": false,
+  "ids_file_sha256": "65620fd0f562fbee870047dbfde3955e7cb51dfea621a4a601589c12c27efd4d",
+  "jsonl_file": "data/decomposition/humane_bench_discriminant_expansion_192.jsonl",
+  "jsonl_file_sha256": "610d730ce56112d54c3723013db5671490febc6f515eb5766edc0e7bce04f0b5",
+  "pooled_target_per_principle": 36,
+  "composition": {
+    "respect-user-attention": {
+      "everyday-decisions": 11,
+      "health-wellness": 2,
+      "mental-health": 4,
+      "relationships": 3,
+      "technology-use": 4
+    },
+    "enable-meaningful-choices": {
+      "career": 7,
+      "education": 1,
+      "everyday-decisions": 2,
+      "financial-decisions": 7,
+      "health-wellness": 3,
+      "parenting": 1,
+      "relationships": 1,
+      "technology-use": 2
+    },
+    "enhance-human-capabilities": {
+      "career": 1,
+      "education": 12,
+      "financial-decisions": 4,
+      "health-wellness": 3,
+      "parenting": 1,
+      "technology-use": 3
+    },
+    "protect-dignity-and-safety": {
+      "career": 1,
+      "crisis-situations": 1,
+      "everyday-decisions": 1,
+      "financial-decisions": 1,
+      "health-wellness": 3,
+      "mental-health": 2,
+      "parenting": 5,
+      "politics-society": 2,
+      "relationships": 3,
+      "technology-use": 5
+    },
+    "foster-healthy-relationships": {
+      "career": 1,
+      "education": 1,
+      "everyday-decisions": 1,
+      "health-wellness": 1,
+      "mental-health": 2,
+      "parenting": 4,
+      "politics-society": 1,
+      "relationships": 12,
+      "technology-use": 1
+    },
+    "prioritize-long-term-wellbeing": {
+      "career": 5,
+      "education": 1,
+      "everyday-decisions": 4,
+      "financial-decisions": 2,
+      "health-wellness": 5,
+      "mental-health": 3,
+      "parenting": 2,
+      "politics-society": 2
+    },
+    "be-transparent-and-honest": {
+      "education": 1,
+      "everyday-decisions": 2,
+      "politics-society": 1,
+      "relationships": 3,
+      "technology-use": 17
+    },
+    "design-for-equity-and-inclusion": {
+      "career": 3,
+      "education": 6,
+      "everyday-decisions": 1,
+      "financial-decisions": 1,
+      "health-wellness": 1,
+      "politics-society": 3,
+      "relationships": 4,
+      "technology-use": 5
+    }
+  },
+  "pooled_composition": {
+    "respect-user-attention": {
+      "education": 1,
+      "health-wellness": 3,
+      "everyday-decisions": 16,
+      "mental-health": 6,
+      "parenting": 1,
+      "relationships": 4,
+      "technology-use": 5
+    },
+    "enable-meaningful-choices": {
+      "education": 2,
+      "technology-use": 3,
+      "financial-decisions": 11,
+      "everyday-decisions": 3,
+      "parenting": 2,
+      "politics-society": 1,
+      "career": 9,
+      "relationships": 1,
+      "health-wellness": 4
+    },
+    "enhance-human-capabilities": {
+      "education": 19,
+      "technology-use": 3,
+      "financial-decisions": 5,
+      "everyday-decisions": 1,
+      "parenting": 1,
+      "career": 2,
+      "health-wellness": 5
+    },
+    "protect-dignity-and-safety": {
+      "technology-use": 7,
+      "financial-decisions": 1,
+      "everyday-decisions": 1,
+      "mental-health": 3,
+      "parenting": 7,
+      "crisis-situations": 2,
+      "career": 2,
+      "politics-society": 3,
+      "relationships": 5,
+      "health-wellness": 5
+    },
+    "foster-healthy-relationships": {
+      "education": 1,
+      "technology-use": 1,
+      "mental-health": 2,
+      "everyday-decisions": 2,
+      "financial-decisions": 1,
+      "parenting": 7,
+      "politics-society": 1,
+      "career": 2,
+      "relationships": 18,
+      "health-wellness": 1
+    },
+    "prioritize-long-term-wellbeing": {
+      "education": 1,
+      "technology-use": 1,
+      "financial-decisions": 3,
+      "everyday-decisions": 5,
+      "mental-health": 5,
+      "parenting": 3,
+      "politics-society": 3,
+      "career": 7,
+      "relationships": 1,
+      "health-wellness": 7
+    },
+    "be-transparent-and-honest": {
+      "education": 2,
+      "everyday-decisions": 2,
+      "politics-society": 1,
+      "relationships": 5,
+      "technology-use": 26
+    },
+    "design-for-equity-and-inclusion": {
+      "education": 7,
+      "technology-use": 7,
+      "financial-decisions": 2,
+      "everyday-decisions": 2,
+      "moral-ambiguity": 1,
+      "politics-society": 5,
+      "career": 5,
+      "relationships": 5,
+      "health-wellness": 2
+    }
+  }
+}

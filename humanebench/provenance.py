@@ -13,6 +13,12 @@ scored prompts byte-identical to the frozen dataset. If the scored prompts *are*
 the frozen set, "the prompts were tuned afterward" is impossible for the reported
 numbers. Timestamps and git revisions are corroboration only.
 """
+# Paper: implements the artifact-provenance argument -- the frozen prompt-set
+# hash, the per-run content check against it, and the run discovery both the
+# manifest builder and the verifier share (supplement, "Scenario Construction
+# Pipeline", artifact-provenance paragraph).
+# Paper: JUDGE_ENSEMBLE below is the historical record of the ensemble the
+# reported runs were judged by (main paper, "Judge Validation").
 from __future__ import annotations
 
 import hashlib
@@ -69,6 +75,10 @@ _FIELD_SEP = "\x1f"
 _REC_SEP = "\x1e"
 
 
+# Paper: the content-binding hash. Every reported run's scored prompts hash to
+# FROZEN_PROMPT_HASH above, which is what the reproducibility claim rests on:
+# the scenarios could not have been tuned after the results were seen
+# (supplement, "Scenario Construction Pipeline").
 def canonical_prompt_hash(pairs: Iterable[tuple[str, str, str]]) -> tuple[str, int]:
     """SHA-256 over the sorted ``(id, input, target)`` triples.
 
@@ -129,6 +139,9 @@ def file_sha256(path: Path, _bufsize: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+# Paper: defines the reported run set -- one eval log per (model, persona) over
+# the three conditions of the main paper, "Three-Condition Evaluation Design".
+# Every published aggregate is conditioned on exactly this set.
 def reported_runs(logs_dir: Path = LOGS_DIR) -> list[tuple[str, str, Path]]:
     """Return sorted ``(persona, model, path)`` for the canonical reported runs.
 

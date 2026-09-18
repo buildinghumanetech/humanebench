@@ -6,6 +6,8 @@ AI responses and human ratings) into a JSONL format that can be consumed by
 Inspect AI for scoring validation.
 """
 
+# Paper: utility -- no paper-facing output; builds data/golden_questions.jsonl, the 24-row human-rated golden set that src/golden_questions_task.py scores for the judge-vs-human agreement reported in "Judge Validation Details".
+
 import pandas as pd
 import json
 from pathlib import Path

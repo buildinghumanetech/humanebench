@@ -5,6 +5,8 @@ Creates a comparison CSV showing baseline, good persona, and bad persona scores
 for a specific humane technology principle.
 """
 
+# Paper: utility -- no paper-facing output; builds <principle>_steerability.csv (per-principle persona scores, deltas, CIs, and robustness status) from the per-persona score CSVs, as input to the per-principle candlestick chart.
+
 import argparse
 import pandas as pd
 import sys

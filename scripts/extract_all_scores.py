@@ -4,6 +4,10 @@ Extract comprehensive scores from all .eval files across baseline, good_persona,
 Generates CSV files with per-principle and overall scores for all 13 models.
 """
 
+# Paper: produces baseline_scores.csv, good_persona_scores.csv, bad_persona_scores.csv and steerability_comparison.csv -- the per-model per-principle scores and paired persona deltas behind Table 1 (main paper, "Overall Performance").
+# Paper: delta CIs are read from the paired bootstrap tables (tables/score_cis_long.csv, tables/persona_delta_cis_long.csv) rather than differenced from marginal CIs, which would be wrong for paired data.
+# Paper: assigns the Robust / Moderate / Failed robustness status from the bad-persona drop relative to baseline.
+
 import argparse
 import os
 import json

@@ -6,6 +6,12 @@ into a single consolidated CSV file with observation IDs based on unique combina
 of input_id, ai_model, and ai_persona.
 """
 
+# Paper: utility -- no paper-facing output; merges the per-rater CSVs in
+#   data/human_ratings/ into one long table, mapping the four verbal rating levels onto
+#   the {-1.0, -0.5, +0.5, +1.0} severity scale and keying each rated response by
+#   (scenario id, model, persona). Supports the human validation reported in the
+#   supplement, "Judge Validation Details".
+
 import pandas as pd
 import hashlib
 from pathlib import Path

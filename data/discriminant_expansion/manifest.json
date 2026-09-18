@@ -1,0 +1,63 @@
+{
+  "schema": "humanebench-discriminant-multilabel/1",
+  "generated_at": "2026-07-27T22:03:52.005483+00:00",
+  "condition": "discriminant_expansion",
+  "design": "designed x measured matrix; baseline responses only",
+  "n_scenarios": 192,
+  "n_source_models": 3,
+  "n_principles": 8,
+  "n_judge_calls": 4608,
+  "one_call_per_principle": true,
+  "total_judge_prompt_chars": 26251264,
+  "pricing_calibration": {
+    "chars_per_input_token": 4.483,
+    "output_tokens_mean": 315,
+    "measured_on_n_calls": 287,
+    "source": "logs/baseline/<model>/*.eval, gpt-5.1 judge events"
+  },
+  "frame_ids_file": "data/decomposition/discriminant_expansion_192_ids.txt",
+  "frame_ids_sha256": "65620fd0f562fbee870047dbfde3955e7cb51dfea621a4a601589c12c27efd4d",
+  "frame_subset_prompt_hash": "adee501bfdf010b224270198d4f558d849d0221be51d8f696a2b4ed8ee71bbd1",
+  "parent_ids_file": null,
+  "parent_ids_sha256": null,
+  "source_dataset_sha256": "3ca6145ec60981dd6e184261e75cd71f7616352aeec7de89195efb9c70ee8bc3",
+  "judge": {
+    "models": [
+      "openrouter/openai/gpt-5.1"
+    ],
+    "temperature": 0.0,
+    "score_attempts": 3,
+    "rationale": "the only main-run ensemble judge that is not among the three scored models, so the diagonal is a same-judge replication"
+  },
+  "expected_prompt_hashes_file": "data/discriminant_expansion/expected_prompt_hashes.csv",
+  "expected_prompt_hashes_sha256": "2d876448af8732e8a17fc5b53cb997dddc81a88cdb74f251401edbc824b528c4",
+  "per_model": {
+    "claude-sonnet-4.5": {
+      "source_eval": "logs/baseline/claude-sonnet-4.5/2025-11-17T00-30-25-05-00_baseline-eval_HAZnjV4xYGbjHnNjXBsbC3.eval",
+      "source_eval_sha256": "811dc76ba2472074b2385a64d381209f42870638f001cef4ca2677db4fe1c909",
+      "n_responses": 192,
+      "response_sha256": "68723341f4d53c67eb6408249248ee7f22ee164032257d786f8a8cc627c7edeb",
+      "dataset_file": "data/discriminant_expansion/multilabel_claude-sonnet-4.5.jsonl",
+      "dataset_file_sha256": "cdf39d7b1b26c7f1fb58fc4a3728ee226c2011575fca172757f6b1931bc74947",
+      "n_rows": 1536
+    },
+    "llama-4-maverick": {
+      "source_eval": "logs/baseline/llama-4-maverick/2025-11-17T00-30-25-05-00_baseline-eval_RYyVutBQ8c6uSfPbxUNL54.eval",
+      "source_eval_sha256": "ab1adf9220e880c57167f44310a63fbcc5414a3985e86314d1e64145441ce128",
+      "n_responses": 192,
+      "response_sha256": "5236f6477f4c7d0524317e91ee14d7b760caeb449e71887ebf667b5877cdda80",
+      "dataset_file": "data/discriminant_expansion/multilabel_llama-4-maverick.jsonl",
+      "dataset_file_sha256": "688d79abcb2785aafa70604a3bf76f7301f85bf50640a16328752c5d35526da9",
+      "n_rows": 1536
+    },
+    "gemini-2.5-pro": {
+      "source_eval": "logs/baseline/gemini-2.5-pro/2025-11-17T00-30-25-05-00_baseline-eval_3jPn9jSs458RCzhukv8X3p.eval",
+      "source_eval_sha256": "77f24cd394df4fa3ae992113fbed78b22afd3b5f9f1778883e98b64ec8437171",
+      "n_responses": 192,
+      "response_sha256": "5eab2fd4e7de6eefb4c03ae56f9dc5c21a39af4b8e3f267258d5d5d646799ecf",
+      "dataset_file": "data/discriminant_expansion/multilabel_gemini-2.5-pro.jsonl",
+      "dataset_file_sha256": "182e8a8cb8f5dad474df76354f756af22ac62f2a40aad39e803554e9b03730a8",
+      "n_rows": 1536
+    }
+  }
+}

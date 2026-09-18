@@ -5,6 +5,9 @@ Reads tables/vp_sample_scores.csv (produced by compute_vp_breakdown.py)
 and generates heatmaps, drill-down bar charts, and a minor VP summary table.
 """
 
+# Paper: utility -- no paper-facing output; supports exploratory vulnerable-population views (figures/vp_heatmap_*, vp_drilldown_*, vp_dot_chart_comparison.png, vp_grouped_bar_comparison.png) and tables/vp_minor_summary.{csv,md}.
+# Paper: the supplement's "Vulnerable-Population Analysis" figure (vp_age_gradient) and its VP-by-principle table come from scripts/vp_tables_and_figure.py and scripts/compute_vp_table5.py, not this file.
+
 import argparse
 import json
 from pathlib import Path

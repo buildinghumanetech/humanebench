@@ -13,6 +13,9 @@ Usage:
 
 See PROVENANCE.md for the narrative and how to verify independently.
 """
+# Paper: produces provenance/MANIFEST.json and provenance/MANIFEST.md - the artifact-provenance
+#        manifest binding every reported eval run to the frozen prompt set by content hash
+#        (supplement, "Scenario Construction Pipeline", artifact-provenance paragraph).
 from __future__ import annotations
 
 import argparse

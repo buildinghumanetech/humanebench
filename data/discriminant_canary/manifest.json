@@ -1,0 +1,312 @@
+{
+  "schema": "humanebench-discriminant-canary/1",
+  "generated_at": "2026-07-27T22:04:55.332972+00:00",
+  "condition": "discriminant_canary",
+  "design": "judge-drift canary: a slice of the published discriminant condition re-judged with the same template, so any score difference is the unpinned gpt-5.1 slug moving rather than the procedure changing",
+  "source_condition": "discriminant",
+  "source_manifest_file": "data/discriminant/manifest.json",
+  "source_manifest_sha256": "4d1a7822855cff666dfd72cff83214eaef0aef23108636fa7f03b43a4fdf8fe2",
+  "n_scenarios": 60,
+  "n_judge_calls": 96,
+  "total_judge_prompt_chars": 541901,
+  "pricing_calibration": {
+    "chars_per_input_token": 4.483,
+    "output_tokens_mean": 315,
+    "measured_on_n_calls": 287,
+    "source": "logs/baseline/<model>/*.eval, gpt-5.1 judge events"
+  },
+  "n_cells": 24,
+  "n_per_cell": 4,
+  "n_source_models": 3,
+  "n_principles": 8,
+  "one_call_per_principle": true,
+  "selection_seed": 20260407,
+  "selection_rule": "numpy.random.default_rng(seed).choice(sorted frame ids, size=4, replace=False) per cell, models sorted, principles in canonical order; cells drawn independently so a scenario may recur",
+  "frame_ids_file": "data/decomposition/discriminant_96_ids.txt",
+  "frame_ids_sha256": "039c96c62d4dbf4db4d1b16dff2ebd02b681b9f4eebb64ca5c69efebff8ff515",
+  "frame_subset_prompt_hash": "ac100073ab9367a8de13db524176400296fd9c1781f8a5b4767e0609e69aa570",
+  "parent_ids_file": "data/decomposition/subsample_200_ids.txt",
+  "parent_ids_sha256": "5b89e73d28611bdd1db9108157c0a383a4db2b6111b8536dffd0d75c66e9d3ec",
+  "source_dataset_sha256": "3ca6145ec60981dd6e184261e75cd71f7616352aeec7de89195efb9c70ee8bc3",
+  "judge": {
+    "models": [
+      "openrouter/openai/gpt-5.1"
+    ],
+    "temperature": 0.0,
+    "score_attempts": 3,
+    "rationale": "the only main-run ensemble judge that is not among the three scored models, so the diagonal is a same-judge replication"
+  },
+  "expected_prompt_hashes_file": "data/discriminant_canary/expected_prompt_hashes.csv",
+  "expected_prompt_hashes_sha256": "365e18e9a611566efab19011269c9df8a95da970fa75f0040940c74c096d143d",
+  "per_model": {
+    "claude-sonnet-4.5": {
+      "dataset_file": "data/discriminant_canary/multilabel_claude-sonnet-4.5.jsonl",
+      "dataset_file_sha256": "c9fb65781f505e45195caa0b8d2d0eb3f3bcec555b14b00b60ad6b865e03b6d1",
+      "n_rows": 32,
+      "source_dataset_file": "data/discriminant/multilabel_claude-sonnet-4.5.jsonl",
+      "source_dataset_file_sha256": "71cdde48b69b04cb8b019459b5066f53c4fe48c04114bae1e07441f0239d0329",
+      "source_eval": "logs/baseline/claude-sonnet-4.5/2025-11-17T00-30-25-05-00_baseline-eval_HAZnjV4xYGbjHnNjXBsbC3.eval",
+      "source_eval_sha256": "811dc76ba2472074b2385a64d381209f42870638f001cef4ca2677db4fe1c909"
+    },
+    "gemini-2.5-pro": {
+      "dataset_file": "data/discriminant_canary/multilabel_gemini-2.5-pro.jsonl",
+      "dataset_file_sha256": "47d7d10c8638c4eefbdd7d491a35ecfc4d15fa751a1cbb7110a94fc3e08cd50d",
+      "n_rows": 32,
+      "source_dataset_file": "data/discriminant/multilabel_gemini-2.5-pro.jsonl",
+      "source_dataset_file_sha256": "55e8eb63f6b1d38a4b4ba3a8bdeb0a456e5d8567fbd38423060a722dafb2ed76",
+      "source_eval": "logs/baseline/gemini-2.5-pro/2025-11-17T00-30-25-05-00_baseline-eval_3jPn9jSs458RCzhukv8X3p.eval",
+      "source_eval_sha256": "77f24cd394df4fa3ae992113fbed78b22afd3b5f9f1778883e98b64ec8437171"
+    },
+    "llama-4-maverick": {
+      "dataset_file": "data/discriminant_canary/multilabel_llama-4-maverick.jsonl",
+      "dataset_file_sha256": "c8bd5245b594e3651f51d7d2171f79215d2efb323d54204d26727df24d3bf247",
+      "n_rows": 32,
+      "source_dataset_file": "data/discriminant/multilabel_llama-4-maverick.jsonl",
+      "source_dataset_file_sha256": "bbd1f3a70d7ab0f4038be4df647b17bf7a39fbbb24671bf06f81b15898b5bd34",
+      "source_eval": "logs/baseline/llama-4-maverick/2025-11-17T00-30-25-05-00_baseline-eval_RYyVutBQ8c6uSfPbxUNL54.eval",
+      "source_eval_sha256": "ab1adf9220e880c57167f44310a63fbcc5414a3985e86314d1e64145441ce128"
+    }
+  },
+  "cells": [
+    {
+      "source_model": "claude-sonnet-4.5",
+      "scored_principle": "respect-user-attention",
+      "scenario_ids": [
+        "protect-dignity-and-safety-059",
+        "foster-healthy-relationships-067",
+        "protect-dignity-and-safety-073",
+        "be-transparent-and-honest-020"
+      ]
+    },
+    {
+      "source_model": "claude-sonnet-4.5",
+      "scored_principle": "enable-meaningful-choices",
+      "scenario_ids": [
+        "be-transparent-and-honest-036",
+        "design-for-equity-and-inclusion-080",
+        "be-transparent-and-honest-098",
+        "foster-healthy-relationships-030"
+      ]
+    },
+    {
+      "source_model": "claude-sonnet-4.5",
+      "scored_principle": "enhance-human-capabilities",
+      "scenario_ids": [
+        "enable-meaningful-choices-051",
+        "foster-healthy-relationships-030",
+        "design-for-equity-and-inclusion-098",
+        "be-transparent-and-honest-039"
+      ]
+    },
+    {
+      "source_model": "claude-sonnet-4.5",
+      "scored_principle": "protect-dignity-and-safety",
+      "scenario_ids": [
+        "enhance-human-capabilities-068",
+        "enhance-human-capabilities-002",
+        "be-transparent-and-honest-088",
+        "enable-meaningful-choices-068"
+      ]
+    },
+    {
+      "source_model": "claude-sonnet-4.5",
+      "scored_principle": "foster-healthy-relationships",
+      "scenario_ids": [
+        "protect-dignity-and-safety-086",
+        "enhance-human-capabilities-028",
+        "be-transparent-and-honest-036",
+        "protect-dignity-and-safety-082"
+      ]
+    },
+    {
+      "source_model": "claude-sonnet-4.5",
+      "scored_principle": "prioritize-long-term-wellbeing",
+      "scenario_ids": [
+        "be-transparent-and-honest-020",
+        "protect-dignity-and-safety-018",
+        "be-transparent-and-honest-030",
+        "respect-user-attention-016"
+      ]
+    },
+    {
+      "source_model": "claude-sonnet-4.5",
+      "scored_principle": "be-transparent-and-honest",
+      "scenario_ids": [
+        "prioritize-long-term-wellbeing-038",
+        "enable-meaningful-choices-029",
+        "enable-meaningful-choices-063",
+        "prioritize-long-term-wellbeing-057"
+      ]
+    },
+    {
+      "source_model": "claude-sonnet-4.5",
+      "scored_principle": "design-for-equity-and-inclusion",
+      "scenario_ids": [
+        "foster-healthy-relationships-009",
+        "prioritize-long-term-wellbeing-059",
+        "foster-healthy-relationships-043",
+        "enable-meaningful-choices-084"
+      ]
+    },
+    {
+      "source_model": "gemini-2.5-pro",
+      "scored_principle": "respect-user-attention",
+      "scenario_ids": [
+        "enhance-human-capabilities-062",
+        "enhance-human-capabilities-071",
+        "foster-healthy-relationships-059",
+        "prioritize-long-term-wellbeing-057"
+      ]
+    },
+    {
+      "source_model": "gemini-2.5-pro",
+      "scored_principle": "enable-meaningful-choices",
+      "scenario_ids": [
+        "enable-meaningful-choices-051",
+        "be-transparent-and-honest-086",
+        "design-for-equity-and-inclusion-003",
+        "enhance-human-capabilities-071"
+      ]
+    },
+    {
+      "source_model": "gemini-2.5-pro",
+      "scored_principle": "enhance-human-capabilities",
+      "scenario_ids": [
+        "foster-healthy-relationships-092",
+        "enable-meaningful-choices-096",
+        "respect-user-attention-071",
+        "enable-meaningful-choices-028"
+      ]
+    },
+    {
+      "source_model": "gemini-2.5-pro",
+      "scored_principle": "protect-dignity-and-safety",
+      "scenario_ids": [
+        "enhance-human-capabilities-062",
+        "enhance-human-capabilities-091",
+        "protect-dignity-and-safety-082",
+        "protect-dignity-and-safety-055"
+      ]
+    },
+    {
+      "source_model": "gemini-2.5-pro",
+      "scored_principle": "foster-healthy-relationships",
+      "scenario_ids": [
+        "foster-healthy-relationships-056",
+        "foster-healthy-relationships-009",
+        "respect-user-attention-036",
+        "be-transparent-and-honest-005"
+      ]
+    },
+    {
+      "source_model": "gemini-2.5-pro",
+      "scored_principle": "prioritize-long-term-wellbeing",
+      "scenario_ids": [
+        "foster-healthy-relationships-067",
+        "respect-user-attention-094",
+        "enhance-human-capabilities-091",
+        "prioritize-long-term-wellbeing-057"
+      ]
+    },
+    {
+      "source_model": "gemini-2.5-pro",
+      "scored_principle": "be-transparent-and-honest",
+      "scenario_ids": [
+        "respect-user-attention-077",
+        "enable-meaningful-choices-048",
+        "enhance-human-capabilities-047",
+        "respect-user-attention-082"
+      ]
+    },
+    {
+      "source_model": "gemini-2.5-pro",
+      "scored_principle": "design-for-equity-and-inclusion",
+      "scenario_ids": [
+        "design-for-equity-and-inclusion-049",
+        "enhance-human-capabilities-091",
+        "respect-user-attention-082",
+        "protect-dignity-and-safety-055"
+      ]
+    },
+    {
+      "source_model": "llama-4-maverick",
+      "scored_principle": "respect-user-attention",
+      "scenario_ids": [
+        "foster-healthy-relationships-069",
+        "be-transparent-and-honest-078",
+        "protect-dignity-and-safety-086",
+        "be-transparent-and-honest-030"
+      ]
+    },
+    {
+      "source_model": "llama-4-maverick",
+      "scored_principle": "enable-meaningful-choices",
+      "scenario_ids": [
+        "be-transparent-and-honest-005",
+        "respect-user-attention-094",
+        "design-for-equity-and-inclusion-049",
+        "design-for-equity-and-inclusion-018"
+      ]
+    },
+    {
+      "source_model": "llama-4-maverick",
+      "scored_principle": "enhance-human-capabilities",
+      "scenario_ids": [
+        "respect-user-attention-071",
+        "protect-dignity-and-safety-018",
+        "protect-dignity-and-safety-086",
+        "respect-user-attention-016"
+      ]
+    },
+    {
+      "source_model": "llama-4-maverick",
+      "scored_principle": "protect-dignity-and-safety",
+      "scenario_ids": [
+        "respect-user-attention-094",
+        "enable-meaningful-choices-086",
+        "enhance-human-capabilities-013",
+        "foster-healthy-relationships-059"
+      ]
+    },
+    {
+      "source_model": "llama-4-maverick",
+      "scored_principle": "foster-healthy-relationships",
+      "scenario_ids": [
+        "respect-user-attention-012",
+        "design-for-equity-and-inclusion-080",
+        "protect-dignity-and-safety-013",
+        "enhance-human-capabilities-062"
+      ]
+    },
+    {
+      "source_model": "llama-4-maverick",
+      "scored_principle": "prioritize-long-term-wellbeing",
+      "scenario_ids": [
+        "protect-dignity-and-safety-034",
+        "prioritize-long-term-wellbeing-062",
+        "protect-dignity-and-safety-073",
+        "protect-dignity-and-safety-013"
+      ]
+    },
+    {
+      "source_model": "llama-4-maverick",
+      "scored_principle": "be-transparent-and-honest",
+      "scenario_ids": [
+        "respect-user-attention-071",
+        "enable-meaningful-choices-048",
+        "protect-dignity-and-safety-034",
+        "protect-dignity-and-safety-055"
+      ]
+    },
+    {
+      "source_model": "llama-4-maverick",
+      "scored_principle": "design-for-equity-and-inclusion",
+      "scenario_ids": [
+        "respect-user-attention-050",
+        "be-transparent-and-honest-078",
+        "enable-meaningful-choices-055",
+        "enhance-human-capabilities-028"
+      ]
+    }
+  ]
+}
