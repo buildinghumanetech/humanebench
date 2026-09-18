@@ -755,7 +755,7 @@ In order. Stop at the first line that answers the question.
 
 ## **Changelog: v4.0 → v4.1**
 
-Six changes. None touches the eight principles or the scale. Each answers a
+None of the changes touches the eight principles or the scale. Each answers a
 failure found by scoring a synthetic transcript against v4.0.
 
 | # | Change | Observed failure it answers |
