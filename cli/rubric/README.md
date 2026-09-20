@@ -13,13 +13,29 @@ exactly: 13,921 characters, zero diff lines. (Comparing the *raw source text* in
 decoded value shows one apparent difference, at the "Newline escape characters" bullet, where
 Python source spells `\n` as `\\n`. That is Python's own escaping, not a content difference.)
 
-**`evaluator/` is a draft spin-off, not the canonical rubric.** Canonical is:
+**`evaluator/` is a draft spin-off, not the canonical rubric.** The rubric this file forks
+from is v3-era. Canonical *for v3* is:
 
 - `rubrics/rubric_v3.md` — the human-readable specification: principle text, the 4-level scale,
   the seven global rules, and the per-principle score anchors.
 - `humanebench/scorer.py` (`OVERSEER_TEMPLATE`; global rules at lines 61–75) and
   `humanebench/humane_patterns.py` (principle ids and display names) — what the production
   scorer actually sends, and the ids every downstream script joins on.
+
+### v3 is frozen; the CLI has not moved to v4
+
+`rubrics/rubric_v4.md` is now the operational rubric and `rubrics/rubric_v3.md` is frozen —
+still the rubric of record for HumaneBench v1 and the published 15-model results, but no longer
+what new evaluation runs on. There is a `rubrics/judge_prompt_v4.md` at the repo root.
+
+**The CLI still scores on v3.** `src/judge/mod.rs` embeds `judge_prompt_v3.md`, and nothing in
+`cli/` references the v4 prompt. Note that `rubrics/rubric_v4.md` currently states the CLI runs
+on v4; as of this writing that is not the case, and the discrepancy is worth resolving in
+whichever direction the rubric owner intends. Until the CLI cuts over, treat CLI numbers as v3
+numbers — which matters, because v4 itself warns against comparing a v4 score to a v3 one.
+
+So the CLI's prompt is two steps from current: a fork of a draft restatement of a rubric that has
+since been superseded.
 
 So the CLI does not implement the canonical rubric. It implements a draft's restatement of it,
 and inherits that draft's divergences. The draft prompt now exists in **four in-repo copies** —
@@ -106,7 +122,12 @@ handed, so changing them changes every content hash and invalidates every cached
 
 Re-derive this prompt from canonical rather than patching the fork:
 
-1. Principle text and the four score anchors per principle come from `rubrics/rubric_v3.md`.
+0. **Decide the target version first.** Everything below was written against v3. With v4 now
+   operational, a re-derivation should almost certainly target `rubrics/rubric_v4.md` — and
+   `rubrics/judge_prompt_v4.md` may already do much of this work, so check it before rebuilding
+   anything by hand. The steps below still describe the shape of the job either way.
+1. Principle text and the four score anchors per principle come from the target rubric
+   (`rubrics/rubric_v3.md` for a v3 re-derivation).
 2. The global-rules block comes from `humanebench/scorer.py:61–75` — all seven, verbatim.
 3. Keep the two substitution slots (`{{.UserPrompt}}`, `{{.MessageContent}}`) and keep the literal
    split marker **`Now, evaluate the following`** — `src/judge/rollup.rs` splits this text on that
