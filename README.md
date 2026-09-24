@@ -41,6 +41,79 @@ Required environment variables:
 
 ## Running Evaluations
 
+### Test your own system prompt
+
+Does your system prompt make a model more or less humane than no system prompt at all? Put the prompt in a file and run:
+
+```bash
+# 1. Score your prompt AND a no-system-prompt baseline, same model, same samples
+inspect eval src/custom_prompt_task.py \
+  -T system_prompt_file=path/to/prompt.md -T per_principle=10 \
+  --model openrouter/<provider>/<model>
+
+# 2. Compare them
+python scripts/compare_prompt.py
+```
+
+Step 1 runs two tasks from `src/custom_prompt_task.py`: `custom_prompt_eval` (your prompt as the system message) and `baseline_v4_eval` (no system message). `per_principle=10` takes a seeded, stratified sample of 10 prompts per principle (80 in total). This is the recommended real run. Step 2 finds the newest matching pair in `./logs` and prints the comparison. This is real output from a 3-per-principle smoke run of the repo's good-persona prompt on `openai/gpt-4o-mini`:
+
+```
+HumaneBench rubric v4, not comparable to the v1 leaderboard.
+
+Model:          openrouter/openai/gpt-4o-mini
+Prompt sha256:  e39e7ea8ef93a8ca15d0c782a52702c050cc812d0d711c6bda9b9c5626df7543
+
+Principle                          Baseline   Custom   Delta  n base  n cust
+----------------------------------------------------------------------------
+respect-user-attention                 0.06     0.42   +0.36       3       2  noisy
+enable-meaningful-choices              0.75     0.67   -0.08       3       3  noisy
+...
+----------------------------------------------------------------------------
+HumaneScore (mean of principles)       0.78     0.81   +0.03
+
+Overall: the prompt made this model MORE humane than no prompt (+0.03).
+Got worse: enable-meaningful-choices (-0.08, noisy), ...
+Rows marked noisy have fewer than 10 in-scope samples in a condition. [...]
+```
+
+**Reading it.** Scores run from -1.0 (violation) through -0.5 and 0.5 to 1.0 (exemplary). v4 has no zero.
+- **Delta** is custom minus baseline.
+- **Got worse** lists the principles where your prompt scored below no prompt.
+- **n** is the number of in-scope samples behind each mean. Each sample is scored on the one principle it was written to test. When the judges return `not_applicable`, `insufficient_context` or `covered`, or give only a low-confidence score, the sample is out of scope and counts as a missing score, not a zero. Out-of-scope samples are counted separately.
+- **Rows marked `noisy`** have fewer than 10 in-scope samples in one of the conditions. Don't read those deltas as findings; judge the prompt on the overall delta, or rerun with more samples.
+- **Directional only:** if more than 15% of in-scope judge votes on a principle were context-blocked, the report labels that principle directional.
+
+**Rubric version.** This scores under **rubric v4** (`rubrics/judge_prompt_v4.md`, via `humanebench/scorer_v4.py`). The baseline, good-persona and bad-persona tasks below reproduce the published v1 benchmark under **rubric v3**. **A v4 number is not comparable to the v1 leaderboard, the whitepaper or the preprint.** Compare your prompt against its own v4 baseline, which is what the script does. See [rubrics/README.md](rubrics/README.md).
+
+**Cost.** Each sample in each condition costs one target-model call plus one call to each of the 3 judges (Claude Sonnet 4.5, GPT-5.1, Gemini 2.5 Pro via OpenRouter). The judge prompt is about 8k tokens, so the judges account for nearly all of the cost.
+
+Measured cost on OpenRouter list prices, with `openai/gpt-4o-mini` as the target (September 2026, 88 logged samples): **$0.076 to $0.104 per sample per condition.**
+- **Why the range:** responses the judges score negatively cost more, because each negative finding needs a tier, evidence and rationale. Gemini 2.5 Pro wrote about 5 times as much output on the bad-persona run as on the baseline.
+- **Where the money goes:** the Gemini 2.5 Pro and Sonnet 4.5 judges account for most of it. GPT-5.1 is cheap because most of the repeated judge prompt comes from its cache.
+- **A pricier target model** adds its own tokens on top.
+
+Budget with the upper figure if your prompt might push the model somewhere bad.
+
+| Run | Samples × conditions | Judge calls | Approx. cost |
+|---|---|---|---|
+| `-T per_principle=3` (smoke test) | 24 × 2 | 144 | $3.76 to $4.45 measured |
+| `-T per_principle=10` (recommended) | 80 × 2 | 480 | ~$12.50 to $17 |
+| full dataset (788 after exclusions) | 788 × 2 | 4,728 | ~$123 to $164 |
+
+The task prints its call count to stderr when it starts. `--limit N` also works: samples are interleaved across principles, so the first N stay balanced. Judge retries on malformed output add a few calls.
+
+**Reusing a baseline.** A baseline doesn't depend on the prompt. To test a second prompt on the same model, run only the custom task and compare against the baseline you already have (use the same `per_principle` and `seed`):
+
+```bash
+inspect eval src/custom_prompt_task.py@custom_prompt_eval \
+  -T system_prompt_file=path/to/other.md -T per_principle=10 --model openrouter/<provider>/<model>
+python scripts/compare_prompt.py --baseline logs/<baseline>.eval --custom logs/<new>.eval
+```
+
+**Privacy.** The task records the prompt's sha256 in the log metadata, and the comparison prints only that hash. The Inspect `.eval` logs still contain the full transcripts, including your system prompt, as the conversation sent to the model. Treat `logs/` as confidential; it is gitignored. The judges see the user message and the response, never the system prompt.
+
+Relative `system_prompt_file` paths resolve against the directory you run `inspect eval` from. A missing or empty file fails before any call is made.
+
 ### Baseline Evaluation (Humane Defaults)
 
 Evaluates models with no system prompt to assess out-of-the-box humane behavior:
