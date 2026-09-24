@@ -515,6 +515,17 @@ pub fn content_hash(prompt: &str, judge_model: &str) -> String {
     format!("blake3:{}", hasher.finalize().to_hex())
 }
 
+/// Short hash of the embedded prompt text.
+///
+/// Printed on every report so a score can be traced to the exact prompt that produced it.
+/// The rubric version alone is not enough: v4 can be edited, and an edit changes what the
+/// numbers mean while the version string stays put.
+pub fn rubric_hash() -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(RUBRIC.as_bytes());
+    hasher.finalize().to_hex()[..12].to_string()
+}
+
 /// Pull a JSON object out of a model response that may have ignored "JSON only".
 fn extract_json(raw: &str) -> Result<&str> {
     let trimmed = raw.trim();

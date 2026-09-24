@@ -542,10 +542,11 @@ fn header(input: &ReportInput, agg: &Aggregates, share: bool) -> String {
     format!(
         r#"<h1>{title}</h1>
 <p class="sub">{span} · {} turns scored · {} session rollups{}</p>
+<p class="sub"><strong>HumaneBench rubric {rubric_version}</strong> · prompt <code>{rubric_hash}</code></p>
 <div class="card headline">
   <div><div class="n">{overall}</div><div class="muted small">overall, turn tier (−1 … +1)</div></div>
   <div><div class="n">{}</div><div class="muted small">overall, session rollups</div></div>
-  <div><div class="n">{}</div><div class="muted small">mean judge confidence</div></div>
+  <div><div class="n">{}</div><div class="muted small">in-scope turns blocked for context</div></div>
 </div>"#,
         agg.turn_count,
         agg.rollup_count,
@@ -560,6 +561,8 @@ fn header(input: &ReportInput, agg: &Aggregates, share: bool) -> String {
         agg.context_blocked_rate()
             .map(|v| format!("{:.0}%", v * 100.0))
             .unwrap_or_else(|| "—".into()),
+        rubric_version = crate::judge::RUBRIC_VERSION,
+        rubric_hash = crate::judge::rubric_hash(),
     )
 }
 
@@ -596,6 +599,49 @@ fn caveats(input: &ReportInput, agg: &Aggregates) -> String {
         ));
     }
 
+    if agg.rollup_count > 0 {
+        notes.push(
+            "<strong>Session rollups are unvalidated against human raters.</strong> The \
+             turn tier inherits a prompt that was checked against human scoring; the \
+             session-level pass is net-new authoring and has had no such check. It is the \
+             only way to see engagement loops, fostered dependency and sycophancy drift at \
+             all, and it is the least trustworthy number in this report. Read it as a \
+             prompt to go and look, never as a measurement."
+                .to_string(),
+        );
+    }
+
+    if let Some(rate) = agg.context_blocked_rate() {
+        if rate > 0.15 {
+            notes.push(format!(
+                "<strong>Directional, not definitive: {:.0}% of in-scope principle-turns came \
+                 back <code>insufficient_context</code>.</strong> Above 15% the judge is \
+                 telling you the turns themselves do not carry enough to settle the question. \
+                 That is a property of single-turn data, not a defect in what was judged.",
+                rate * 100.0
+            ));
+        }
+    }
+
+    if agg.excluded_other_rubric > 0 {
+        notes.push(format!(
+            "<strong>{} score(s) from an older rubric were excluded.</strong> They were \
+             produced under a previous rubric version and are a different statistic, so they \
+             are not averaged in here. Re-score to bring them into this report.",
+            agg.excluded_other_rubric
+        ));
+    }
+
+    if agg.low_confidence_dropped > 0 {
+        notes.push(format!(
+            "<strong>{} low-confidence score(s) dropped.</strong> The judge is told these are \
+             discarded before anyone sees them, so they are excluded from every mean here. \
+             A principle that keeps producing them is a signal about the rubric's wording for \
+             that principle, not about the conversations.",
+            agg.low_confidence_dropped
+        ));
+    }
+
     if input.discarded_branches > 0 {
         notes.push(format!(
             "<strong>Alternatives dropped.</strong> {} branch record(s) — edits, regenerations, \
@@ -614,15 +660,17 @@ fn caveats(input: &ReportInput, agg: &Aggregates) -> String {
     }
 
     notes.push(
-        "<strong>Not comparable to published benchmark numbers — it is a different \
-         statistic.</strong> The benchmark scores each sample on the <em>one</em> principle its \
-         prompt was built to stress, so a principle's mean is taken only over turns that \
-         actually engage it. This report scores <em>every</em> turn on all eight and means \
-         them, so each principle's denominator is dominated by turns where that principle is \
-         barely in play. It also uses one judge where the benchmark ensembles across models, \
-         and it drops a missing principle from the mean where the benchmark scores it 0 and \
-         averages it in. Same rubric, same −1.0…+1.0 scale, incomparable numbers — the gap is \
-         arithmetic, not a claim about which assistant is more humane."
+        "<strong>Not comparable to published benchmark numbers, and now not even the same \
+         rubric.</strong> This report runs <strong>rubric v4</strong>. The published \
+         HumaneBench v1 results, the whitepaper and the leaderboard are all <strong>v3</strong>, \
+         which is frozen. A v4 score must never be placed beside a v3 one or called \
+         leaderboard-comparable. Three differences stack on top of the version gap: the \
+         benchmark scores each sample on the <em>one</em> principle its prompt was built to \
+         stress, while this report puts every turn through the applicability gate and means \
+         only what actually scored; it ensembles across models where this uses one judge; and \
+         it scores a missing principle 0 and averages it in, where v4 treats \
+         <code>not_applicable</code> as no result at all. The gap is arithmetic and \
+         versioning, not a claim about which assistant is more humane."
             .to_string(),
     );
 
@@ -1091,14 +1139,26 @@ mod tests {
     #[test]
     fn report_states_why_scores_are_not_benchmark_comparable() {
         let html = render_full(&input(sample()));
-        assert!(html.contains("it is a different statistic"));
-        assert!(html.contains("all eight"), "must name the denominator");
+        // The version gap is now the first reason, and the most load-bearing: the
+        // published numbers are v3 and this is v4.
+        assert!(
+            html.contains("rubric v4") && html.contains("v3"),
+            "must name both versions"
+        );
+        assert!(
+            html.contains("never be placed beside a v3 one"),
+            "must forbid putting the two side by side"
+        );
+        assert!(
+            html.contains("leaderboard-comparable"),
+            "must refuse the leaderboard comparison in those words"
+        );
         assert!(
             html.contains("ensembles across models"),
             "must name the single-judge divergence"
         );
         assert!(
-            html.contains("scores it 0 and averages it in"),
+            html.contains("scores a missing principle 0 and averages it in"),
             "must name the opposite missing-data policy"
         );
     }

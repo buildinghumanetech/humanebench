@@ -1,5 +1,12 @@
-//! HumaneBench CLI — score your own conversation history against the HumaneBench v3
+//! HumaneBench CLI — score your own conversation history against the HumaneBench v4
 //! rubric and emit a local HTML report.
+//!
+//! v4, not the v3 the published leaderboard runs on. v3 is frozen as the rubric of record
+//! for HumaneBench v1; anything that evaluates something new runs v4. The two produce
+//! different statistics, so a score from one is never placed beside a score from the
+//! other and a v4 score is never described as leaderboard-comparable. Scores already in
+//! the store from an older rubric are kept, tagged, and excluded from the report rather
+//! than averaged in.
 //!
 //! Ingest, score, and report are separate commands on purpose. Scoring is the only one
 //! that costs money, so it is the only one you have to consciously invoke — and
@@ -26,7 +33,7 @@ use store::{Filter, Store};
 #[derive(Parser)]
 #[command(
     name = "humanebench",
-    about = "Score your own conversation history against the HumaneBench v3 rubric",
+    about = "Score your own conversation history against the HumaneBench v4 rubric",
     version
 )]
 struct Cli {
