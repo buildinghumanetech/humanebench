@@ -113,7 +113,7 @@ fn principle_means(set: &[&ScoredTurn]) -> Value {
     for code in PRINCIPLES {
         let vals: Vec<f64> = set
             .iter()
-            .filter_map(|s| s.record.principle(code).map(|p| p.score))
+            .filter_map(|s| s.record.principle(code).and_then(|p| p.counts()))
             .collect();
         if vals.is_empty() {
             continue;
@@ -142,7 +142,11 @@ fn tool_query_scores(store: &Store, args: &Value) -> Result<Value> {
         if set.is_empty() {
             return None;
         }
-        Some(set.iter().map(|s| s.record.overall()).sum::<f64>() / set.len() as f64)
+        let vals: Vec<f64> = set.iter().filter_map(|s| s.record.overall()).collect();
+        if vals.is_empty() {
+            return None;
+        }
+        Some(vals.iter().sum::<f64>() / vals.len() as f64)
     };
 
     Ok(json!({
@@ -186,8 +190,8 @@ fn tool_worst_turns(store: &Store, args: &Value) -> Result<Value> {
     let mut ranked: Vec<(&ScoredTurn, f64)> = scores
         .iter()
         .filter_map(|s| match principle {
-            Some(code) => s.record.principle(code).map(|p| (s, p.score)),
-            None => Some((s, s.record.overall())),
+            Some(code) => s.record.principle(code).and_then(|p| p.counts()).map(|v| (s, v)),
+            None => s.record.overall().map(|v| (s, v)),
         })
         .collect();
     ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -199,8 +203,9 @@ fn tool_worst_turns(store: &Store, args: &Value) -> Result<Value> {
             .record
             .principles
             .iter()
-            .filter(|p| p.score < 0.0)
-            .map(|p| json!({"principle": p.name, "label": principle_label(&p.name), "score": p.score, "rationale": p.rationale}))
+            .filter_map(|p| p.counts().map(|v| (p, v)))
+            .filter(|(_, v)| *v < 0.0)
+            .map(|(p, v)| json!({"principle": p.name, "label": principle_label(&p.name), "score": v, "rationale": p.rationale}))
             .collect();
 
         let mut entry = json!({
@@ -209,11 +214,12 @@ fn tool_worst_turns(store: &Store, args: &Value) -> Result<Value> {
             "timestamp": s.timestamp.to_rfc3339(),
             "source": s.source,
             "model": s.model,
-            "overall": (s.record.overall() * 1000.0).round() / 1000.0,
+            "overall": s.record.overall().map(|v| (v * 1000.0).round() / 1000.0),
             "rank_score": rank_score,
-            "confidence": s.record.confidence,
+            "rubric_version": s.record.rubric_version,
+            "coverage": s.record.coverage,
             "negatives": negatives,
-            "globalViolations": s.record.global_violations,
+            "covered": s.record.covered,
         });
 
         if include_text {
@@ -285,16 +291,17 @@ fn tool_session_detail(store: &Store, args: &Value) -> Result<Value> {
             .record
             .principles
             .iter()
-            .map(|p| json!({"principle": p.name, "score": p.score, "rationale": p.rationale}))
+            .map(|p| json!({"principle": p.name, "outcome": p.outcome.as_str(), "score": p.score, "confidence": p.confidence, "rationale": p.rationale, "question": p.question}))
             .collect();
 
         let mut entry = json!({
             "turn_id": s.record.turn_id,
             "timestamp": s.timestamp.to_rfc3339(),
-            "overall": (s.record.overall() * 1000.0).round() / 1000.0,
-            "confidence": s.record.confidence,
+            "overall": s.record.overall().map(|v| (v * 1000.0).round() / 1000.0),
+            "rubric_version": s.record.rubric_version,
+            "coverage": s.record.coverage,
             "principles": principles,
-            "globalViolations": s.record.global_violations,
+            "covered": s.record.covered,
         });
 
         if include_text {
@@ -423,7 +430,7 @@ pub fn serve(store: &Store) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::judge::{PrincipleScore, ScoreRecord};
+    use crate::judge::{Confidence, PrincipleScore, ScoreRecord};
     use crate::store::score_record;
     use crate::transcript::{Record, Role};
     use chrono::TimeZone;
@@ -432,14 +439,13 @@ mod tests {
         PRINCIPLES
             .iter()
             .zip(scores.iter())
-            .map(|(n, s)| PrincipleScore {
-                name: n.to_string(),
-                score: *s,
-                rationale: if *s < 0.0 {
-                    Some(format!("bad {n}"))
+            .map(|(n, s)| {
+                let p = PrincipleScore::scored(n, *s, Confidence::High);
+                if *s < 0.0 {
+                    p.with_rationale(&format!("bad {n}"))
                 } else {
-                    None
-                },
+                    p
+                }
             })
             .collect()
     }
@@ -475,11 +481,7 @@ mod tests {
             "h1",
             "openrouter/m",
             "single",
-            crate::judge::Judgement {
-                principles: judgement_scores(&[1.0; 8]),
-                global_violations: vec![],
-                confidence: 0.9,
-            },
+            crate::judge::Judgement::from_principles(judgement_scores(&[1.0; 8])),
         );
         a.principles = judgement_scores(&[1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
 
@@ -492,11 +494,7 @@ mod tests {
                 "h2",
                 "openrouter/m",
                 "single",
-                crate::judge::Judgement {
-                    principles: judgement_scores(&[0.5; 8]),
-                    global_violations: vec![],
-                    confidence: 0.7,
-                },
+                crate::judge::Judgement::from_principles(judgement_scores(&[0.5; 8])),
             )
         };
 
@@ -509,11 +507,7 @@ mod tests {
                 "h3",
                 "openrouter/m",
                 "single",
-                crate::judge::Judgement {
-                    principles: judgement_scores(&[0.5; 8]),
-                    global_violations: vec![],
-                    confidence: 0.6,
-                },
+                crate::judge::Judgement::from_principles(judgement_scores(&[0.5; 8])),
             )
         };
 

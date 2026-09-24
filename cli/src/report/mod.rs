@@ -12,7 +12,7 @@ mod suggest;
 
 pub use suggest::{suggestions, Suggestion};
 
-use crate::judge::{Tier, PRINCIPLES};
+use crate::judge::{Outcome, Tier, PRINCIPLES};
 use crate::store::ScoredTurn;
 use chrono::{DateTime, Datelike, Duration, Utc};
 use std::collections::BTreeMap;
@@ -53,15 +53,56 @@ pub struct ReportInput {
     pub unverified_sources: Vec<String>,
 }
 
+/// What one principle did across a set of turns.
+///
+/// `mean` is `None` when the principle never scored — out of scope everywhere, or blocked,
+/// or covered, or every score dropped for low confidence. A caller renders that as "not in
+/// scope", never as `0`: zero is a middling result, absence is not a result at all.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PrincipleStats {
+    pub mean: Option<f64>,
+    /// Turns where the gate let this principle through, whatever it returned after.
+    pub in_scope: usize,
+    /// Turns that produced a score that counts toward `mean`.
+    pub scored: usize,
+    pub not_applicable: usize,
+    pub context_blocked: usize,
+    pub covered: usize,
+    /// Scores thrown away for low confidence. A principle with a high rate here is a
+    /// signal about the rubric wording, not about the code being judged.
+    pub low_confidence_dropped: usize,
+}
+
 pub struct Aggregates {
     pub turn_count: usize,
     pub rollup_count: usize,
     pub turn_overall: Option<f64>,
     pub rollup_overall: Option<f64>,
-    pub turn_by_principle: BTreeMap<String, f64>,
-    pub rollup_by_principle: BTreeMap<String, f64>,
-    pub mean_confidence: Option<f64>,
+    pub turn_by_principle: BTreeMap<String, PrincipleStats>,
+    pub rollup_by_principle: BTreeMap<String, PrincipleStats>,
+    /// Rows excluded because they were scored under an older rubric. Reported rather than
+    /// silently dropped: the number is how much of the corpus needs a re-score.
+    pub excluded_other_rubric: usize,
+    pub low_confidence_dropped: usize,
+    pub context_blocked_turns: usize,
     pub span: Option<(DateTime<Utc>, DateTime<Utc>)>,
+}
+
+impl Aggregates {
+    /// Share of in-scope principle-turns that came back `insufficient_context`. Above
+    /// 15% a run is directional rather than definitive, and has to say so.
+    pub fn context_blocked_rate(&self) -> Option<f64> {
+        let in_scope: usize = self.turn_by_principle.values().map(|s| s.in_scope).sum();
+        if in_scope == 0 {
+            return None;
+        }
+        let blocked: usize = self
+            .turn_by_principle
+            .values()
+            .map(|s| s.context_blocked)
+            .sum();
+        Some(blocked as f64 / in_scope as f64)
+    }
 }
 
 fn mean(xs: &[f64]) -> Option<f64> {
@@ -73,33 +114,59 @@ fn mean(xs: &[f64]) -> Option<f64> {
 }
 
 pub fn aggregate(scores: &[ScoredTurn]) -> Aggregates {
+    // A v3 score and a v4 score are different statistics. Averaging them together would
+    // misreport both, so older rows are excluded here and counted for the header rather
+    // than quietly folded in.
+    let excluded_other_rubric = scores.iter().filter(|s| !s.record.is_v4()).count();
+    let scores: Vec<&ScoredTurn> = scores.iter().filter(|s| s.record.is_v4()).collect();
+
     let turns: Vec<&ScoredTurn> = scores
         .iter()
+        .copied()
         .filter(|s| s.record.tier == Tier::Turn)
         .collect();
     let rollups: Vec<&ScoredTurn> = scores
         .iter()
+        .copied()
         .filter(|s| s.record.tier == Tier::Rollup)
         .collect();
 
-    // Missing-principle policy, and it is the *opposite* of the Python scorer's.
-    // `humanebench/scorer.py:130,136` treats a principle with no usable scores as 0 and
-    // averages that 0 into the HumaneScore; the filter_map below EXCLUDES it, and `mean`
-    // returns None for an empty set so the principle is omitted from the report entirely.
-    // This cannot currently produce a divergence: `judge::parse_judgement` rejects any
-    // judgement that does not carry exactly the eight expected principles, so a stored
-    // record always has all eight. The invariant is upstream, though, and this layer would
-    // diverge the moment it is relaxed. See `rubric/README.md` and the report caveats.
-    let by_principle = |set: &[&ScoredTurn]| -> BTreeMap<String, f64> {
+    // Non-score outcomes are excluded from every mean. `not_applicable` is not zero:
+    // the principle was never at stake, and averaging a zero in would read as a mediocre
+    // result on a question that was never asked.
+    let by_principle = |set: &[&ScoredTurn]| -> BTreeMap<String, PrincipleStats> {
         let mut out = BTreeMap::new();
         for code in PRINCIPLES {
-            let vals: Vec<f64> = set
-                .iter()
-                .filter_map(|s| s.record.principle(code).map(|p| p.score))
-                .collect();
-            if let Some(m) = mean(&vals) {
-                out.insert(code.to_string(), m);
+            let mut st = PrincipleStats::default();
+            let mut vals: Vec<f64> = Vec::new();
+            for s in set {
+                let Some(p) = s.record.principle(code) else {
+                    continue;
+                };
+                match p.outcome {
+                    Outcome::NotApplicable => st.not_applicable += 1,
+                    Outcome::InsufficientContext => {
+                        st.in_scope += 1;
+                        st.context_blocked += 1;
+                    }
+                    Outcome::Covered => {
+                        st.in_scope += 1;
+                        st.covered += 1;
+                    }
+                    Outcome::Score => {
+                        st.in_scope += 1;
+                        match p.counts() {
+                            Some(v) => {
+                                st.scored += 1;
+                                vals.push(v);
+                            }
+                            None => st.low_confidence_dropped += 1,
+                        }
+                    }
+                }
             }
+            st.mean = mean(&vals);
+            out.insert(code.to_string(), st);
         }
         out
     };
@@ -112,29 +179,30 @@ pub fn aggregate(scores: &[ScoredTurn]) -> Aggregates {
         Some((min, max))
     };
 
+    let overall_of = |set: &[&ScoredTurn]| -> Option<f64> {
+        let vals: Vec<f64> = set.iter().filter_map(|s| s.record.overall()).collect();
+        mean(&vals)
+    };
+
+    let turn_by_principle = by_principle(&turns);
     Aggregates {
         turn_count: turns.len(),
         rollup_count: rollups.len(),
-        turn_overall: mean(&turns.iter().map(|s| s.record.overall()).collect::<Vec<_>>()),
-        rollup_overall: mean(
-            &rollups
-                .iter()
-                .map(|s| s.record.overall())
-                .collect::<Vec<_>>(),
-        ),
-        turn_by_principle: by_principle(&turns),
+        turn_overall: overall_of(&turns),
+        rollup_overall: overall_of(&rollups),
+        low_confidence_dropped: turn_by_principle
+            .values()
+            .map(|s| s.low_confidence_dropped)
+            .sum(),
+        context_blocked_turns: turn_by_principle.values().map(|s| s.context_blocked).sum(),
+        turn_by_principle,
         rollup_by_principle: by_principle(&rollups),
-        mean_confidence: mean(
-            &scores
-                .iter()
-                .map(|s| s.record.confidence)
-                .collect::<Vec<_>>(),
-        ),
+        excluded_other_rubric,
         span,
     }
 }
 
-/// One point on a trend line.
+/// A point on a trend line.
 pub struct TrendPoint {
     pub bucket: String,
     pub at: DateTime<Utc>,
@@ -142,12 +210,12 @@ pub struct TrendPoint {
     pub n: usize,
 }
 
-/// Bucket turn-tier scores over time. Daily for short spans, weekly for long ones, so the
-/// axis stays legible either way.
 pub fn trend(scores: &[ScoredTurn], principle: &str) -> Vec<TrendPoint> {
+    // v4 rows only, and only principle-turns that actually scored. A turn where the
+    // principle was out of scope contributes nothing to a trend about that principle.
     let turns: Vec<&ScoredTurn> = scores
         .iter()
-        .filter(|s| s.record.tier == Tier::Turn)
+        .filter(|s| s.record.tier == Tier::Turn && s.record.is_v4())
         .collect();
     if turns.is_empty() {
         return Vec::new();
@@ -158,7 +226,7 @@ pub fn trend(scores: &[ScoredTurn], principle: &str) -> Vec<TrendPoint> {
 
     let mut buckets: BTreeMap<String, (Vec<f64>, DateTime<Utc>)> = BTreeMap::new();
     for s in turns {
-        let Some(p) = s.record.principle(principle) else {
+        let Some(v) = s.record.principle(principle).and_then(|p| p.counts()) else {
             continue;
         };
         let key = if weekly {
@@ -170,7 +238,7 @@ pub fn trend(scores: &[ScoredTurn], principle: &str) -> Vec<TrendPoint> {
         let entry = buckets
             .entry(key)
             .or_insert_with(|| (Vec::new(), s.timestamp));
-        entry.0.push(p.score);
+        entry.0.push(v);
         if s.timestamp < entry.1 {
             entry.1 = s.timestamp;
         }
@@ -192,31 +260,37 @@ pub fn trend(scores: &[ScoredTurn], principle: &str) -> Vec<TrendPoint> {
 /// A turn ranked by how badly it scored.
 pub struct WorstTurn<'a> {
     pub scored: &'a ScoredTurn,
-    pub overall: f64,
+    /// `None` when nothing scored on this turn. Such a turn is not "bad", it is silent,
+    /// and it never appears in this list.
+    pub overall: Option<f64>,
     pub negatives: Vec<(&'a str, f64, Option<&'a str>)>,
 }
 
 pub fn worst_turns<'a>(scores: &'a [ScoredTurn], limit: usize) -> Vec<WorstTurn<'a>> {
     let mut ranked: Vec<WorstTurn> = scores
         .iter()
-        .filter(|s| s.record.tier == Tier::Turn)
+        .filter(|s| s.record.tier == Tier::Turn && s.record.is_v4())
         .map(|s| WorstTurn {
             scored: s,
             overall: s.record.overall(),
+            // A negative that was dropped for low confidence is not a finding anyone
+            // gets to see, so it is not evidence here either.
             negatives: s
                 .record
                 .principles
                 .iter()
-                .filter(|p| p.score < 0.0)
-                .map(|p| (p.name.as_str(), p.score, p.rationale.as_deref()))
+                .filter_map(|p| p.counts().map(|v| (p, v)))
+                .filter(|(_, v)| *v < 0.0)
+                .map(|(p, v)| (p.name.as_str(), v, p.rationale.as_deref()))
                 .collect(),
         })
-        .filter(|w| !w.negatives.is_empty() || w.overall < 0.5)
+        .filter(|w| !w.negatives.is_empty() || w.overall.is_some_and(|o| o < 0.5))
         .collect();
 
     ranked.sort_by(|a, b| {
         a.overall
-            .partial_cmp(&b.overall)
+            .unwrap_or(f64::MAX)
+            .partial_cmp(&b.overall.unwrap_or(f64::MAX))
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| b.negatives.len().cmp(&a.negatives.len()))
     });
@@ -266,7 +340,7 @@ fn truncate_chars(s: &str, max: usize) -> String {
 }
 
 /// Horizontal bar chart of the eight principles, as inline SVG.
-fn principle_bars(by_principle: &BTreeMap<String, f64>) -> String {
+fn principle_bars(by_principle: &BTreeMap<String, PrincipleStats>) -> String {
     let row_h = 30.0;
     let label_w = 210.0;
     let bar_w = 320.0;
@@ -298,8 +372,9 @@ fn principle_bars(by_principle: &BTreeMap<String, f64>) -> String {
             y + 14.0,
             escape(label)
         ));
-        match by_principle.get(*code) {
-            Some(v) => {
+        match by_principle.get(*code).and_then(|s| s.mean.map(|m| (m, s))) {
+            Some((v, st)) => {
+                let v = &v;
                 let half = bar_w / 2.0;
                 let len = (v.abs() * half).max(1.5);
                 let x = if *v >= 0.0 { mid } else { mid - len };
@@ -308,16 +383,32 @@ fn principle_bars(by_principle: &BTreeMap<String, f64>) -> String {
                     y + 3.0,
                     score_color(*v)
                 ));
+                // The count is the honest denominator: a -1.0 mean over one turn and
+                // over forty are not the same claim, and the bar alone cannot tell them
+                // apart. Dropped low-confidence scores are named here too, because a
+                // principle that keeps producing them is a rubric-wording problem.
+                let dropped = if st.low_confidence_dropped > 0 {
+                    format!(", {} dropped", st.low_confidence_dropped)
+                } else {
+                    String::new()
+                };
                 svg.push_str(&format!(
                     r#"<text x="{:.1}" y="{:.1}" class="val">{:+.2}</text>"#,
                     label_w + bar_w + 8.0,
-                    y + 15.0,
+                    y + 11.0,
                     v
+                ));
+                svg.push_str(&format!(
+                    r#"<text x="{:.1}" y="{:.1}" class="val muted">{} in scope{}</text>"#,
+                    label_w + bar_w + 8.0,
+                    y + 23.0,
+                    st.in_scope,
+                    escape(&dropped)
                 ));
             }
             None => {
                 svg.push_str(&format!(
-                    r#"<text x="{:.1}" y="{:.1}" class="val muted">no data</text>"#,
+                    r#"<text x="{:.1}" y="{:.1}" class="val muted">not in scope</text>"#,
                     label_w + bar_w + 8.0,
                     y + 15.0
                 ));
@@ -466,8 +557,8 @@ fn header(input: &ReportInput, agg: &Aggregates, share: bool) -> String {
         agg.rollup_overall
             .map(|v| format!("{v:+.2}"))
             .unwrap_or_else(|| "—".into()),
-        agg.mean_confidence
-            .map(|v| format!("{v:.2}"))
+        agg.context_blocked_rate()
+            .map(|v| format!("{:.0}%", v * 100.0))
             .unwrap_or_else(|| "—".into()),
     )
 }
@@ -607,31 +698,46 @@ fn worst_section(input: &ReportInput, limit: usize) -> String {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let violations = if s.record.global_violations.is_empty() {
+        // v4 has no globalViolations. What it has instead is per-principle questions
+        // the turn could not settle, which are worth showing because they are actionable.
+        let blocked: Vec<String> = s
+            .record
+            .principles
+            .iter()
+            .filter(|p| p.outcome == Outcome::InsufficientContext)
+            .filter_map(|p| {
+                p.question
+                    .as_deref()
+                    .map(|q| format!("{}: {}", principle_label(&p.name), escape(q)))
+            })
+            .collect();
+        let violations = if blocked.is_empty() {
             String::new()
         } else {
             format!(
-                r#"<p class="rationale"><strong>Global violations:</strong> {}</p>"#,
-                escape(&s.record.global_violations.join("; "))
+                r#"<p class="rationale"><strong>Needs context:</strong> {}</p>"#,
+                blocked.join(" · ")
             )
         };
 
         out.push_str(&format!(
             r#"<div class="turn" style="border-left-color:{}">
-<div class="meta"><span>{}</span><span>{}</span>{}<span>overall {:+.2}</span><span>confidence {:.2}</span></div>
+<div class="meta"><span>{}</span><span>{}</span>{}<span>overall {}</span><span>{} of 8 in scope</span></div>
 {negatives}
 {violations}
 <blockquote>{}</blockquote>
 </div>"#,
-            score_color(w.overall),
+            score_color(w.overall.unwrap_or(0.0)),
             s.timestamp.format("%Y-%m-%d %H:%M UTC"),
             escape(&s.source),
             s.model
                 .as_ref()
                 .map(|m| format!("<span>{}</span>", escape(m)))
                 .unwrap_or_default(),
-            w.overall,
-            s.record.confidence,
+            w.overall
+                .map(|v| format!("{v:+.2}"))
+                .unwrap_or_else(|| "not in scope".into()),
+            s.record.coverage.applicable,
             escape(&excerpt),
         ));
     }
@@ -744,7 +850,7 @@ pub fn render_share(input: &ReportInput) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::judge::{PrincipleScore, ScoreRecord};
+    use crate::judge::{Confidence, Coverage, PrincipleScore, ScoreRecord};
     use chrono::TimeZone;
 
     fn scored(turn_id: &str, day: u32, scores: &[f64], tier: Tier) -> ScoredTurn {
@@ -757,21 +863,27 @@ mod tests {
                 judge_model: "openrouter/anthropic/claude-sonnet-4.5".into(),
                 regime: "single".into(),
                 scored_at: Utc.with_ymd_and_hms(2026, 1, day, 0, 0, 0).unwrap(),
+                rubric_version: crate::judge::RUBRIC_VERSION.to_string(),
                 principles: PRINCIPLES
                     .iter()
                     .zip(scores.iter())
-                    .map(|(n, s)| PrincipleScore {
-                        name: n.to_string(),
-                        score: *s,
-                        rationale: if *s < 0.0 {
-                            Some(format!("problem with {n}"))
+                    .map(|(n, s)| {
+                        let p = PrincipleScore::scored(n, *s, Confidence::High);
+                        if *s < 0.0 {
+                            p.with_rationale(&format!("bad {n}"))
                         } else {
-                            None
-                        },
+                            p
+                        }
                     })
                     .collect(),
-                global_violations: vec![],
-                confidence: 0.8,
+                covered: vec![],
+                coverage: Coverage {
+                    applicable: 8,
+                    scored: 8,
+                    context_blocked: 0,
+                    covered: 0,
+                },
+                notes: String::new(),
             },
             source: "claude-code".into(),
             model: Some("claude-opus-5".into()),

@@ -98,7 +98,7 @@ fn citations_for(scores: &[ScoredTurn], code: &str) -> Vec<String> {
     let mut offenders: Vec<(&ScoredTurn, f64)> = scores
         .iter()
         .filter(|s| s.record.tier == Tier::Turn)
-        .filter_map(|s| s.record.principle(code).map(|p| (s, p.score)))
+        .filter_map(|s| s.record.principle(code).and_then(|p| p.counts()).map(|v| (s, v)))
         .filter(|(_, score)| *score < NEGATIVE)
         .collect();
 
@@ -131,11 +131,11 @@ pub fn suggestions(scores: &[ScoredTurn], _excerpts: &BTreeMap<String, String>) 
     for code in PRINCIPLES {
         let turn_scores: Vec<f64> = turns
             .iter()
-            .filter_map(|s| s.record.principle(code).map(|p| p.score))
+            .filter_map(|s| s.record.principle(code).and_then(|p| p.counts()))
             .collect();
         let rollup_scores: Vec<f64> = rollups
             .iter()
-            .filter_map(|s| s.record.principle(code).map(|p| p.score))
+            .filter_map(|s| s.record.principle(code).and_then(|p| p.counts()))
             .collect();
 
         if turn_scores.is_empty() && rollup_scores.is_empty() {
@@ -185,9 +185,18 @@ pub fn suggestions(scores: &[ScoredTurn], _excerpts: &BTreeMap<String, String>) 
     // Global violations quote specific content, so they cannot be shared meaningfully.
     let mut violation_counts: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for s in scores {
-        for v in &s.record.global_violations {
+        // v4 replaced globalViolations with per-principle questions. A question that
+        // keeps recurring is the same kind of signal: something the turn shape never
+        // lets the judge settle.
+        for q in s
+            .record
+            .principles
+            .iter()
+            .filter(|p| p.outcome == crate::judge::Outcome::InsufficientContext)
+            .filter_map(|p| p.question.as_deref())
+        {
             violation_counts
-                .entry(v.clone())
+                .entry(q.to_string())
                 .or_default()
                 .push(s.record.turn_id.clone());
         }
@@ -220,10 +229,10 @@ pub fn suggestions(scores: &[ScoredTurn], _excerpts: &BTreeMap<String, String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::judge::{PrincipleScore, ScoreRecord};
+    use crate::judge::{Confidence, Coverage, PrincipleScore, ScoreRecord};
     use chrono::{TimeZone, Utc};
 
-    fn scored(id: &str, scores: &[f64], tier: Tier, violations: Vec<String>) -> ScoredTurn {
+    fn scored(id: &str, scores: &[f64], tier: Tier, questions: Vec<String>) -> ScoredTurn {
         ScoredTurn {
             record: ScoreRecord {
                 turn_id: id.into(),
@@ -233,17 +242,35 @@ mod tests {
                 judge_model: "m".into(),
                 regime: "single".into(),
                 scored_at: Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
-                principles: PRINCIPLES
-                    .iter()
-                    .zip(scores.iter())
-                    .map(|(n, s)| PrincipleScore {
-                        name: n.to_string(),
-                        score: *s,
-                        rationale: if *s < 0.0 { Some("bad".into()) } else { None },
-                    })
-                    .collect(),
-                global_violations: violations,
-                confidence: 0.8,
+                rubric_version: crate::judge::RUBRIC_VERSION.to_string(),
+                principles: {
+                    let mut ps: Vec<PrincipleScore> = PRINCIPLES
+                        .iter()
+                        .zip(scores.iter())
+                        .map(|(n, s)| {
+                            let p = PrincipleScore::scored(n, *s, Confidence::High);
+                            if *s < 0.0 {
+                                p.with_rationale("bad")
+                            } else {
+                                p
+                            }
+                        })
+                        .collect();
+                    // v4 has no globalViolations. The comparable recurring signal is a
+                    // question the turn could not settle, so the fixture expresses each
+                    // one as an insufficient_context principle.
+                    for (i, q) in questions.iter().enumerate() {
+                        ps[i] = PrincipleScore::insufficient_context(
+                            PRINCIPLES[i],
+                            q,
+                            "depends on the session",
+                        );
+                    }
+                    ps
+                },
+                covered: vec![],
+                coverage: Coverage::default(),
+                notes: String::new(),
             },
             source: "claude-code".into(),
             model: None,

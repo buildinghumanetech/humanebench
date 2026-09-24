@@ -16,7 +16,17 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// One source of truth, compiled in.
-pub const RUBRIC: &str = include_str!("../../rubric/judge_prompt_v3.md");
+///
+/// The canonical prompt lives at the repository root, not under `cli/`, because three
+/// consumers need it and only one of them is this CLI: the CLI, the pull-request gate,
+/// and any partner running the rubric against their own traffic. A vendored copy is how
+/// two documents drift apart, so there is deliberately no copy here.
+pub const RUBRIC: &str = include_str!("../../../rubrics/judge_prompt_v4.md");
+
+/// Which rubric the embedded prompt implements. Recorded on every stored score so a
+/// report can refuse to average a v3 score together with a v4 one; they are different
+/// statistics and putting them side by side misrepresents both.
+pub const RUBRIC_VERSION: &str = "v4";
 
 /// `single` vs an ensemble. Both backends call one model once per item, so the report can
 /// never silently compare single-judge numbers against ensemble ones.
@@ -166,22 +176,221 @@ impl Tier {
     }
 }
 
+/// What a principle returned. Three of the four are **not scores and not zeros**: the
+/// gate ran before scoring and decided this principle had nothing to say about this turn,
+/// could not be settled from the turn alone, or was permitted by an operator policy.
+/// Averaging any of them as `0` is the single most common way to misreport a v4 run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
+    Score,
+    NotApplicable,
+    InsufficientContext,
+    Covered,
+}
+
+impl Outcome {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Outcome::Score => "score",
+            Outcome::NotApplicable => "not_applicable",
+            Outcome::InsufficientContext => "insufficient_context",
+            Outcome::Covered => "covered",
+        }
+    }
+}
+
+/// Per-principle confidence. A string in v4, never a number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Confidence {
+    High,
+    Medium,
+    Low,
+}
+
+/// One principle's outcome for one turn.
+///
+/// Only `outcome: Score` carries a `score`. The other three carry no score at all, and a
+/// missing score is meaningful rather than an error.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PrincipleScore {
     pub name: String,
-    pub score: f64,
-    /// Present only on negative scores.
+    /// Defaulted for rows written before v4, where every principle carried a bare score
+    /// and there was no other outcome to express. Fresh judge output is checked for the
+    /// field explicitly in `parse_judgement`, so the default never hides a malformed
+    /// response — it only lets an old row deserialize.
+    #[serde(default = "default_outcome")]
+    pub outcome: Outcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
+    /// The tier row, copied verbatim from the prompt. Required on negatives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub behavior: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rationale: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggestion: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unless: Option<String>,
+    /// `insufficient_context` only: the question that would settle it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<String>,
+    /// `insufficient_context` only: which answer lands where.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolves: Option<String>,
 }
 
-/// The judge's raw output object — copied verbatim from the evaluator contract.
+fn default_outcome() -> Outcome {
+    Outcome::Score
+}
+
+impl PrincipleScore {
+    pub fn is_scored(&self) -> bool {
+        self.outcome == Outcome::Score
+    }
+
+    /// Low confidence is dropped before anyone sees it, which is what the prompt promises
+    /// the judge. The score stays in the store for later analysis; it just never reaches a
+    /// mean or a findings list.
+    pub fn is_low_confidence(&self) -> bool {
+        self.confidence == Some(Confidence::Low)
+    }
+
+    /// A score that counts toward a reported mean.
+    pub fn counts(&self) -> Option<f64> {
+        match (self.outcome, self.is_low_confidence()) {
+            (Outcome::Score, false) => self.score,
+            _ => None,
+        }
+    }
+
+    /// A principle was in scope when the gate let it through, whatever it returned after.
+    pub fn in_scope(&self) -> bool {
+        self.outcome != Outcome::NotApplicable
+    }
+}
+
+/// Constructors for the four outcomes. The full struct has eleven fields of which at
+/// most nine are ever set at once, so building one by hand is noise in both tests and
+/// callers.
+impl PrincipleScore {
+    fn bare(name: &str, outcome: Outcome) -> Self {
+        PrincipleScore {
+            name: name.to_string(),
+            outcome,
+            score: None,
+            confidence: None,
+            tier: None,
+            evidence: None,
+            behavior: None,
+            rationale: None,
+            suggestion: None,
+            unless: None,
+            question: None,
+            resolves: None,
+        }
+    }
+
+    pub fn scored(name: &str, score: f64, confidence: Confidence) -> Self {
+        PrincipleScore {
+            score: Some(score),
+            confidence: Some(confidence),
+            ..Self::bare(name, Outcome::Score)
+        }
+    }
+
+    pub fn not_applicable(name: &str) -> Self {
+        Self::bare(name, Outcome::NotApplicable)
+    }
+
+    pub fn insufficient_context(name: &str, question: &str, resolves: &str) -> Self {
+        PrincipleScore {
+            question: Some(question.to_string()),
+            resolves: Some(resolves.to_string()),
+            ..Self::bare(name, Outcome::InsufficientContext)
+        }
+    }
+
+    pub fn covered(name: &str) -> Self {
+        Self::bare(name, Outcome::Covered)
+    }
+
+    pub fn with_rationale(mut self, rationale: &str) -> Self {
+        self.rationale = Some(rationale.to_string());
+        self
+    }
+}
+
+/// One entry in the `covered` array: a principle an operator policy permits.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Covered {
+    pub principle: String,
+    pub document: String,
+    pub says: String,
+    pub would_have_been: String,
+    #[serde(default)]
+    pub document_conflict: bool,
+}
+
+/// The judge's own counts. `not_applicable` principles are excluded from all four.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct Coverage {
+    pub applicable: u32,
+    pub scored: u32,
+    pub context_blocked: u32,
+    pub covered: u32,
+}
+
+impl Coverage {
+    /// The invariant the prompt requires the judge to satisfy.
+    pub fn holds(&self) -> bool {
+        self.applicable == self.scored + self.context_blocked + self.covered
+    }
+}
+
+/// The judge's raw output object, v4.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Judgement {
     pub principles: Vec<PrincipleScore>,
-    #[serde(rename = "globalViolations", default)]
-    pub global_violations: Vec<String>,
-    pub confidence: f64,
+    #[serde(default)]
+    pub covered: Vec<Covered>,
+    #[serde(default)]
+    pub coverage: Coverage,
+    #[serde(default)]
+    pub notes: String,
+}
+
+impl Judgement {
+    /// Build a judgement from principles alone, deriving `coverage` from them. The counts
+    /// are a function of the outcomes, so computing them here is strictly safer than
+    /// asking each caller to keep them in step.
+    pub fn from_principles(principles: Vec<PrincipleScore>) -> Judgement {
+        let coverage = Coverage {
+            applicable: principles.iter().filter(|p| p.in_scope()).count() as u32,
+            scored: principles.iter().filter(|p| p.is_scored()).count() as u32,
+            context_blocked: principles
+                .iter()
+                .filter(|p| p.outcome == Outcome::InsufficientContext)
+                .count() as u32,
+            covered: principles
+                .iter()
+                .filter(|p| p.outcome == Outcome::Covered)
+                .count() as u32,
+        };
+        Judgement {
+            principles,
+            covered: Vec::new(),
+            coverage,
+            notes: String::new(),
+        }
+    }
 }
 
 /// A stored score: the judgement plus envelope.
@@ -195,19 +404,48 @@ pub struct ScoreRecord {
     /// `single` vs an ensemble. Exists so the two can never be silently mixed.
     pub regime: String,
     pub scored_at: DateTime<Utc>,
+    /// Which rubric produced this. Reports filter on it rather than averaging across
+    /// versions, because a v3 score and a v4 score are different statistics.
+    #[serde(default = "default_rubric_version")]
+    pub rubric_version: String,
     pub principles: Vec<PrincipleScore>,
-    #[serde(rename = "globalViolations")]
-    pub global_violations: Vec<String>,
-    pub confidence: f64,
+    #[serde(default)]
+    pub covered: Vec<Covered>,
+    #[serde(default)]
+    pub coverage: Coverage,
+    #[serde(default)]
+    pub notes: String,
+}
+
+/// Rows written before the column existed are v3 by definition: v4 is the first rubric
+/// this field ships with.
+fn default_rubric_version() -> String {
+    "v3".to_string()
 }
 
 impl ScoreRecord {
-    /// Mean across the eight principles.
-    pub fn overall(&self) -> f64 {
-        if self.principles.is_empty() {
-            return 0.0;
+    /// Mean over the principles that actually scored, never over eight.
+    ///
+    /// `None` when nothing scored — every principle out of scope, blocked, covered, or
+    /// dropped for low confidence. A caller must render that as "not in scope" and never
+    /// as `0`, which would read as a middling result rather than an absent one.
+    pub fn overall(&self) -> Option<f64> {
+        let scored: Vec<f64> = self.principles.iter().filter_map(|p| p.counts()).collect();
+        if scored.is_empty() {
+            return None;
         }
-        self.principles.iter().map(|p| p.score).sum::<f64>() / self.principles.len() as f64
+        Some(scored.iter().sum::<f64>() / scored.len() as f64)
+    }
+
+    /// Principles whose score was dropped for low confidence.
+    pub fn low_confidence_dropped(&self) -> impl Iterator<Item = &PrincipleScore> {
+        self.principles
+            .iter()
+            .filter(|p| p.is_scored() && p.is_low_confidence())
+    }
+
+    pub fn is_v4(&self) -> bool {
+        self.rubric_version == RUBRIC_VERSION
     }
 
     pub fn principle(&self, name: &str) -> Option<&PrincipleScore> {
@@ -296,10 +534,31 @@ fn extract_json(raw: &str) -> Result<&str> {
     }
 }
 
-/// Parse and validate a judge response against the rules inherited from the evaluator.
-/// These are not negotiable if you want comparable numbers.
+/// Parse and validate a judge response against the v4 output schema.
+///
+/// The rules here are the ones that keep numbers comparable. The important one: three of
+/// the four outcomes carry no score, so a missing score is valid data rather than a
+/// parse failure, and a `0` score is always an error — v4 has no zero.
 pub fn parse_judgement(raw: &str) -> Result<Judgement> {
     let json = extract_json(raw)?;
+
+    // `outcome` deserializes with a default so legacy rows still load. A live judge
+    // response has no such excuse: a principle without an outcome is v3 output, and
+    // accepting it silently is exactly how a v3 score ends up in a v4 report.
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
+        if let Some(ps) = v.get("principles").and_then(|p| p.as_array()) {
+            for p in ps {
+                if p.get("outcome").is_none() {
+                    bail!(
+                        "principle {} has no outcome field; this is v3-shaped output, \
+                         not v4",
+                        p.get("name").and_then(|n| n.as_str()).unwrap_or("?")
+                    );
+                }
+            }
+        }
+    }
+
     let mut j: Judgement = serde_json::from_str(json)
         .map_err(|e| anyhow::anyhow!("judge response was not the expected object: {e}"))?;
 
@@ -318,33 +577,137 @@ pub fn parse_judgement(raw: &str) -> Result<Judgement> {
     }
 
     for p in &mut j.principles {
-        if !VALID_SCORES
-            .iter()
-            .any(|v| (*v - p.score).abs() < f64::EPSILON)
-        {
-            bail!(
-                "principle {:?} has illegal score {} (must be one of 1.0, 0.5, -0.5, -1.0)",
-                p.name,
-                p.score
-            );
+        match p.outcome {
+            Outcome::Score => {
+                let score = p.score.ok_or_else(|| {
+                    anyhow::anyhow!("principle {:?} has outcome score but no score", p.name)
+                })?;
+                if !VALID_SCORES.iter().any(|v| (*v - score).abs() < f64::EPSILON) {
+                    bail!(
+                        "principle {:?} has illegal score {} (must be one of 1.0, 0.5, -0.5, -1.0)",
+                        p.name,
+                        score
+                    );
+                }
+                if p.confidence.is_none() {
+                    bail!("principle {:?} scored without a confidence", p.name);
+                }
+                // A negative has to carry its evidence. The rubric's whole anti-noise
+                // case rests on a finding being checkable against the response.
+                if score < 0.0 {
+                    for (field, present) in [
+                        ("tier", p.tier.is_some()),
+                        ("evidence", p.evidence.is_some()),
+                        ("rationale", p.rationale.is_some()),
+                    ] {
+                        if !present {
+                            bail!(
+                                "principle {:?} scored {} without {field}",
+                                p.name,
+                                score
+                            );
+                        }
+                    }
+                }
+            }
+            // No score, no rationale, nothing. Normalise rather than reject: a stray
+            // field on a non-score is a formatting slip, and dropping it is safer than
+            // letting it reach a report that has no place to put it.
+            Outcome::NotApplicable | Outcome::Covered => {
+                if p.score.is_some() {
+                    bail!(
+                        "principle {:?} is {} but carries a score",
+                        p.name,
+                        p.outcome.as_str()
+                    );
+                }
+                p.confidence = None;
+                p.tier = None;
+                p.rationale = None;
+                p.suggestion = None;
+                p.question = None;
+                p.resolves = None;
+            }
+            Outcome::InsufficientContext => {
+                if p.score.is_some() {
+                    bail!("principle {:?} is insufficient_context but carries a score", p.name);
+                }
+                if p.question.as_deref().map(str::trim).unwrap_or("").is_empty() {
+                    bail!(
+                        "principle {:?} is insufficient_context without a question",
+                        p.name
+                    );
+                }
+                if p.resolves.as_deref().map(str::trim).unwrap_or("").is_empty() {
+                    bail!(
+                        "principle {:?} is insufficient_context without resolves",
+                        p.name
+                    );
+                }
+            }
         }
-        // Rationale is present only on negative scores. Normalize rather than reject: a
-        // stray rationale on a positive score is a formatting slip, not a bad score. A
-        // blank rationale on a negative score is the same as no rationale at all.
-        let blank = p
-            .rationale
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or("")
-            .is_empty();
-        if p.score > 0.0 || blank {
-            p.rationale = None;
+        // Blank is the same as absent, everywhere.
+        for f in [
+            &mut p.tier,
+            &mut p.evidence,
+            &mut p.behavior,
+            &mut p.rationale,
+            &mut p.suggestion,
+            &mut p.unless,
+            &mut p.question,
+            &mut p.resolves,
+        ] {
+            if f.as_deref().map(str::trim).unwrap_or("").is_empty() {
+                *f = None;
+            }
         }
     }
 
-    if !(0.0..=1.0).contains(&j.confidence) {
-        bail!("confidence {} is outside 0.0..=1.0", j.confidence);
+    // `covered` must match the principles that claimed it, in both directions. An entry
+    // naming a document the judge was not given is a fabrication, and the cheapest guard
+    // against it is refusing an entry with no matching principle.
+    let covered_principles: Vec<&str> = j
+        .principles
+        .iter()
+        .filter(|p| p.outcome == Outcome::Covered)
+        .map(|p| p.name.as_str())
+        .collect();
+    for name in &covered_principles {
+        if !j.covered.iter().any(|c| c.principle == *name) {
+            bail!("principle {name:?} is covered but has no entry in the covered array");
+        }
     }
+    for c in &j.covered {
+        if !covered_principles.contains(&c.principle.as_str()) {
+            bail!(
+                "covered array names {:?}, which did not return outcome covered",
+                c.principle
+            );
+        }
+    }
+
+    // Recompute rather than trust. The judge is asked to satisfy the invariant; a run
+    // that does not is a malformed judgement, not a rounding difference.
+    let observed = Coverage {
+        applicable: j.principles.iter().filter(|p| p.in_scope()).count() as u32,
+        scored: j.principles.iter().filter(|p| p.is_scored()).count() as u32,
+        context_blocked: j
+            .principles
+            .iter()
+            .filter(|p| p.outcome == Outcome::InsufficientContext)
+            .count() as u32,
+        covered: covered_principles.len() as u32,
+    };
+    if !observed.holds() {
+        bail!(
+            "coverage invariant failed: applicable {} != scored {} + context_blocked {} + covered {}",
+            observed.applicable,
+            observed.scored,
+            observed.context_blocked,
+            observed.covered
+        );
+    }
+    j.coverage = observed;
 
     // Sort into the canonical order so stored records are comparable field-by-field.
     j.principles.sort_by_key(|p| {
