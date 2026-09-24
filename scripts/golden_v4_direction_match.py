@@ -62,6 +62,7 @@ def judge_item(rubric, item, model):
             return {"outcome": p["outcome"], "score": p.get("score"),
                     "confidence": p.get("confidence"), "counts": hb.counts(p),
                     "quote_unverified": p.get("quote_unverified", False),
+                    "evidence": p.get("evidence") or [],
                     "temperature_pinned": pinned, "cost_usd": cost}
         except Exception as e:  # noqa: BLE001
             last = f"{type(e).__name__}: {e}"

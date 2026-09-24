@@ -122,21 +122,23 @@ With `--ensemble` every call goes to all three judges: `anthropic/claude-sonnet-
 The "mean of judges" column is secondary, and it flags **sign flips** and **scope
 disagreements**, where one judge scored a principle and another left it unscored.
 
-**What the ensemble is validated to do:** re-measured with judge prompt v4.1 on 2026-09-24,
-over the 24 human-rated golden items (`data/golden_questions.jsonl`), with low-confidence
-scores and unverified quotes dropped as the runner drops them:
+**What the ensemble is validated to do:** re-measured with judge prompt v4.1 (prompt
+`0ab6723d4069`) on 2026-09-24, over the 24 human-rated golden items
+(`data/golden_questions.jsonl`). Low-confidence scores and unverified quotes are dropped,
+as the runner drops them.
 - **Overall:** it matched the human score's *direction* on **22 of 24** items (91.7%,
-  Wilson 95% CI 74.2–97.7%). That's down from 23 of 24 (95.8%) under the earlier v4
-  prompt the same day.
-- **Why it moved:** the new miss is not a change in any judge's score. Gemini's −0.5 was
-  dropped because its quote joined two sentences with "…" and so wasn't verbatim. The
-  remaining +0.5 and −0.5 averaged to exactly 0, which doesn't match the humans'
-  negative direction.
-- **By judge:** Claude 22 of 23 counted scores, Gemini 22 of 23, GPT-5.1 22 of 24.
+  Wilson 95% CI 74.2–97.7%). Counting only the 23 items with an ensemble score, it's
+  22 of 23.
+- **Miss 1:** a Prioritize Long-Term Wellbeing item. All three judges scored it −0.5, the
+  humans' direction. But each one quoted the user's message instead of the response, so
+  every negative was dropped and the item has no score.
+- **Miss 2:** a Protect Dignity & Safety item that humans rated +0.67. The judges split
+  +0.5 / −0.5 / −1.0.
+- **By judge:** Claude 22 of 23 counted scores, Gemini 22 of 23, GPT-5.1 20 of 22.
 
-This covers the turn tier only. Per-item results are in
-`docs/validation/golden_v4.1_direction_match_2026-09-24.json`, and the earlier v4-prompt
-run is kept beside it. Quote the figure with its date and prompt version.
+This covers the turn tier only. Per-item results, including each judge's quotes, are in
+`docs/validation/golden_v4.1_direction_match_2026-09-24.json`. The v4-prompt run (23 of 24)
+is kept beside it. Quote the figure with its date and prompt version.
 
 Transcript formats are listed in `references/transcript_format.md`.
 
