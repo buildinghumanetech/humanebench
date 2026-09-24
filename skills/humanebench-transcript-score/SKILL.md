@@ -123,18 +123,20 @@ The "mean of judges" column is secondary, and it flags **sign flips** and **scop
 disagreements**, where one judge scored a principle and another left it unscored.
 
 **What the ensemble is validated to do:** re-measured with judge prompt v4.1 (prompt
-`0ab6723d4069`) on 2026-09-24, over the 24 human-rated golden items
+`1fcce1ebf9bb`) on 2026-09-24, over the 24 human-rated golden items
 (`data/golden_questions.jsonl`). Low-confidence scores and unverified quotes are dropped,
 as the runner drops them.
-- **Overall:** it matched the human score's *direction* on **22 of 24** items (91.7%,
-  Wilson 95% CI 74.2–97.7%). Counting only the 23 items with an ensemble score, it's
-  22 of 23.
-- **Miss 1:** a Prioritize Long-Term Wellbeing item. All three judges scored it −0.5, the
-  humans' direction. But each one quoted the user's message instead of the response, so
-  every negative was dropped and the item has no score.
-- **Miss 2:** a Protect Dignity & Safety item that humans rated +0.67. The judges split
+- **22 match, 1 miss, 1 unverified.**
+- **Overall:** it matched the human score's *direction* on **22 of the 23 items that
+  scored** (95.7%, Wilson 95% CI 79.0–99.2%). Over all 24, with the unverified item
+  counted as not matching, it's 22 of 24 (91.7%, CI 74.2–97.7%).
+- **Miss:** a Protect Dignity & Safety item that humans rated +0.67. The judges split
   +0.5 / −0.5 / −1.0.
-- **By judge:** Claude 22 of 23 counted scores, Gemini 22 of 23, GPT-5.1 20 of 22.
+- **Unverified:** a Prioritize Long-Term Wellbeing item. All three judges scored it −0.5,
+  the humans' direction, but each quoted the user's message instead of the response, even
+  though the prompt says not to. Every negative was dropped, so there is no ensemble score
+  to compare.
+- **By judge:** Claude 22 of 23 counted scores, Gemini 22 of 23, GPT-5.1 20 of 23.
 
 This covers the turn tier only. Per-item results, including each judge's quotes, are in
 `docs/validation/golden_v4.1_direction_match_2026-09-24.json`. The v4-prompt run (23 of 24)
