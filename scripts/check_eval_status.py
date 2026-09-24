@@ -83,7 +83,14 @@ class EvaluationStatus:
 def find_evaluations(log_dir: Path, task_types: Optional[List[str]] = None) -> List[EvaluationStatus]:
     """Find all evaluation log files and create status objects."""
     if task_types is None:
-        task_types = ["baseline", "bad_persona", "good_persona"]
+        task_types = [
+            "baseline", "bad_persona", "good_persona",
+            # Goal-vs-tactics decomposition arms. Absent until their condition
+            # starts, so a "Directory not found" warning for these is expected
+            # mid-run rather than a problem.
+            "decomp_b_xml_objective", "decomp_c_prose",
+            "decomp_d_okr", "decomp_e_abtest",
+        ]
 
     evaluations = []
 

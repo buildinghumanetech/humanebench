@@ -1,0 +1,26 @@
+{
+  "n_bootstrap": 1000,
+  "seed": 20260407,
+  "models": [
+    "claude-opus-4.1",
+    "claude-sonnet-4",
+    "claude-sonnet-4.5",
+    "deepseek-v3.1-terminus",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "llama-4-maverick",
+    "gpt-4.1",
+    "gpt-4o-2024-11-20",
+    "gpt-5",
+    "gpt-5.1"
+  ],
+  "included_conditions": [
+    "decomp_b_xml_objective",
+    "decomp_c_prose",
+    "decomp_d_okr",
+    "decomp_e_abtest"
+  ],
+  "excluded_conditions": [],
+  "subset_prompt_hash": "c6bff47ffe03542e9158946b2ae016d36c3451dc445b50df112b6e0735af7240",
+  "gate_threshold": 0.98
+}

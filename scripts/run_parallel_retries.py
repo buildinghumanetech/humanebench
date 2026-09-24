@@ -88,7 +88,12 @@ def find_incomplete_evaluations(
         List of RetryTask objects for incomplete evaluations
     """
     if task_types is None:
-        task_types = ["baseline", "bad_persona", "good_persona"]
+        task_types = [
+            "baseline", "bad_persona", "good_persona",
+            # Goal-vs-tactics decomposition arms.
+            "decomp_b_xml_objective", "decomp_c_prose",
+            "decomp_d_okr", "decomp_e_abtest",
+        ]
 
     retry_tasks = []
 
@@ -164,9 +169,14 @@ def run_retry(
     }
 
     # Build inspect eval-retry command
+    # --log-dir is mandatory: the CLI defaults it to ./logs, so without it a
+    # recovered run lands in the logs/ root instead of the model's directory,
+    # where the status check, the archiver and provenance will never find it.
+    # The money is spent and the data is orphaned.
     cmd = [
         "inspect", "eval-retry",
         retry_task.log_path,
+        f"--log-dir={Path(retry_task.log_path).parent}",
         f"--max-connections={max_connections}"
     ]
 
@@ -311,7 +321,11 @@ Examples:
         "--task-types",
         action="append",
         dest="task_types",
-        choices=["baseline", "bad_persona", "good_persona"],
+        choices=[
+            "baseline", "bad_persona", "good_persona",
+            "decomp_b_xml_objective", "decomp_c_prose",
+            "decomp_d_okr", "decomp_e_abtest",
+        ],
         help="Task type to retry (can be specified multiple times). "
              "Default: all task types"
     )

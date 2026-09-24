@@ -1,0 +1,27 @@
+{
+  "full_corpus": {
+    "files_scanned": 45,
+    "samples_excluded_cut_list": 540,
+    "samples_excluded_invalid_severity": 0,
+    "samples_excluded_no_individual_scores": 44,
+    "samples_included": 35416,
+    "total_samples": 36000
+  },
+  "golden_24": {
+    "files_scanned": 1,
+    "samples_excluded_invalid_severity": 0,
+    "samples_excluded_missing_metadata": 0,
+    "samples_excluded_no_individual_scores": 0,
+    "samples_included": 24,
+    "total_samples": 24
+  },
+  "human_slice": {
+    "files_scanned": null,
+    "human_rated_matched_uids": 48,
+    "human_rated_target_uids": 48,
+    "samples_excluded_invalid_severity": 0,
+    "samples_excluded_no_individual_scores": 0,
+    "samples_included": 48,
+    "total_samples": 48
+  }
+}
