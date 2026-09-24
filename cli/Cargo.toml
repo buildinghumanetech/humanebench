@@ -2,7 +2,7 @@
 name = "humanebench"
 version = "0.1.0"
 edition = "2021"
-description = "Score your own conversation history against the HumaneBench v3 rubric"
+description = "Score your own conversation history against the HumaneBench v4 rubric"
 license = "MIT"
 
 [[bin]]

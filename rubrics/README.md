@@ -19,9 +19,9 @@ A prompt that lives inside one consumer makes the other two either vendor a copy
 or take a dependency they do not want, and a vendored copy is how the two
 documents drift apart.
 
-`judge_prompt_v3.md` currently sits under `cli/rubric/` on the CLI branch, and
-its own README says the drift between it and the root rubric is open work. This
-is the fix for v4: one location, three consumers.
+`judge_prompt_v3.md` used to sit under `cli/rubric/`, a fork that had drifted from
+the root rubric. It is gone. This is the fix for v4: one location, three
+consumers.
 
 ## Consuming it
 
