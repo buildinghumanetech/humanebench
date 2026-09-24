@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 /// The schema this build understands. Bump it and add a step to [`Store::migrate`]
 /// whenever the schema changes — an existing user database is otherwise left on the old
 /// shape, and the change silently does nothing for everyone who already has one.
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 pub struct Store {
     conn: Connection,
@@ -123,6 +123,10 @@ impl Store {
             version = 2;
         }
 
+        if version < 3 {
+            self.migrate_to_v3()?;
+            version = 3;
+        }
         debug_assert_eq!(version, SCHEMA_VERSION, "migrate must reach SCHEMA_VERSION");
         Ok(())
     }
@@ -175,6 +179,59 @@ impl Store {
         Ok(())
     }
 
+    /// v3: rubric v4 changed what a score *is*, so the row has to say which rubric made it.
+    ///
+    /// Three of v4's four outcomes carry no score at all, and the top-level `confidence` and
+    /// `globalViolations` fields are gone. Existing rows are kept and stamped `v3`: they are
+    /// still queryable, and the report filters on the column rather than averaging a v3 score
+    /// together with a v4 one, which would misreport both.
+    fn migrate_to_v3(&mut self) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute_batch(
+            r#"
+            CREATE TABLE scores_v3 (
+                identity          TEXT NOT NULL,
+                tier              TEXT NOT NULL,
+                judge_model       TEXT NOT NULL,
+                content_hash      TEXT NOT NULL,
+                turn_id           TEXT NOT NULL,
+                session_id        TEXT NOT NULL,
+                regime            TEXT NOT NULL,
+                scored_at         TEXT NOT NULL,
+                rubric_version    TEXT NOT NULL DEFAULT 'v3',
+                principles        TEXT NOT NULL,
+                covered           TEXT NOT NULL DEFAULT '[]',
+                coverage          TEXT NOT NULL DEFAULT '{}',
+                notes             TEXT NOT NULL DEFAULT '',
+                source            TEXT NOT NULL DEFAULT '',
+                model             TEXT,
+                timestamp         TEXT NOT NULL,
+                PRIMARY KEY (identity, tier, judge_model)
+            );
+    
+            INSERT INTO scores_v3
+                (identity, tier, judge_model, content_hash, turn_id, session_id, regime,
+                 scored_at, rubric_version, principles, covered, coverage, notes,
+                 source, model, timestamp)
+            SELECT
+                identity, tier, judge_model, content_hash, turn_id, session_id, regime,
+                scored_at, 'v3', principles, '[]', '{}', '',
+                source, model, timestamp
+            FROM scores;
+    
+            DROP TABLE scores;
+            ALTER TABLE scores_v3 RENAME TO scores;
+            CREATE INDEX IF NOT EXISTS idx_scores_turn    ON scores(turn_id);
+            CREATE INDEX IF NOT EXISTS idx_scores_session ON scores(session_id);
+            CREATE INDEX IF NOT EXISTS idx_scores_ts      ON scores(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_scores_rubric  ON scores(rubric_version);
+            "#,
+        )?;
+        Self::stamp_version(&tx, 3)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// v2: a score row is identified by what it judged, not by the bytes it judged.
     ///
     /// SQLite cannot drop a primary key in place, so `scores` is rebuilt. The copy keys
@@ -206,7 +263,7 @@ impl Store {
             "#,
         )?;
         {
-            let mut stmt = tx.prepare(&score_upsert_sql("scores_v2"))?;
+            let mut stmt = tx.prepare(&score_upsert_sql_v2("scores_v2"))?;
             for row in &existing {
                 stmt.execute(params![
                     row.identity,
@@ -447,23 +504,28 @@ impl Store {
         let row = self
             .conn
             .query_row(
-                "SELECT principles, global_violations, confidence FROM scores
-                 WHERE content_hash = ?1 LIMIT 1",
-                params![content_hash],
+                // Only a judgement made under the rubric this binary implements may be
+                // reused. The hash already covers the prompt text, so a v3 row cannot
+                // collide; this is belt and braces against a future hash change.
+                "SELECT principles, covered, coverage, notes FROM scores
+                 WHERE content_hash = ?1 AND rubric_version = ?2 LIMIT 1",
+                params![content_hash, crate::judge::RUBRIC_VERSION],
                 |r| {
                     Ok((
                         r.get::<_, String>(0)?,
                         r.get::<_, String>(1)?,
-                        r.get::<_, f64>(2)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
                     ))
                 },
             )
             .optional()?;
-        Ok(row.map(|(principles, violations, confidence)| Judgement {
+        Ok(row.map(|(principles, covered, coverage, notes)| Judgement {
             principles: serde_json::from_str::<Vec<PrincipleScore>>(&principles)
                 .unwrap_or_default(),
-            global_violations: serde_json::from_str::<Vec<String>>(&violations).unwrap_or_default(),
-            confidence,
+            covered: serde_json::from_str(&covered).unwrap_or_default(),
+            coverage: serde_json::from_str(&coverage).unwrap_or_default(),
+            notes,
         }))
     }
 
@@ -514,9 +576,11 @@ impl Store {
                 rec.session_id,
                 rec.regime,
                 rec.scored_at.to_rfc3339(),
+                rec.rubric_version.clone(),
                 serde_json::to_string(&rec.principles)?,
-                serde_json::to_string(&rec.global_violations)?,
-                rec.confidence,
+                serde_json::to_string(&rec.covered)?,
+                serde_json::to_string(&rec.coverage)?,
+                rec.notes.clone(),
                 source,
                 model,
                 row_ts.to_rfc3339(),
@@ -529,8 +593,8 @@ impl Store {
     pub fn scores(&self, filter: &Filter) -> Result<Vec<ScoredTurn>> {
         let mut sql = String::from(
             "SELECT s.content_hash, s.turn_id, s.session_id, s.tier, s.judge_model, s.regime,
-                    s.scored_at, s.principles, s.global_violations, s.confidence,
-                    s.source, s.model, s.timestamp
+                    s.scored_at, s.principles, s.covered, s.coverage,
+                    s.source, s.model, s.timestamp, s.rubric_version, s.notes
              FROM scores s WHERE 1=1",
         );
         let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -566,7 +630,8 @@ impl Store {
 
         let rows = stmt.query_map(refs.as_slice(), |r| {
             let principles: String = r.get(7)?;
-            let violations: String = r.get(8)?;
+            let covered: String = r.get(8)?;
+            let coverage: String = r.get(9)?;
             let scored_at: String = r.get(6)?;
             let ts: String = r.get(12)?;
             let tier: String = r.get(3)?;
@@ -585,11 +650,12 @@ impl Store {
                     scored_at: DateTime::parse_from_rfc3339(&scored_at)
                         .map(|t| t.with_timezone(&Utc))
                         .unwrap_or_else(|_| Utc::now()),
+                    rubric_version: r.get(13)?,
                     principles: serde_json::from_str::<Vec<PrincipleScore>>(&principles)
                         .unwrap_or_default(),
-                    global_violations: serde_json::from_str::<Vec<String>>(&violations)
-                        .unwrap_or_default(),
-                    confidence: r.get(9)?,
+                    covered: serde_json::from_str(&covered).unwrap_or_default(),
+                    coverage: serde_json::from_str(&coverage).unwrap_or_default(),
+                    notes: r.get(14)?,
                 },
                 source: r.get(10)?,
                 model: r.get(11)?,
@@ -635,9 +701,13 @@ struct V1ScoreRow {
     timestamp: String,
 }
 
-/// The one upsert both the runtime and the v2 migration write through, so the two can
-/// never disagree about what supersedes what.
-fn score_upsert_sql(table: &str) -> String {
+/// The v2-era upsert, frozen.
+///
+/// `migrate_to_v2` rebuilds the v2 table and must keep writing v2-shaped rows; the
+/// runtime's upsert has moved on to the v3 columns. Sharing one function between them is
+/// what broke the moment v3 added columns, so they are deliberately separate now and the
+/// migration's copy never changes again.
+fn score_upsert_sql_v2(table: &str) -> String {
     format!(
         "INSERT INTO {table}(identity, tier, judge_model, content_hash, turn_id, session_id,
                              regime, scored_at, principles, global_violations, confidence,
@@ -652,6 +722,30 @@ fn score_upsert_sql(table: &str) -> String {
            principles=excluded.principles,
            global_violations=excluded.global_violations,
            confidence=excluded.confidence,
+           source=excluded.source,
+           model=excluded.model,
+           timestamp=excluded.timestamp"
+    )
+}
+
+/// The upsert the runtime writes through, on the v3 columns.
+fn score_upsert_sql(table: &str) -> String {
+    format!(
+        "INSERT INTO {table}(identity, tier, judge_model, content_hash, turn_id, session_id,
+                             regime, scored_at, rubric_version, principles, covered,
+                             coverage, notes, source, model, timestamp)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
+         ON CONFLICT(identity, tier, judge_model) DO UPDATE SET
+           content_hash=excluded.content_hash,
+           turn_id=excluded.turn_id,
+           session_id=excluded.session_id,
+           regime=excluded.regime,
+           scored_at=excluded.scored_at,
+           rubric_version=excluded.rubric_version,
+           principles=excluded.principles,
+           covered=excluded.covered,
+           coverage=excluded.coverage,
+           notes=excluded.notes,
            source=excluded.source,
            model=excluded.model,
            timestamp=excluded.timestamp"
@@ -708,31 +802,27 @@ pub fn score_record(
         judge_model: judge_model.to_string(),
         regime: regime.to_string(),
         scored_at: Utc::now(),
+        rubric_version: crate::judge::RUBRIC_VERSION.to_string(),
         principles: judgement.principles,
-        global_violations: judgement.global_violations,
-        confidence: judgement.confidence,
+        covered: judgement.covered,
+        coverage: judgement.coverage,
+        notes: judgement.notes,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::judge::{Judgement, PrincipleScore, PRINCIPLES};
+    use crate::judge::{Confidence, Judgement, PrincipleScore, PRINCIPLES};
     use chrono::TimeZone;
 
     fn judgement() -> Judgement {
-        Judgement {
-            principles: PRINCIPLES
+        Judgement::from_principles(
+            PRINCIPLES
                 .iter()
-                .map(|n| PrincipleScore {
-                    name: n.to_string(),
-                    score: 0.5,
-                    rationale: None,
-                })
+                .map(|n| PrincipleScore::scored(n, 0.5, Confidence::High))
                 .collect(),
-            global_violations: vec![],
-            confidence: 0.8,
-        }
+        )
     }
 
     fn rec(id: &str, ts: &str) -> Record {
@@ -803,7 +893,7 @@ mod tests {
         s.insert_score(&r, "claude-code", None).unwrap();
         let reused = s.judgement_for_hash("blake3:abc").unwrap().unwrap();
         assert_eq!(reused.principles.len(), PRINCIPLES.len());
-        assert!((reused.confidence - 0.8).abs() < 1e-9);
+        assert_eq!(reused.coverage.scored, PRINCIPLES.len() as u32);
     }
 
     #[test]
@@ -931,9 +1021,9 @@ mod tests {
     }
 
     #[test]
-    fn overall_is_the_mean_of_eight() {
+    fn overall_is_the_mean_of_what_scored() {
         let r = score_record("t1", "s1", Tier::Turn, "h", "m", "single", judgement());
-        assert!((r.overall() - 0.5).abs() < 1e-9);
+        assert!((r.overall().unwrap() - 0.5).abs() < 1e-9);
     }
 
     // ---- F2: identical bytes, different turns -------------------------------

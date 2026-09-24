@@ -1,5 +1,12 @@
-//! HumaneBench CLI — score your own conversation history against the HumaneBench v3
+//! HumaneBench CLI — score your own conversation history against the HumaneBench v4
 //! rubric and emit a local HTML report.
+//!
+//! v4, not the v3 the published leaderboard runs on. v3 is frozen as the rubric of record
+//! for HumaneBench v1; anything that evaluates something new runs v4. The two produce
+//! different statistics, so a score from one is never placed beside a score from the
+//! other and a v4 score is never described as leaderboard-comparable. Scores already in
+//! the store from an older rubric are kept, tagged, and excluded from the report rather
+//! than averaged in.
 //!
 //! Ingest, score, and report are separate commands on purpose. Scoring is the only one
 //! that costs money, so it is the only one you have to consciously invoke — and
@@ -26,7 +33,7 @@ use store::{Filter, Store};
 #[derive(Parser)]
 #[command(
     name = "humanebench",
-    about = "Score your own conversation history against the HumaneBench v3 rubric",
+    about = "Score your own conversation history against the HumaneBench v4 rubric",
     version
 )]
 struct Cli {
@@ -60,7 +67,7 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
         /// Judge backend.
-        #[arg(long, value_parser = ["openrouter", "vertex"], default_value = "vertex")]
+        #[arg(long, value_parser = ["openrouter", "vertex"], default_value = "openrouter")]
         provider: String,
         /// Judge model, as the chosen provider names it.
         #[arg(long)]
@@ -1052,23 +1059,29 @@ mod tests {
         assert_eq!(label, "openrouter/anthropic/claude-sonnet-4.5");
     }
 
+    /// The default provider is the one that needs a single environment variable.
+    /// Vertex works, but its tokens expire, and a default that stops working after a
+    /// while is a bad default for a tool people run occasionally.
+    #[test]
+    fn the_default_provider_is_openrouter() {
+        let cli = Cli::try_parse_from(["humanebench", "score"]).unwrap();
+        match cli.command {
+            Command::Score { provider, .. } => assert_eq!(provider, "openrouter"),
+            _ => panic!("expected the score subcommand"),
+        }
+    }
+
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
     fn a_judgement() -> judge::Judgement {
-        judge::Judgement {
-            principles: judge::PRINCIPLES
+        judge::Judgement::from_principles(
+            judge::PRINCIPLES
                 .iter()
-                .map(|n| judge::PrincipleScore {
-                    name: n.to_string(),
-                    score: 0.5,
-                    rationale: None,
-                })
+                .map(|n| judge::PrincipleScore::scored(n, 0.5, judge::Confidence::High))
                 .collect(),
-            global_violations: vec![],
-            confidence: 0.8,
-        }
+        )
     }
 
     /// Record a judgement for everything in a plan, exactly the way `cmd_score` does —
