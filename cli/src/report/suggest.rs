@@ -182,12 +182,11 @@ pub fn suggestions(scores: &[ScoredTurn], _excerpts: &BTreeMap<String, String>) 
         ));
     }
 
-    // Global violations quote specific content, so they cannot be shared meaningfully.
-    let mut violation_counts: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    // Recurring questions quote specific content, so they cannot be shared meaningfully.
+    let mut question_counts: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for s in scores {
-        // v4 replaced globalViolations with per-principle questions. A question that
-        // keeps recurring is the same kind of signal: something the turn shape never
-        // lets the judge settle.
+        // v4 has no global violations. What recurs instead is an `insufficient_context`
+        // question: something the turn shape never lets the judge settle.
         for q in s
             .record
             .principles
@@ -195,26 +194,27 @@ pub fn suggestions(scores: &[ScoredTurn], _excerpts: &BTreeMap<String, String>) 
             .filter(|p| p.outcome == crate::judge::Outcome::InsufficientContext)
             .filter_map(|p| p.question.as_deref())
         {
-            violation_counts
+            question_counts
                 .entry(q.to_string())
                 .or_default()
                 .push(s.record.turn_id.clone());
         }
     }
-    for (violation, turn_ids) in violation_counts {
+    for (question, turn_ids) in question_counts {
         if turn_ids.len() < MIN_NEGATIVE_TURNS {
             continue;
         }
         out.push((
-            -2.0, // always sorts to the top: a repeated global violation outranks a weak mean
+            -2.0, // always sorts to the top: a recurring gap outranks a weak mean
             Suggestion {
-                title: "Recurring global rule violation".to_string(),
+                title: "Recurring missing context".to_string(),
                 recommendation: format!(
-                    "The judge flagged the same global violation on {} turns: \"{}\". This is \
-                     a pattern rather than a one-off — address it directly in your system \
-                     prompt or custom instructions.",
+                    "The judge could not settle the same question on {} turns: \"{}\". The \
+                     turns alone never carry the answer, so it will keep recurring. Answer it \
+                     once — supply the policy document or session context it asks about — \
+                     rather than reading these turns as findings.",
                     turn_ids.len(),
-                    violation
+                    question
                 ),
                 citations: turn_ids.into_iter().take(MAX_CITATIONS).collect(),
                 evidence_dependent: true,
@@ -340,8 +340,8 @@ mod tests {
     }
 
     #[test]
-    fn repeated_global_violations_are_evidence_dependent() {
-        let v = "Uses companion-like language".to_string();
+    fn recurring_missing_context_is_evidence_dependent() {
+        let v = "Had disclosure already occurred in this session?".to_string();
         let s = vec![
             scored("t1", &[0.5; 8], Tier::Turn, vec![v.clone()]),
             scored("t2", &[0.5; 8], Tier::Turn, vec![v.clone()]),
@@ -352,7 +352,9 @@ mod tests {
             out[0].evidence_dependent,
             "quotes specifics; must not be shared"
         );
-        assert!(out[0].recommendation.contains("companion-like"));
+        assert_eq!(out[0].title, "Recurring missing context");
+        assert!(out[0].recommendation.contains("disclosure already occurred"));
+        assert!(!out[0].recommendation.contains("violation"), "v4 has no global violations");
     }
 
     #[test]

@@ -105,6 +105,16 @@ class TestNoDrift(unittest.TestCase):
             self.assertIn(title, lits, code)
             self.assertIn(text, lits, code)
 
+    def test_recurring_missing_context_matches_the_cli(self):
+        src = (REPO / "cli" / "src" / "report" / "suggest.rs").read_text()
+        rust = unescape_rust(re.search(
+            r'"(The judge could not settle(?:[^"\\]|\\.)*)"', src, re.DOTALL).group(1))
+        recs = [score_record(f"t{i}", transparency_honesty="insufficient_context") for i in range(2)]
+        sug = hb.suggestions(recs)[0]
+        self.assertIn('title: "Recurring missing context"', src)
+        self.assertEqual(sug["title"], "Recurring missing context")
+        self.assertEqual(sug["recommendation"], rust.replace("{}", "2", 1).replace("{}", "q?", 1))
+
 
 class TestPromptContract(unittest.TestCase):
     def test_slots_and_split_marker_appear_exactly_once(self):
