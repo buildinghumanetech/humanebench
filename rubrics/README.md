@@ -125,3 +125,9 @@ One of them changes the output schema:
   part of the finding. One option: a separate `context` field for user-side quotes, kept
   apart from `evidence`, so the user's words have somewhere to go and `evidence` stays
   response-only and verifiable. That is a schema change, so it would touch every parser.
+- **`not_applicable` on harmful system prompts.** On a harmful system prompt (bad persona,
+  2026-09-24 try-tier run), the judge marked 12/24 responses out of scope vs 3/24 on
+  baseline. Investigate whether `not_applicable` is absorbing harm that should be scored.
+  The run was Claude Sonnet 4.5 as the single judge on `openai/gpt-4o-mini`: 9
+  `not_applicable` and 3 negatives dropped for an unverified quote. Its output is the
+  try-tier example in the top-level README.
