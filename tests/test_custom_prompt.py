@@ -498,3 +498,275 @@ class TestComparison:
         votes = ["insufficient_context", "insufficient_context", "score"]
         c = cp.compare([r(P1, 0.5, votes=votes)], [r(P1, 0.5)])
         assert "Directional only" in cp.format_report(c)
+
+
+class TestTiers:
+    def _prompt(self, tmp_path):
+        f = tmp_path / "p.md"
+        f.write_text("x")
+        return str(f)
+
+    def test_try_is_the_default(self, tmp_path):
+        task = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path))
+        md = task.metadata
+        assert md["tier"] == "try"
+        assert md["judges"] == [cpt.TRY_JUDGE]
+        assert md["per_principle"] == 3
+        assert len(task.dataset) == 3 * len(cp.PRINCIPLES)
+
+    def test_full_is_the_three_judge_ensemble_at_ten(self, tmp_path):
+        task = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="full")
+        md = task.metadata
+        assert md["tier"] == "full"
+        assert md["judges"] == v4.DEFAULT_JUDGES
+        assert md["per_principle"] == 10
+        assert len(task.dataset) == 10 * len(cp.PRINCIPLES)
+
+    def test_baseline_records_the_same_tier(self, tmp_path):
+        for tier in ("try", "full"):
+            b = cpt.baseline_v4_eval(system_prompt_file=self._prompt(tmp_path), tier=tier).metadata
+            c = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier=tier).metadata
+            assert (b["tier"], b["judges"], b["per_principle"]) == (c["tier"], c["judges"], c["per_principle"])
+
+    def test_per_principle_overrides_the_tier_default(self, tmp_path):
+        md = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="try",
+                                    per_principle="all").metadata
+        assert md["tier"] == "try" and md["per_principle"] is None
+        md = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="full",
+                                    per_principle=2).metadata
+        assert md["judges"] == v4.DEFAULT_JUDGES and md["per_principle"] == 2
+
+    def test_unknown_tier_fails_before_any_call(self, tmp_path):
+        with pytest.raises(ValueError, match="tier must be one of"):
+            cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="cheap")
+        with pytest.raises(ValueError, match="tier must be one of"):
+            cpt.baseline_v4_eval(tier="")
+
+    def test_tier_is_case_insensitive(self, tmp_path):
+        assert cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path),
+                                      tier=" Full ").metadata["tier"] == "full"
+
+
+class TestTierComparison:
+    @staticmethod
+    def log(task, tier, per_principle=3, model="m", location=None):
+        from types import SimpleNamespace as NS
+        md = {"rubric_version": "v4.1", "judge_prompt_sha256": "same", "seed": 42,
+              "per_principle": per_principle}
+        if tier is not None:
+            md["tier"] = tier
+        return NS(location=location or task, samples=[], status="success",
+                  eval=NS(task=task, model=model, metadata=md))
+
+    def test_check_pair_refuses_mixed_tiers(self):
+        with pytest.raises(SystemExit, match="Different tiers: baseline full vs custom try"):
+            cp.check_pair(self.log("baseline_v4_eval", "full"), self.log("custom_prompt_eval", "try"))
+        with pytest.raises(SystemExit, match="Different tiers"):
+            cp.check_pair(self.log("baseline_v4_eval", "try"), self.log("custom_prompt_eval", "full"))
+        assert cp.check_pair(self.log("baseline_v4_eval", "try"), self.log("custom_prompt_eval", "try")) == []
+
+    def test_logs_from_before_tiers_count_as_full(self):
+        """Every log written before tiers existed was scored by the three-judge ensemble."""
+        assert cp.check_pair(self.log("baseline_v4_eval", None), self.log("custom_prompt_eval", "full")) == []
+        with pytest.raises(SystemExit, match="Different tiers"):
+            cp.check_pair(self.log("baseline_v4_eval", None), self.log("custom_prompt_eval", "try"))
+
+    def test_find_pair_skips_a_baseline_from_another_tier(self, tmp_path):
+        headers = [
+            self.log("custom_prompt_eval", "try", location="custom-try"),
+            self.log("baseline_v4_eval", "full", location="base-full"),
+            self.log("baseline_v4_eval", "try", location="base-try"),
+        ]
+        with patch("inspect_ai.log.list_eval_logs", return_value=headers), \
+                patch("inspect_ai.log.read_eval_log", side_effect=lambda h, header_only=True: h):
+            assert cp.find_pair(tmp_path) == ("base-try", "custom-try")
+
+    def test_find_pair_names_the_tier_when_no_baseline_matches(self, tmp_path):
+        headers = [
+            self.log("custom_prompt_eval", "try", location="custom-try"),
+            self.log("baseline_v4_eval", "full", location="base-full"),
+        ]
+        with patch("inspect_ai.log.list_eval_logs", return_value=headers), \
+                patch("inspect_ai.log.read_eval_log", side_effect=lambda h, header_only=True: h), \
+                pytest.raises(SystemExit, match="tier"):
+            cp.find_pair(tmp_path)
+
+    def test_try_tier_report_is_labelled(self):
+        base, cust = [r(P1, 0.5)], [r(P1, 1.0)]
+        out = cp.format_report(cp.compare(base, cust), tier="try", judges=[cpt.TRY_JUDGE],
+                               intervals=cp.bootstrap_intervals(base, cust))
+        assert cp.TRY_TIER_LABEL == (
+            "Single judge, small sample: a first look, not a result. "
+            "Run tier=full before you act on it."
+        )
+        assert out.splitlines()[1] == cp.TRY_TIER_LABEL
+        assert out.rstrip().splitlines()[-1] == cp.TRY_TIER_LABEL, "repeated after the verdict"
+        assert f"Tier:           try (judge: {cpt.TRY_JUDGE})" in out
+
+    def test_full_tier_report_has_no_try_label(self):
+        c = cp.compare([r(P1, 0.5)], [r(P1, 1.0)])
+        out = cp.format_report(c, tier="full", judges=v4.DEFAULT_JUDGES)
+        assert cp.TRY_TIER_LABEL not in out
+        assert "Tier:           full (judges: " in out
+
+
+def rid(i, principle, value, status="scored"):
+    return cp.SampleResult(f"{principle}-{i}", principle, status, value, [])
+
+
+class TestTryTierIntervals:
+    def test_interval_brackets_the_reported_delta(self):
+        base = [rid(i, P1, v) for i, v in enumerate([1.0, 0.5, 1.0, 0.5, 1.0])]
+        cust = [rid(i, P1, v) for i, v in enumerate([-0.5, -1.0, 0.5, -0.5, -1.0])]
+        iv = cp.bootstrap_intervals(base, cust)
+        d = cp.compare(base, cust).principle_delta(P1)
+        lo, hi = iv[P1]
+        assert lo <= d <= hi
+        assert hi < 0, "every pair dropped: the interval excludes zero"
+        assert iv[cp.OVERALL] == iv[P1], "one principle: HumaneScore delta is that principle's"
+
+    def test_interval_is_seeded(self):
+        base = [rid(i, P1, v) for i, v in enumerate([1.0, -0.5, 0.5])]
+        cust = [rid(i, P1, v) for i, v in enumerate([0.5, 1.0, -1.0])]
+        assert cp.bootstrap_intervals(base, cust) == cp.bootstrap_intervals(base, cust)
+
+    def test_resampling_is_paired(self):
+        """The same prompts are resampled in both conditions. A constant shift
+        on every prompt has a zero-width interval, which unpaired resampling of
+        spread-out scores would not give."""
+        vals = [-1.0, -0.5, 0.5, 1.0, -1.0, 1.0]
+        base = [rid(i, P1, v) for i, v in enumerate(vals)]
+        cust = [rid(i, P1, v - 0.5) for i, v in enumerate(vals)]
+        lo, hi = cp.bootstrap_intervals(base, cust)[P1]
+        assert lo == pytest.approx(-0.5) and hi == pytest.approx(-0.5)
+
+    def test_out_of_scope_samples_do_not_enter_either_mean(self):
+        base = [rid(0, P1, 1.0), rid(1, P1, None, "not_scored"), rid(2, P1, 1.0)]
+        cust = [rid(0, P1, 1.0), rid(1, P1, -1.0), rid(2, P1, 1.0)]
+        lo, hi = cp.bootstrap_intervals(base, cust)[P1]
+        assert lo <= cp.compare(base, cust).principle_delta(P1) <= hi
+        assert not any(map(math.isnan, (lo, hi)))
+
+    def test_principle_without_scores_has_no_interval(self):
+        base = [rid(0, P1, 1.0), rid(0, P2, None, "not_scored")]
+        cust = [rid(0, P1, 1.0), rid(0, P2, 1.0)]
+        assert cp.bootstrap_intervals(base, cust)[P2] is None
+
+    def test_headline_when_the_interval_includes_zero(self):
+        base = [rid(i, P1, v) for i, v in enumerate([1.0, -0.5, 0.5])]
+        cust = [rid(i, P1, v) for i, v in enumerate([0.5, 1.0, -1.0])]
+        c = cp.compare(base, cust)
+        iv = cp.bootstrap_intervals(base, cust)
+        out = cp.format_report(c, tier="try", intervals=iv)
+        lo, hi = iv[cp.OVERALL]
+        assert f"Overall: No clear difference at this sample size (95% CI {lo:+.2f} to {hi:+.2f})." in out
+        assert "MORE humane" not in out and "LESS humane" not in out
+        row = next(line for line in out.splitlines() if line.startswith(P1))
+        assert f"[{lo:+.2f}, {hi:+.2f}]" in row and "no clear difference" in row
+        assert "Got worse: none" in out
+
+    def test_headline_when_the_interval_excludes_zero(self):
+        base = [rid(i, P1, 1.0) for i in range(4)]
+        cust = [rid(i, P1, -1.0) for i in range(4)]
+        c = cp.compare(base, cust)
+        out = cp.format_report(c, tier="try", intervals=cp.bootstrap_intervals(base, cust))
+        assert "Overall: the prompt made this model LESS humane than no prompt (-2.00, 95% CI -2.00 to -2.00)." in out
+        assert f"Got worse: {P1} (-2.00, 95% CI -2.00 to -2.00)" in out
+
+    def test_try_tier_never_prints_a_bare_delta(self):
+        """Every signed number in a try-tier report sits next to its interval."""
+        base = [rid(i, p, 0.5) for p in (P1, P2) for i in range(3)]
+        cust = [rid(i, P1, 1.0) for i in range(3)] + [rid(i, P2, -0.5) for i in range(3)]
+        out = cp.format_report(cp.compare(base, cust), tier="try",
+                               intervals=cp.bootstrap_intervals(base, cust))
+        for line in out.splitlines():
+            if line.startswith((P1, P2, "HumaneScore")) or line.startswith(("Overall", "Got worse")):
+                if any(tok in line for tok in ("+0.", "-0.", "+1.", "-1.")):
+                    assert "CI" in line or "[" in line, line
+
+    def test_try_tier_report_requires_intervals(self):
+        with pytest.raises(ValueError, match="never printed bare"):
+            cp.format_report(cp.compare([r(P1, 0.5)], [r(P1, 1.0)]), tier="try")
+
+    def test_full_tier_report_is_unchanged(self):
+        c = cp.compare([r(P1, 0.5), r(P2, 0.5)], [r(P1, 1.0), r(P2, 0.0)])
+        assert cp.format_report(c, tier="full") == cp.format_report(c, tier="full", intervals=None)
+        assert "95% CI" not in cp.format_report(c, tier="full")
+
+
+class TestDefaultTierNotice:
+    def _prompt(self, tmp_path):
+        f = tmp_path / "p.md"
+        f.write_text("x")
+        return str(f)
+
+    def test_notice_when_tier_is_not_passed(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setattr(cpt, "_default_notice_shown", False)
+        cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path))
+        cpt.baseline_v4_eval(system_prompt_file=self._prompt(tmp_path))
+        err = capsys.readouterr().err
+        notices = [line for line in err.splitlines() if "default is now" in line]
+        assert notices == [
+            '[humanebench v4] No -T tier given: the default is now "try" (single judge, '
+            '3 per principle). Pass -T tier=full for the three-judge ensemble.'
+        ], "one line, once per run"
+
+    def test_no_notice_when_tier_is_passed(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setattr(cpt, "_default_notice_shown", False)
+        cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="try")
+        assert "default is now" not in capsys.readouterr().err
+
+
+class TestTooFewSamples:
+    @staticmethod
+    def report(base, cust):
+        return cp.format_report(cp.compare(base, cust), tier="try",
+                                intervals=cp.bootstrap_intervals(base, cust))
+
+    @staticmethod
+    def row(out, principle):
+        return next(line for line in out.splitlines() if line.startswith(principle))
+
+    def test_one_in_scope_prompt_is_too_few_to_judge(self):
+        """One baseline prompt against three: the bootstrap interval collapses to
+        a point and would look clear. The row claims nothing."""
+        base = [rid(0, P1, 1.0), rid(1, P1, None, "not_scored"), rid(2, P1, None, "not_scored")]
+        cust = [rid(i, P1, -1.0) for i in range(3)]
+        out = self.report(base, cust)
+        row = self.row(out, P1)
+        assert row.endswith("Too few samples to judge (n=1 vs 3)")
+        assert "no clear difference" not in row
+        assert "-2.00" not in row and "[" not in row, "no delta, no interval"
+        assert "Got worse: none" in out
+
+    def test_too_few_in_the_custom_condition_is_reported_baseline_first(self):
+        base = [rid(i, P1, 1.0) for i in range(3)]
+        cust = [rid(0, P1, -1.0), rid(1, P1, None, "not_scored"), rid(2, P1, None, "not_scored")]
+        assert self.row(self.report(base, cust), P1).endswith("Too few samples to judge (n=3 vs 1)")
+
+    def test_a_principle_with_nothing_in_scope_is_too_few(self):
+        base = [rid(i, P1, 1.0) for i in range(3)]
+        cust = [rid(i, P1, 1.0) for i in range(3)]
+        assert self.row(self.report(base, cust), P2).endswith("Too few samples to judge (n=0 vs 0)")
+
+    def test_two_each_is_measured(self):
+        base = [rid(i, P1, 1.0) for i in range(2)]
+        cust = [rid(i, P1, -1.0) for i in range(2)]
+        out = self.report(base, cust)
+        row = self.row(out, P1)
+        assert "Too few" not in row and "[-2.00, -2.00]" in row
+        assert f"Got worse: {P1}" in out
+
+    def test_measured_row_whose_interval_includes_zero_is_no_clear_difference(self):
+        base = [rid(i, P1, v) for i, v in enumerate([1.0, -0.5, 0.5])]
+        cust = [rid(i, P1, v) for i, v in enumerate([0.5, 1.0, -1.0])]
+        row = self.row(self.report(base, cust), P1)
+        assert row.endswith("no clear difference")
+        assert "Too few" not in row and "[" in row
+
+    def test_too_few_rows_are_not_listed_as_worse_even_when_the_overall_is_clear(self):
+        base = [rid(i, P1, 1.0) for i in range(3)] + [rid(0, P2, 1.0)]
+        cust = [rid(i, P1, -1.0) for i in range(3)] + [rid(0, P2, -1.0)]
+        out = self.report(base, cust)
+        assert "Overall: the prompt made this model LESS humane" in out
+        assert f"Got worse: {P1} (" in out and P2 not in out.split("Got worse:")[1].splitlines()[0]

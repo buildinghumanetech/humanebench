@@ -2,7 +2,7 @@
 Test your own system prompt against a no-system-prompt baseline, under rubric v4.
 
     inspect eval src/custom_prompt_task.py -T system_prompt_file=prompt.md \\
-        -T per_principle=10 --model openrouter/<provider>/<model>
+        --model openrouter/<provider>/<model>
 
 This file defines two tasks and the command above runs both on the same model
 and the same samples:
@@ -11,6 +11,16 @@ and the same samples:
 - baseline_v4_eval: no system message
 
 Then compare them with scripts/compare_prompt.py.
+
+-T tier picks the judges and the default sample size:
+
+- try (default): one judge (TRY_JUDGE), 3 samples per principle. A first look.
+- full: the three-judge ensemble, 10 samples per principle. Run this before you
+  act on a result.
+
+-T per_principle overrides the tier's sample size. Tier, judges and
+per_principle are recorded in the log metadata, and compare_prompt.py refuses
+to compare runs from different tiers.
 
 These score under rubric v4 (humanebench/scorer_v4.py). They are not comparable
 to the published v1 leaderboard, which baseline_task.py, good_persona_task.py
@@ -41,6 +51,18 @@ from humanebench.scorer_v4 import (
 
 DATASET_PATH = Path(__file__).resolve().parent.parent / "data" / "humane_bench.jsonl"
 DEFAULT_SEED = 42
+
+# The try tier's single judge: best agreement on the v4.1 golden set, then the
+# cheapest per sample (docs/validation/golden_v4.1_direction_match_2026-09-24.json).
+# Sonnet 4.5 and Gemini 2.5 Pro tie at 22 of 23 direction matches (GPT-5.1: 20),
+# and Sonnet costs less per sample ($0.046 against $0.052).
+TRY_JUDGE = "openrouter/anthropic/claude-sonnet-4.5"
+TIERS: dict[str, dict] = {
+    "try": {"judges": [TRY_JUDGE], "per_principle": 3},
+    "full": {"judges": list(DEFAULT_JUDGES), "per_principle": 10},
+}
+DEFAULT_TIER = "try"
+_default_notice_shown = False
 
 
 class PromptFileError(ValueError):
@@ -131,11 +153,36 @@ def verbatim_system_message(content: str) -> Solver:
     return solve
 
 
+def resolve_tier(tier: str | None, per_principle) -> tuple[str, list[str], int | None]:
+    """(tier, judges, per_principle). An explicit per_principle overrides the tier's."""
+    if tier is None:
+        _notice_default_tier()
+    name = str(tier if tier is not None else DEFAULT_TIER).strip().lower()
+    if name not in TIERS:
+        raise ValueError(f"tier must be one of {', '.join(TIERS)}, got {tier!r}")
+    n = TIERS[name]["per_principle"] if per_principle is None else _int_or_none(per_principle)
+    return name, list(TIERS[name]["judges"]), n
+
+
+def _notice_default_tier() -> None:
+    # Once per run: the command builds both tasks, and one line is enough.
+    global _default_notice_shown
+    if _default_notice_shown:
+        return
+    _default_notice_shown = True
+    t = TIERS[DEFAULT_TIER]
+    print(
+        f'[humanebench v4] No -T tier given: the default is now "{DEFAULT_TIER}" (single judge, '
+        f'{t["per_principle"]} per principle). Pass -T tier=full for the three-judge ensemble.',
+        file=sys.stderr,
+    )
+
+
 def _build(condition: str, system_prompt: str | None, prompt_sha: str | None,
-           per_principle: int | None, seed: int, judges: list[str]) -> Task:
+           tier: str, judges: list[str], per_principle: int | None, seed: int) -> Task:
     samples = stratify(load_samples(), per_principle, seed)
     judge_prompt_sha = rubric_sha256(load_judge_prompt(JUDGE_PROMPT_PATH))
-    _print_estimate(condition, len(samples), len(judges))
+    _print_estimate(condition, tier, len(samples), len(judges))
 
     solvers = [generate()]
     if system_prompt is not None:
@@ -152,6 +199,7 @@ def _build(condition: str, system_prompt: str | None, prompt_sha: str | None,
             # The prompt's hash, never its text: this pairs the two logs without
             # putting the prompt into anything summarised from them.
             "system_prompt_sha256": prompt_sha,
+            "tier": tier,
             "per_principle": per_principle,
             "seed": seed,
             "judges": judges,
@@ -159,9 +207,9 @@ def _build(condition: str, system_prompt: str | None, prompt_sha: str | None,
     )
 
 
-def _print_estimate(condition: str, n_samples: int, n_judges: int) -> None:
+def _print_estimate(condition: str, tier: str, n_samples: int, n_judges: int) -> None:
     print(
-        f"[humanebench v4] {condition}: {n_samples} samples -> "
+        f"[humanebench v4] {condition}, tier={tier}: {n_samples} samples -> "
         f"{n_samples} target-model calls + {n_samples * n_judges} judge calls "
         f"(before --limit; judge retries add more on parse failures)",
         file=sys.stderr,
@@ -171,17 +219,20 @@ def _print_estimate(condition: str, n_samples: int, n_judges: int) -> None:
 @task
 def custom_prompt_eval(
     system_prompt_file: str | None = None,
+    tier: str | None = None,
     per_principle: int | None = None,
     seed: int = DEFAULT_SEED,
 ):
     """Your system prompt, scored under rubric v4."""
+    tier, judges, per_principle = resolve_tier(tier, per_principle)  # before the prompt file is read
     text, sha = load_system_prompt(system_prompt_file)
-    return _build("custom_prompt", text, sha, _int_or_none(per_principle), int(seed), DEFAULT_JUDGES)
+    return _build("custom_prompt", text, sha, tier, judges, per_principle, int(seed))
 
 
 @task
 def baseline_v4_eval(
     system_prompt_file: str | None = None,
+    tier: str | None = None,
     per_principle: int | None = None,
     seed: int = DEFAULT_SEED,
 ):
@@ -191,8 +242,9 @@ def baseline_v4_eval(
     pass it. The prompt is never sent; if given, its hash is recorded so the
     comparison can confirm which prompt this baseline was run alongside.
     """
+    tier, judges, per_principle = resolve_tier(tier, per_principle)
     sha = load_system_prompt(system_prompt_file)[1] if system_prompt_file else None
-    return _build("baseline", None, sha, _int_or_none(per_principle), int(seed), DEFAULT_JUDGES)
+    return _build("baseline", None, sha, tier, judges, per_principle, int(seed))
 
 
 def _int_or_none(v) -> int | None:
