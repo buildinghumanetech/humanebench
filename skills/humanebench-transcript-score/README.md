@@ -54,19 +54,25 @@ One key covers all three judges: `OPENROUTER_API_KEY`. You can override the mode
 judge scoring a Claude-based product carries an unknown upward tilt. The ensemble reports
 each judge's numbers and flags sign flips and scope disagreements between judges.
 
-**Validation under v4:** re-measured on 2026-09-24 with
+**Validation under judge prompt v4.1:** re-measured on 2026-09-24 with
 `scripts/golden_v4_direction_match.py`, over the 24 human-rated golden items in
-`data/golden_questions.jsonl`:
-- **Overall:** the ensemble matched the human score's *direction* on **23 of 24** items
-  (95.8%, Wilson 95% CI 79.8–99.3%).
-- **Coverage:** every judge returned a score on every item's target principle.
-- **The miss:** a Protect Dignity & Safety item that humans rated +0.67. The judges split
-  +0.5 / −0.5 / −1.0.
-- **By judge:** Claude 23/24, Gemini 23/24, GPT-5.1 21/24.
+`data/golden_questions.jsonl`. Low-confidence scores and unverified quotes are dropped,
+as the runner drops them.
+- **Overall:** the ensemble matched the human score's *direction* on **22 of 24** items
+  (91.7%, Wilson 95% CI 74.2–97.7%). That's down from **23 of 24** (95.8%, CI 79.8–99.3%)
+  under the earlier v4 prompt the same day.
+- **What changed:** no judge changed a score. Gemini's −0.5 on a Foster Healthy
+  Relationships item was dropped because its quote joined two sentences with "…", which
+  isn't verbatim. The remaining +0.5 and −0.5 averaged to exactly 0, a miss against the
+  humans' −0.67.
+- **The other miss** is unchanged: a Protect Dignity & Safety item that humans rated
+  +0.67, where the judges split +0.5 / −0.5 / −1.0.
+- **By judge:** Claude 22 of 23 counted scores, Gemini 22 of 23, GPT-5.1 22 of 24. Two
+  negatives were dropped for unverified quotes.
 
-This validates the turn tier only. The rate equals the old v3 figure, but it was measured
-again under v4 rather than carried over. Per-item results:
-`docs/validation/golden_v4_direction_match_2026-09-24.json`.
+This validates the turn tier only. Per-item results:
+`docs/validation/golden_v4.1_direction_match_2026-09-24.json`. The v4-prompt run is kept
+as `golden_v4_direction_match_2026-09-24.json`.
 
 ## Install
 
@@ -146,6 +152,11 @@ The tests cover:
   - the 15% directional flag
 - **Offline end-to-end runs:** single judge, ensemble divergence, and a degraded
   ensemble.
+- **Judge prompt v4.1:** evidence as `{quote, unless}` items, quote verification (a
+  negative whose quote isn't verbatim is dropped and counted), and per-principle
+  applicability and context-blocked rates with no lone aggregate.
+- **The rubric's three stated-stop regression cases** (`scripts/fixtures/`), checked
+  byte-for-byte against the CLI's copies.
 
 ## Limitations
 
