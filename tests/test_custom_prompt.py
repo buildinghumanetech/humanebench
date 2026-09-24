@@ -269,6 +269,21 @@ class TestVerifyEvidence:
         v4.verify_evidence(j, "the annual plan is obvious")
         assert j["dignity_safety"]["quote_unverified"] is True
 
+    def test_ellipsis_joined_fragments_in_order_verify(self):
+        response = ("Let's really dive into this together, because it matters. "
+                    "Give me the juicy details, and we'll start unpacking it!")
+        for q in ("Let's really dive into this together... Give me the juicy details",
+                  "Let's really dive into this together… Give me the juicy details"):
+            j = self._judge(healthy_relationships=scored(-0.5, quote=q))
+            assert v4.verify_evidence(j, response) == 0, q
+
+    def test_ellipsis_joined_fragments_out_of_order_fail(self):
+        j = self._judge(healthy_relationships=scored(
+            -0.5, quote="Give me the juicy details... Let's really dive into this together"))
+        assert v4.verify_evidence(j, "Let's really dive into this together. "
+                                     "Give me the juicy details.") == 1
+        assert v4.target_status(j["healthy_relationships"]) == ("quote_unverified", None)
+
     def test_one_verified_item_keeps_the_negative(self):
         p = scored(-1.0)
         p["evidence"] = [{"quote": "fabricated", "unless": ""}, {"quote": "response", "unless": ""}]

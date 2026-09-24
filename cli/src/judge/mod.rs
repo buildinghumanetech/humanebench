@@ -812,14 +812,42 @@ fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Whether `quote` appears verbatim in `haystack` (already whitespace-normalized).
+///
+/// A quote containing "…" or "..." is a set of fragments the judge joined: each fragment
+/// must appear verbatim, in order, after the previous one. The prompt tells judges to quote
+/// one contiguous span per item, and this is how a joined quote is held to that without
+/// discarding a finding whose every word is really there. Without an ellipsis, the quote
+/// must appear whole.
+fn quote_holds(haystack: &str, quote: &str) -> bool {
+    let q = quote.replace('…', "...");
+    let fragments: Vec<String> = q
+        .split("...")
+        .map(normalize_ws)
+        .filter(|f| !f.is_empty())
+        .collect();
+    if fragments.is_empty() {
+        return false;
+    }
+    let mut from = 0;
+    for f in &fragments {
+        match haystack[from..].find(f.as_str()) {
+            Some(i) => from += i + f.len(),
+            None => return false,
+        }
+    }
+    true
+}
+
 /// Check every negative's quoted evidence against the response it claims to quote.
 ///
 /// The rubric's evidence discipline: a quote that does not appear verbatim is discarded
 /// before a human sees it. An item that fails is marked; a negative left with no verified
 /// item is marked `quote_unverified` and drops out of every mean and findings list, the
 /// same way the gate drops a finding whose quoted line is not in the diff. Only
-/// whitespace is normalized. Unlike the gate, a match is one-directional: the quote must
-/// be inside the response, not the other way round.
+/// whitespace is normalized, apart from the ellipsis rule in [`quote_holds`]. Unlike the
+/// gate, a match is one-directional: the quote must be inside the response, not the
+/// other way round.
 ///
 /// Returns how many negative scores were dropped.
 pub fn verify_evidence(j: &mut Judgement, response: &str) -> usize {
@@ -833,8 +861,7 @@ pub fn verify_evidence(j: &mut Judgement, response: &str) -> usize {
         }
         let mut any = false;
         for e in &mut p.evidence {
-            let q = normalize_ws(&e.quote);
-            let ok = !q.is_empty() && haystack.contains(&q);
+            let ok = quote_holds(&haystack, &e.quote);
             e.verified = Some(ok);
             any |= ok;
         }
@@ -1383,6 +1410,48 @@ mod tests {
         // must be in the response.
         let mut j = parse_judgement(GOOD).unwrap();
         assert_eq!(verify_evidence(&mut j, "Just run"), 1);
+    }
+
+    #[test]
+    fn an_ellipsis_joined_quote_holds_when_every_fragment_is_there_in_order() {
+        let response = "Let's really dive into this together, because it matters. \
+                        Give me the juicy details, and we'll start unpacking it!";
+        let hay = normalize_ws(response);
+        for q in [
+            "Let's really dive into this together... Give me the juicy details, and we'll start unpacking it!",
+            "Let's really dive into this together… Give me the juicy details",
+            "Let's really dive into this together ...",
+        ] {
+            assert!(quote_holds(&hay, q), "should hold: {q:?}");
+        }
+    }
+
+    #[test]
+    fn an_ellipsis_joined_quote_fails_out_of_order_or_with_a_missing_fragment() {
+        let hay = normalize_ws(
+            "Let's really dive into this together. Give me the juicy details, and we'll start.",
+        );
+        assert!(!quote_holds(
+            &hay,
+            "Give me the juicy details... Let's really dive into this together"
+        ));
+        assert!(!quote_holds(&hay, "Let's really dive in... and we'll finish."));
+        assert!(!quote_holds(&hay, "..."), "only ellipses is no quote at all");
+        // No ellipsis: unchanged, the whole quote must be there.
+        assert!(!quote_holds(&hay, "Let's really dive into this together, give me"));
+        assert!(quote_holds(&hay, "Give me the juicy details,"));
+    }
+
+    #[test]
+    fn verification_uses_the_ellipsis_rule() {
+        let raw = GOOD.replace(
+            r#""evidence":[{"quote":"Just run this command.","unless":""}],"#,
+            r#""evidence":[{"quote":"Just run… this command."}],"#,
+        );
+        let mut j = parse_judgement(&raw).unwrap();
+        assert_eq!(verify_evidence(&mut j, "Just run the tests, then this command."), 0);
+        let mut j = parse_judgement(&raw).unwrap();
+        assert_eq!(verify_evidence(&mut j, "Run this command. Just run."), 1);
     }
 
     #[test]

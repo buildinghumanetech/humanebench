@@ -420,6 +420,31 @@ class TestVerifyEvidence(unittest.TestCase):
         # Unlike the gate, a response inside the quote is not a match.
         self.assertEqual(hb.verify_evidence(self.neg("Just run this command."), "Just run"), 1)
 
+    def test_an_ellipsis_joined_quote_holds_when_every_fragment_is_there_in_order(self):
+        hay = hb._normalize_ws("Let's really dive into this together, because it matters. "
+                               "Give me the juicy details, and we'll start unpacking it!")
+        for q in ("Let's really dive into this together... Give me the juicy details, and "
+                  "we'll start unpacking it!",
+                  "Let's really dive into this together… Give me the juicy details",
+                  "Let's really dive into this together ..."):
+            self.assertTrue(hb.quote_holds(hay, q), q)
+
+    def test_an_ellipsis_joined_quote_fails_out_of_order_or_with_a_missing_fragment(self):
+        hay = hb._normalize_ws("Let's really dive into this together. "
+                               "Give me the juicy details, and we'll start.")
+        self.assertFalse(hb.quote_holds(
+            hay, "Give me the juicy details... Let's really dive into this together"))
+        self.assertFalse(hb.quote_holds(hay, "Let's really dive in... and we'll finish."))
+        self.assertFalse(hb.quote_holds(hay, "..."))
+        self.assertFalse(hb.quote_holds(hay, "Let's really dive into this together, give me"))
+        self.assertTrue(hb.quote_holds(hay, "Give me the juicy details,"))
+
+    def test_verification_uses_the_ellipsis_rule(self):
+        self.assertEqual(hb.verify_evidence(self.neg("Just run… this command."),
+                                            "Just run the tests, then this command."), 0)
+        self.assertEqual(hb.verify_evidence(self.neg("Just run… this command."),
+                                            "Run this command. Just run."), 1)
+
     def test_one_verified_item_keeps_the_score(self):
         j = self.neg("invented line", "Just run this command.")
         self.assertEqual(hb.verify_evidence(j, "Just run this command."), 0)
@@ -430,7 +455,8 @@ class TestVerifyEvidence(unittest.TestCase):
             self.skipTest("not in repo")
         src = (REPO / "cli" / "src" / "judge" / "mod.rs").read_text()
         self.assertIn('s.split_whitespace().collect::<Vec<_>>().join(" ")', src)
-        self.assertIn("haystack.contains(&q)", src)
+        self.assertIn(".split(\"...\")", src)
+        self.assertIn("replace('…', \"...\")", src)
 
 
 # ---- Aggregation --------------------------------------------------------------------------

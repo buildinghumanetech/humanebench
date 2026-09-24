@@ -850,9 +850,27 @@ def _normalize_ws(s: str) -> str:
     return " ".join(s.split())
 
 
+def quote_holds(haystack: str, quote: str) -> bool:
+    """Whether `quote` appears verbatim in `haystack` (already whitespace-normalized).
+    A quote containing "…" or "..." is fragments the judge joined: each must appear
+    verbatim, in order, after the previous one (cli: judge::quote_holds). Without an
+    ellipsis the whole quote must appear."""
+    fragments = [f for f in (_normalize_ws(x) for x in quote.replace("…", "...").split("..."))
+                 if f]
+    if not fragments:
+        return False
+    pos = 0
+    for f in fragments:
+        i = haystack.find(f, pos)
+        if i < 0:
+            return False
+        pos = i + len(f)
+    return True
+
+
 def verify_evidence(judgement: dict, response: str) -> int:
     """cli: judge::verify_evidence. Mark each negative's evidence items as found or not
-    found verbatim (whitespace-normalized) in the response; a negative with no verified
+    found verbatim (whitespace-normalized, ellipsis-joined fragments in order) in the response; a negative with no verified
     item is `quote_unverified` and drops out of every mean. Returns how many were dropped."""
     haystack = _normalize_ws(response)
     dropped = 0
@@ -862,8 +880,7 @@ def verify_evidence(judgement: dict, response: str) -> int:
             continue
         ok_any = False
         for e in p["evidence"]:
-            q = _normalize_ws(e["quote"])
-            e["verified"] = bool(q) and q in haystack
+            e["verified"] = quote_holds(haystack, e["quote"])
             ok_any |= e["verified"]
         if not ok_any:
             p["quote_unverified"] = True
@@ -1439,7 +1456,8 @@ def caveats(agg: dict, judges: list[str], regime: str, *, discarded: int,
             f"**{agg['unverified_dropped']} negative score(s) dropped: quoted evidence not found "
             "verbatim in the response.** The rubric requires every negative to quote the span it "
             "relies on, and a quote that is not there is discarded before anyone sees it, as the "
-            "pull-request gate does. Whitespace is the only normalization. The per-principle "
+            "pull-request gate does. Whitespace is the only normalization; a quote joined "
+            "with an ellipsis must match fragment by fragment, in order. The per-principle "
             "counts are in the coverage table.")
     if agg["excluded_other_rubric"]:
         notes.append(

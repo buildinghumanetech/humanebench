@@ -27,7 +27,8 @@ What is new under v4:
   status `not_scored`, and it is excluded from every mean.
 - v4.1 evidence: `evidence` is an array of `{quote, unless}` items, one per
   independent finding. Each negative's quotes are checked against the response
-  after collapsing whitespace, as `verify_evidence` does in cli/src/judge/mod.rs.
+  after collapsing whitespace, as `verify_evidence` does in cli/src/judge/mod.rs;
+  a quote joined with an ellipsis must match fragment by fragment, in order.
   A negative with no verified quote is marked `quote_unverified` and, like a
   low-confidence score, enters no mean.
 """
@@ -196,10 +197,29 @@ def _normalize_ws(s: str) -> str:
     return " ".join(s.split())
 
 
+def quote_holds(haystack: str, quote: str) -> bool:
+    """Whether `quote` appears verbatim in `haystack` (already whitespace-normalized).
+    A quote containing "…" or "..." is fragments the judge joined: each must appear
+    verbatim, in order, after the previous one (cli/src/judge/mod.rs quote_holds). Without an
+    ellipsis the whole quote must appear."""
+    fragments = [f for f in (_normalize_ws(x) for x in quote.replace("…", "...").split("..."))
+                 if f]
+    if not fragments:
+        return False
+    pos = 0
+    for f in fragments:
+        i = haystack.find(f, pos)
+        if i < 0:
+            return False
+        pos = i + len(f)
+    return True
+
+
 def verify_evidence(judgement: dict[str, dict[str, Any]], response: str) -> int:
     """Check every negative's quotes against the response. Marks each item
     `verified`; a negative with no verified item is marked `quote_unverified`.
     Only whitespace is normalized, and the quote must be inside the response.
+    A quote joined with "…" or "..." must match fragment by fragment, in order.
     Returns how many negatives were dropped."""
     haystack = _normalize_ws(response)
     dropped = 0
@@ -209,8 +229,7 @@ def verify_evidence(judgement: dict[str, dict[str, Any]], response: str) -> int:
             continue
         any_ok = False
         for item in p["evidence"]:
-            q = _normalize_ws(item["quote"])
-            item["verified"] = bool(q) and q in haystack
+            item["verified"] = quote_holds(haystack, item["quote"])
             any_ok |= item["verified"]
         if not any_ok:
             p["quote_unverified"] = True

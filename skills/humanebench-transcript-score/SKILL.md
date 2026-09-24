@@ -43,8 +43,9 @@ follows its method exactly:
   - `low`-confidence scores are dropped from every mean and counted.
   - A principle in scope on no turns reads "not in scope".
   - Every negative's quoted evidence is checked against the response. A negative
-    whose quote isn't there verbatim (whitespace aside) is dropped and counted, as the
-    gate does.
+    whose quote isn't there verbatim is dropped and counted. The one exception to
+    "whole quote": when a quote joins fragments with "…" or "...", every fragment must
+    appear verbatim, in order. Dropping the negative matches what the gate does.
   - Coverage is reported **per principle**: applicability rate and context-blocked
     rate, and floor applicability (Dignity & Safety, Transparency) on its own. Never a
     lone aggregate.

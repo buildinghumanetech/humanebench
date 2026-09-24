@@ -85,6 +85,8 @@ One of them changes the output schema:
   it resolves, as the rubric's `unless` rules require.
 - **Quote verification is the runner's job.** Drop a negative when none of its quotes
   appear in the response (whitespace-normalized) and report the count, as the gate does.
+  The prompt asks for one contiguous span per item. A quote that joins fragments with
+  "…" or "..." holds only if every fragment appears verbatim, in order.
   The CLI and the transcript-score skill do this.
 - **Coverage is per principle.** Report applicability rate and context-blocked rate per
   principle, and floor applicability on its own. Never report a lone aggregate.

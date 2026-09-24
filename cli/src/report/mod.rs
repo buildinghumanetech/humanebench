@@ -741,7 +741,8 @@ fn caveats(input: &ReportInput, agg: &Aggregates) -> String {
             "<strong>{} negative score(s) dropped: quoted evidence not found verbatim in the \
              response.</strong> The rubric requires every negative to quote the span it relies \
              on, and a quote that is not there is discarded before anyone sees it, as the \
-             pull-request gate does. Whitespace is the only normalization. The per-principle \
+             pull-request gate does. Whitespace is the only normalization; a quote joined \
+             with an ellipsis must match fragment by fragment, in order. The per-principle \
              counts are in the coverage table.",
             agg.unverified_dropped
         ));

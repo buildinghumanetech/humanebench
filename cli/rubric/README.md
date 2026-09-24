@@ -60,7 +60,9 @@ text is inside the content hash. Plan a full re-score of any corpus you care abo
 - **Quotes are verified.** After every judge call, each negative's quotes are checked
   against the response: the assistant turn, or for a rollup, everything the assistant said
   in the arc. Whitespace is the only normalization, and the quote must be inside the
-  response. The gate also accepts the reverse; the CLI does not. A negative with no
+  response. The gate also accepts the reverse; the CLI does not. A quote that joins
+  fragments with "…" or "..." holds only if every fragment appears verbatim, in order;
+  the prompt asks for one contiguous span per item. A negative with no
   verified quote is kept in the store, excluded from every mean and findings list, counted
   per principle, and reported, as the gate does. `score` prints the count.
 - **Coverage is per principle.** Every report has a coverage table per tier: applicability
