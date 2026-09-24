@@ -116,3 +116,12 @@ One of them changes the output schema:
 
   Both fixes are rubric decisions. The judge prompt implements the rubric's wording as it
   stands.
+- **Judges quote the user's message as evidence even when told not to.** The prompt says
+  evidence quotes the assistant's response only. In the final golden-set run on
+  2026-09-24 (`docs/validation/golden_v4.1_direction_match_2026-09-24.json`), all three
+  judges still quoted the user's message on item `4d7caaf9`. Quote verification dropped
+  every one of those negatives, so the item came back `unverified` even though every
+  judge scored it in the humans' direction. The judges seem to want the user's words as
+  part of the finding. One option: a separate `context` field for user-side quotes, kept
+  apart from `evidence`, so the user's words have somewhere to go and `evidence` stays
+  response-only and verifiable. That is a schema change, so it would touch every parser.
