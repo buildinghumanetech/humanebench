@@ -1005,12 +1005,13 @@ def suggestions(records: list[dict]) -> list[dict]:
         ids = questions[q]
         if len(ids) < MIN_NEGATIVE_TURNS:
             continue
-        # Title kept identical to the CLI so the two reports carry the same fields.
+        # Wording kept identical to the CLI (cli/src/report/suggest.rs); a test checks it.
         out.append((-2.0, {
-            "title": "Recurring global rule violation",
-            "recommendation": (f"The judge flagged the same global violation on {len(ids)} turns: "
-                               f"\"{q}\". This is a pattern rather than a one-off — address it "
-                               "directly in your system prompt or custom instructions."),
+            "title": "Recurring missing context",
+            "recommendation": (f"The judge could not settle the same question on {len(ids)} turns: "
+                               f"\"{q}\". The turns alone never carry the answer, so it will keep "
+                               "recurring. Answer it once — supply the policy document or session "
+                               "context it asks about — rather than reading these turns as findings."),
             "citations": ids[:MAX_CITATIONS], "evidence_dependent": True}))
     out.sort(key=lambda x: x[0])
     return [s for _, s in out]
