@@ -34,6 +34,19 @@ When you're ready to submit your PR:
 3. **Keep it focused** - One PR per issue/feature when possible
 4. **Test your work** - Make sure everything builds and runs correctly
 
+## Licensing of Contributions
+
+Contributions come in under the same licenses they go out under. There is no CLA to sign.
+
+- **Code** you contribute is licensed under the [Apache License 2.0](LICENSE).
+- **Data, scenarios, rubric text, docs, tables and figures** you contribute are licensed under [CC BY 4.0](LICENSE-DATA).
+
+By opening a pull request, you confirm that you have the right to submit the contribution under these licenses. If it includes third-party material, say what it is and what license it carries in the PR description.
+
+## Code of Conduct
+
+Everyone participating in this project is expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md). Report concerns to info@buildinghumanetech.com.
+
 ## Questions?
 
 Don't hesitate to ask questions in the issue comments. We'd rather answer questions upfront than have you spend time on something that doesn't fit the project direction.
