@@ -405,6 +405,18 @@ fn as_rollup_subject(session: &transcript::Session) -> transcript::Session {
     }
 }
 
+/// What a rollup's quoted evidence is checked against: everything the assistant said in
+/// the arc the judge was shown. Sidechain turns were never shown, so they cannot be quoted.
+fn rollup_response_text(session: &transcript::Session) -> String {
+    session
+        .records
+        .iter()
+        .filter(|r| !r.sidechain && r.role == transcript::Role::Assistant)
+        .map(|r| r.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 /// A rollup row is stamped at the *end* of the arc it judges, not the start.
 ///
 /// `score --since T` rolls a straddling session up whole, so a session that began long
@@ -612,6 +624,7 @@ fn cmd_score(
         failed: 0,
         written: 0,
         reused: 0,
+        unverified: 0,
         spent: judge::Usage::default(),
     };
 
@@ -622,6 +635,8 @@ fn cmd_score(
             Step::Stop => break,
         };
         for turn in &job.subjects {
+            let mut judgement = judgement.clone();
+            run.unverified += judge::verify_evidence(&mut judgement, &turn.assistant_text);
             let rec = store::score_record(
                 &turn.turn_id,
                 &turn.session_id,
@@ -629,7 +644,7 @@ fn cmd_score(
                 &job.hash,
                 &judge_model,
                 judge::REGIME,
-                judgement.clone(),
+                judgement,
             );
             store
                 .insert_score_at(&rec, &turn.source, turn.model.as_deref(), turn.timestamp)
@@ -645,6 +660,9 @@ fn cmd_score(
             Step::Stop => break,
         };
         for session in &job.subjects {
+            let mut judgement = judgement.clone();
+            run.unverified +=
+                judge::verify_evidence(&mut judgement, &rollup_response_text(session));
             let rec = store::score_record(
                 &format!("{}:rollup", session.session_id),
                 &session.session_id,
@@ -652,7 +670,7 @@ fn cmd_score(
                 &job.hash,
                 &judge_model,
                 judge::REGIME,
-                judgement.clone(),
+                judgement,
             );
             store
                 .insert_score_as(
@@ -688,6 +706,13 @@ fn cmd_score(
         println!(
             "{} call(s) failed and were not cached; re-run to retry just those.",
             run.failed
+        );
+    }
+    if run.unverified > 0 {
+        println!(
+            "{} negative score(s) dropped: their quoted evidence is not verbatim in the \
+             response. They stay in the store and are excluded from every report.",
+            run.unverified
         );
     }
     // The real number, as reported by the API — not the crude dry-run estimate.
@@ -739,6 +764,8 @@ struct Run<'a> {
     failed: usize,
     written: usize,
     reused: usize,
+    /// Negatives dropped because their quote was not verbatim in the response.
+    unverified: usize,
     spent: judge::Usage,
 }
 

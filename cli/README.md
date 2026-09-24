@@ -59,6 +59,11 @@ turns cost eleven calls, not ten. The rollup is not a convenience — engagement
 fostered dependency, and sycophancy drift only exist across turns, so a per-turn judge is
 structurally blind to four of the eight principles.
 
+Each judge call uses the v4.1 judge prompt. The CLI checks every negative score's quoted
+evidence against the response. A negative whose quote is not there verbatim is dropped from
+the report and counted. Reports show applicability and context-blocked rates per principle,
+and floor applicability separately, never as a single aggregate. See `rubric/README.md`.
+
 Run `humanebench schema` for the field-by-field contract.
 
 ### What gets scored, and what doesn't

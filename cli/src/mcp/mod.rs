@@ -108,20 +108,32 @@ fn filter_from(args: &Value) -> Filter {
     }
 }
 
+/// Per principle: the mean over what counted, and the two coverage rates the rubric says
+/// must accompany every score. All eight principles appear; one never in scope carries a
+/// null mean rather than being silently omitted.
 fn principle_means(set: &[&ScoredTurn]) -> Value {
+    let owned: Vec<ScoredTurn> = set.iter().map(|s| (*s).clone()).collect();
+    let agg = crate::report::aggregate(&owned);
+    let by = if set.iter().all(|s| s.record.tier == Tier::Rollup) && !set.is_empty() {
+        &agg.rollup_by_principle
+    } else {
+        &agg.turn_by_principle
+    };
     let mut out = serde_json::Map::new();
     for code in PRINCIPLES {
-        let vals: Vec<f64> = set
-            .iter()
-            .filter_map(|s| s.record.principle(code).and_then(|p| p.counts()))
-            .collect();
-        if vals.is_empty() {
-            continue;
-        }
-        let mean = vals.iter().sum::<f64>() / vals.len() as f64;
+        let st = by.get(code).cloned().unwrap_or_default();
         out.insert(
             code.to_string(),
-            json!({"label": principle_label(code), "mean": (mean * 1000.0).round() / 1000.0, "n": vals.len()}),
+            json!({
+                "label": principle_label(code),
+                "mean": st.mean.map(|m| (m * 1000.0).round() / 1000.0),
+                "n": st.scored,
+                "applicability_rate": st.applicability_rate(),
+                "context_blocked_rate": st.context_blocked_rate(),
+                "floor": crate::report::FLOOR.contains(&code),
+                "low_confidence_dropped": st.low_confidence_dropped,
+                "unverified_dropped": st.unverified_dropped,
+            }),
         );
     }
     Value::Object(out)
@@ -129,13 +141,16 @@ fn principle_means(set: &[&ScoredTurn]) -> Value {
 
 fn tool_query_scores(store: &Store, args: &Value) -> Result<Value> {
     let scores = store.scores(&filter_from(args))?;
+    // Only rows from the rubric this binary implements; older ones are a different
+    // statistic and are counted, not averaged in.
+    let excluded_other_rubric = scores.iter().filter(|s| !s.record.is_current_rubric()).count();
     let turns: Vec<&ScoredTurn> = scores
         .iter()
-        .filter(|s| s.record.tier == Tier::Turn)
+        .filter(|s| s.record.tier == Tier::Turn && s.record.is_current_rubric())
         .collect();
     let rollups: Vec<&ScoredTurn> = scores
         .iter()
-        .filter(|s| s.record.tier == Tier::Rollup)
+        .filter(|s| s.record.tier == Tier::Rollup && s.record.is_current_rubric())
         .collect();
 
     let mean_overall = |set: &[&ScoredTurn]| -> Option<f64> {
@@ -160,6 +175,8 @@ fn tool_query_scores(store: &Store, args: &Value) -> Result<Value> {
             "overall": mean_overall(&rollups),
             "principles": principle_means(&rollups),
         },
+        "rubric_version": crate::judge::RUBRIC_VERSION,
+        "excluded_other_rubric": excluded_other_rubric,
         "facets": {
             "sources": store.distinct("source")?,
             "models": store.distinct("model")?,
@@ -189,6 +206,7 @@ fn tool_worst_turns(store: &Store, args: &Value) -> Result<Value> {
 
     let mut ranked: Vec<(&ScoredTurn, f64)> = scores
         .iter()
+        .filter(|s| s.record.is_current_rubric())
         .filter_map(|s| match principle {
             Some(code) => s.record.principle(code).and_then(|p| p.counts()).map(|v| (s, v)),
             None => s.record.overall().map(|v| (s, v)),

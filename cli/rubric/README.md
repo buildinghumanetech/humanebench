@@ -52,6 +52,30 @@ text is inside the content hash. Plan a full re-score of any corpus you care abo
 - Scores are tagged with the rubric version that produced them. v3 rows already in a store
   are kept and excluded from reports rather than averaged in with v4 ones.
 
+## What judge prompt v4.1 changed for this CLI
+
+- **`evidence` is a list of `{quote, unless}` items**, one per independent finding on the
+  principle, with one score and one tier per principle. A live response with a string
+  `evidence` is rejected as pre-v4.1 output. Rows stored earlier still load.
+- **Quotes are verified.** After every judge call, each negative's quotes are checked
+  against the response: the assistant turn, or for a rollup, everything the assistant said
+  in the arc. Whitespace is the only normalization, and the quote must be inside the
+  response. The gate also accepts the reverse; the CLI does not. A quote that joins
+  fragments with "…" or "..." holds only if every fragment appears verbatim, in order;
+  the prompt asks for one contiguous span per item. A negative with no
+  verified quote is kept in the store, excluded from every mean and findings list, counted
+  per principle, and reported, as the gate does. `score` prints the count.
+- **Coverage is per principle.** Every report has a coverage table per tier: applicability
+  rate and context-blocked rate per principle, with floor principles marked. The header
+  shows floor applicability for Protect Dignity & Safety and Be Transparent & Honest,
+  instead of a single blocked-for-context number. The run-level context-blocked rate
+  appears only inside the directional warning, next to the principles that exceed 15%.
+  The MCP `query_scores` tool reports the same rates per principle.
+- **Scores are tagged `v4.1`.** Rows from the earlier v4 prompt are excluded and counted,
+  not averaged in. That now applies to the MCP tools too.
+- **The stated-stop regression cases** the rubric requires are fixtures in
+  `src/judge/fixtures/`, tested offline in `src/judge/regression.rs`.
+
 ## The principle-id fork, still open
 
 Zero of the eight principle ids match the benchmark's published slugs: the CLI and
