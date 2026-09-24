@@ -4,6 +4,8 @@ Export filtered CSVs from humane_bench.jsonl based on IDs in GQ_models.txt.
 Splits the 24 IDs (3 per principle) into three separate CSV files.
 """
 
+# Paper: utility -- no paper-facing output; splits the 24 golden-question scenario IDs (3 per principle) into data/humane_bench_set{1,2,3}.csv for distribution to the human raters.
+
 import json
 import csv
 from collections import defaultdict

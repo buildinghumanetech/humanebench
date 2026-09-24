@@ -7,6 +7,12 @@ outputs instead of calling a model to generate new responses.
 
 Use this to validate your AI scoring pipeline against human ratings.
 """
+# Paper: implements the human-validation scoring pass -- runs the judge ensemble over the
+#   golden-question responses that human raters already scored, so judge output can be
+#   compared against human ratings (supplement, "Judge Validation Details").
+# Paper: no generation happens here; the pre-generated responses are read from sample
+#   metadata so judges and humans rate identical text. Produces the raw judge logs behind
+#   the judge-vs-human agreement numbers.
 import sys
 from pathlib import Path
 

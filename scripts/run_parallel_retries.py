@@ -23,6 +23,10 @@ Usage Examples:
     python scripts/run_parallel_retries.py --files logs/good_persona/grok-4/*.eval
 """
 
+# Paper: launches the completion passes (inspect eval-retry) over incomplete baseline /
+#   good persona / bad persona and decomposition B-E runs, preserving already-scored
+#   samples; produces the raw eval logs (not included in this package).
+
 import argparse
 import os
 import subprocess

@@ -1,6 +1,8 @@
 """
 Configuration for the data generation pipeline.
 """
+# Paper: defines the fixed taxonomies of the scenario construction pipeline -- 8 humane principles, 12 topic domains, 6 vulnerable-population tags (supplement, "Scenario Construction Pipeline").
+# Paper: sets the generation model (Nous Hermes 4 405B) and the admission deduplication threshold (SIMILARITY_THRESHOLD = 0.60) used by that pipeline.
 
 # Model configuration (with fallback support)
 # OpenRouter model IDs

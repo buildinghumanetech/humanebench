@@ -3,6 +3,11 @@
 These exercise the self-preference math on tiny synthetic data so they run
 without any eval logs or API calls.
 """
+# Paper: tests -- validates scripts/compute_judge_self_preference.py: that the
+#   difference-in-differences recovers an injected same-family scoring boost, reports none
+#   when the judges are unbiased, and that the Holm adjustment and bootstrap p-values
+#   behave (see supplement, "Judge Validation Details" for the judge-independence check);
+#   no paper-facing output.
 
 import sys
 from pathlib import Path

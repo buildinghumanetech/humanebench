@@ -1,5 +1,6 @@
 """
-Compute human-side validation metrics for HumaneBench §3.5.
+Compute human-side validation metrics for the HumaneBench judge-validation
+section.
 
 Handles:
   D0. Rater pool stability check (asserts 4 raters, prints per-rater counts).
@@ -36,6 +37,13 @@ Bootstrap conventions are deliberately identical to
 scripts/compute_inter_judge_agreement.py so the human-side and AI-side numbers
 can be placed side-by-side in the paper without methodological caveats.
 """
+# Paper: produces tables/human_inter_rater_agreement.{md,csv},
+#   human_inter_rater_agreement_by_persona.csv and golden_set_provenance.md --
+#   the inter-human Krippendorff alpha = 0.712 [0.583, 0.817] that the main
+#   paper's "Judge Validation" section compares the judge ensemble against.
+# Paper: documents the 24-item gold set behind the 23-of-24 direction match and
+#   the persona-stratified human agreement reported in the supplement's
+#   "Judge Validation Details".
 
 import argparse
 import json

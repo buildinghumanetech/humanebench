@@ -1,6 +1,8 @@
 ﻿"""
 Data management utilities for the pipeline with semantic deduplication.
 """
+# Paper: implements the admission step of the scenario construction pipeline -- semantic-duplicate filtering of each generated batch, sequential per-principle ids, and append to data/humane_bench.jsonl (supplement, "Scenario Construction Pipeline").
+# Paper: get_diversity_analysis and suggest_needed_principles compute the underrepresented principles and domains that drive gap-directed steering of later batches (supplement, "Scenario Construction Pipeline").
 
 import json
 import pandas as pd

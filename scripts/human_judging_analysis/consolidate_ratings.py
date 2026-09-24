@@ -3,6 +3,11 @@ HumaneBench Data Consolidation Script
 Combines ratings from Excel spreadsheets and Langfuse annotation queues
 """
 
+# Paper: utility -- no paper-facing output; the pilot-stage consolidator, merging the rater
+#   spreadsheets with the completed annotation-queue items and de-duplicating in favour of
+#   the queue, into output/consolidated_ratings.csv. Supports the human validation
+#   reported in the supplement, "Judge Validation Details".
+
 import os
 import json
 import pandas as pd

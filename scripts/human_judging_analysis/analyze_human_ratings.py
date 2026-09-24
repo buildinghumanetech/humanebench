@@ -7,6 +7,12 @@ This script calculates:
 - IRR metrics (percentage agreement, Krippendorff's Alpha, ICC)
 """
 
+# Paper: utility -- no paper-facing output; computes rater coverage, rating distributions,
+#   and inter-rater reliability (percentage agreement, Krippendorff's alpha with bootstrap
+#   CIs, ICC(2,k)) from the consolidated human ratings into
+#   scripts/human_judging_analysis/output/. Supports the human validation reported in the
+#   supplement, "Judge Validation Details".
+
 import pandas as pd
 import numpy as np
 from pathlib import Path

@@ -21,10 +21,23 @@ module's AST rather than importing it. A copy would drift, and a drifted copy
 would silently invalidate the byte-exactness proof that the whole analysis rests
 on. Parsing keeps ``scorer.py`` authoritative while avoiding its imports.
 """
+# Paper: implements the shared frame for the designed x scored principle matrix
+# behind the separability result (main paper, "Principle Separability"); the
+# domain-stratified variant of the same probe is in the supplement,
+# "Domain-Stratified Pairwise Probe".
+# Paper: this module fixes the scenario frame, the scored models, the single
+# judge and the judge-prompt rendering. The statistics themselves -- the
+# (a-b)-(c-d) interaction contrasts, their bootstrap CIs and the Holm
+# correction across the 28 pairs -- are in humanebench/bootstrap.py
+# (pairwise_interactions, holm_adjust), driven by
+# scripts/compute_discriminant_validity.py.
 from __future__ import annotations
 
 import ast
+import re
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from humanebench.humane_patterns import HUMANE_PATTERNS
 
@@ -104,14 +117,182 @@ def load_overseer_template(path: Path = SCORER_PATH) -> str:
 OVERSEER_TEMPLATE = load_overseer_template()
 
 
-def render_judge_prompt(principle_id: str, prompt: str, response: str) -> str:
+# ---------------------------------------------------------------------------
+# Template transform: suppress global rules 1, 3, 4, 5, 6 from the prompt
+# ---------------------------------------------------------------------------
+
+def suppressed_rules_template(
+    template: str | None = None,
+    keep: tuple[int, ...] = (2, 7),
+) -> str:
+    """Return a variant template with only the kept global rules.
+
+    Parses the numbered-rule region between the GLOBAL_RULES header and the
+    severity-scale line. Kept rules are renumbered 1..len(keep). Head and tail
+    slices are byte-identical to the input.
+    """
+    if template is None:
+        template = OVERSEER_TEMPLATE
+
+    if GLOBAL_RULES not in template:
+        raise ValueError("template does not contain the GLOBAL_RULES header")
+
+    head, rules_and_tail = template.split(GLOBAL_RULES, 1)
+    head += GLOBAL_RULES
+
+    scale_marker = "Evaluate the response using the following severity scale:"
+    if scale_marker not in rules_and_tail:
+        raise ValueError("template does not contain the severity scale marker")
+
+    scale_pos = rules_and_tail.index(scale_marker)
+    rules_region = rules_and_tail[:scale_pos]
+    tail = rules_and_tail[scale_pos:]
+
+    blocks = re.split(r"\n(?=\d+\. )", rules_region)
+    preamble = blocks[0]
+    numbered: dict[int, str] = {}
+    for block in blocks[1:]:
+        m = re.match(r"^(\d+)\. ", block)
+        if not m:
+            raise ValueError(f"cannot parse rule number from block: {block[:40]!r}")
+        numbered[int(m.group(1))] = block
+
+    if set(numbered) != set(range(1, 8)):
+        raise ValueError(f"expected rules 1-7, found {sorted(numbered)}")
+
+    kept_blocks: list[str] = []
+    for new_num, orig_num in enumerate(keep, 1):
+        if orig_num not in numbered:
+            raise ValueError(f"rule {orig_num} not found in template")
+        old_block = numbered[orig_num]
+        kept_blocks.append(re.sub(r"^\d+\. ", f"{new_num}. ", old_block, count=1))
+
+    result = head + preamble + "\n".join(kept_blocks) + "\n\n" + tail
+
+    dummy = result.format(
+        issue_key="test", issue_display_name="test",
+        issue_description="test", prompt="test", response="test",
+    )
+    if not dummy:
+        raise ValueError("transformed template does not render")
+
+    kept_count = len(re.findall(r"^\d+\. ", result, re.MULTILINE))
+    if kept_count != len(keep):
+        raise ValueError(f"expected {len(keep)} numbered rules, found {kept_count}")
+
+    for orig_num in set(range(1, 8)) - set(keep):
+        orig_text = re.sub(r"^\d+\. ", "", numbered[orig_num], count=1).strip()
+        if orig_text in result:
+            raise ValueError(f"suppressed rule {orig_num} text still present")
+
+    if not result.startswith(head):
+        raise ValueError("head slice changed")
+    if not result.endswith(tail):
+        raise ValueError("tail slice changed")
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Condition registry
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class DiscriminantCondition:
+    name: str
+    data_dir: Path
+    ids_path: Path
+    frame_jsonl: Path
+    summary_path: Path
+    parent_ids_path: Path | None
+    per_principle: int
+    template_transform: Callable[[str], str] | None
+    compare_to_november: bool
+
+
+# Paper: the scenario frames the separability analysis runs on. "discriminant"
+# is the primary matrix (12 scenarios per principle, drawn from the frozen
+# decomposition subsample). "discriminant_expansion" is the fresh scenario set
+# drawn after the pre-registered diagonal contrast came back reversed, 24 per
+# principle and with no parent frame of its own -- the out-of-sample
+# replication reported in the main paper, "Principle Separability". The other
+# two are judge-prompt robustness variants, not reported conditions: "_rules27"
+# re-renders the prompt with only two of the seven global rules retained (see
+# suppressed_rules_template above), "_canary" re-runs the primary frame and
+# template unchanged.
+CONDITIONS: dict[str, DiscriminantCondition] = {
+    "discriminant": DiscriminantCondition(
+        name="discriminant",
+        data_dir=DATA_DIR,
+        ids_path=IDS_PATH,
+        frame_jsonl=FRAME_JSONL,
+        summary_path=SUMMARY_PATH,
+        parent_ids_path=PARENT_IDS_PATH,
+        per_principle=PER_PRINCIPLE,
+        template_transform=None,
+        compare_to_november=True,
+    ),
+    "discriminant_expansion": DiscriminantCondition(
+        name="discriminant_expansion",
+        data_dir=REPO_ROOT / "data" / "discriminant_expansion",
+        ids_path=REPO_ROOT / "data" / "decomposition" / "discriminant_expansion_192_ids.txt",
+        frame_jsonl=REPO_ROOT / "data" / "decomposition" / "humane_bench_discriminant_expansion_192.jsonl",
+        summary_path=REPO_ROOT / "data" / "decomposition" / "discriminant_expansion_192_summary.json",
+        parent_ids_path=None,
+        per_principle=24,
+        template_transform=None,
+        compare_to_november=True,
+    ),
+    "discriminant_rules27": DiscriminantCondition(
+        name="discriminant_rules27",
+        data_dir=REPO_ROOT / "data" / "discriminant_rules27",
+        ids_path=IDS_PATH,
+        frame_jsonl=FRAME_JSONL,
+        summary_path=SUMMARY_PATH,
+        parent_ids_path=PARENT_IDS_PATH,
+        per_principle=PER_PRINCIPLE,
+        template_transform=suppressed_rules_template,
+        compare_to_november=False,
+    ),
+    "discriminant_canary": DiscriminantCondition(
+        name="discriminant_canary",
+        data_dir=REPO_ROOT / "data" / "discriminant_canary",
+        ids_path=IDS_PATH,
+        frame_jsonl=FRAME_JSONL,
+        summary_path=SUMMARY_PATH,
+        parent_ids_path=PARENT_IDS_PATH,
+        per_principle=PER_PRINCIPLE,
+        template_transform=None,
+        compare_to_november=True,
+    ),
+}
+
+
+def scoring_template(cond: DiscriminantCondition) -> str:
+    """Return the judge prompt template for a condition."""
+    if cond.template_transform is None:
+        return OVERSEER_TEMPLATE
+    return cond.template_transform(OVERSEER_TEMPLATE)
+
+
+# Paper: renders the same judge prompt the reported runs used, so a scenario
+# authored for one principle can be re-scored under all eight rubrics with only
+# the rubric block changing. Holding the rest of the prompt byte-identical is
+# what makes the designed x scored interaction attributable to the rubric rather
+# than to the harness (main paper, "Principle Separability").
+def render_judge_prompt(
+    principle_id: str, prompt: str, response: str,
+    template: str | None = None,
+) -> str:
     """Reproduce the judge prompt ``humanebench.scorer.overseer`` builds.
 
     Mirrors ``scorer.score``: format the template with the principle's rubric,
     the scenario prompt and the model response, then ``.strip()``.
     """
+    if template is None:
+        template = OVERSEER_TEMPLATE
     issue = HUMANE_PATTERNS[principle_id]
-    return OVERSEER_TEMPLATE.format(
+    return template.format(
         issue_key=issue.id,
         issue_display_name=issue.display_name,
         issue_description=issue.description,
@@ -120,7 +301,7 @@ def render_judge_prompt(principle_id: str, prompt: str, response: str) -> str:
     ).strip()
 
 
-def scaffold_text(principle_id: str) -> str:
+def scaffold_text(principle_id: str, template: str | None = None) -> str:
     """The judge prompt with the whole conversation block removed.
 
     Matches the scaffold definition in
@@ -130,7 +311,7 @@ def scaffold_text(principle_id: str) -> str:
     makes the blinding argument -- and, here, the "rubrics reused verbatim"
     claim -- checkable by hash.
     """
-    rendered = render_judge_prompt(principle_id, "", "")
+    rendered = render_judge_prompt(principle_id, "", "", template=template)
     start, rest = rendered.split("=== CONVERSATION START ===")
     _conv, end = rest.split("=== CONVERSATION END ===")
     return start + end

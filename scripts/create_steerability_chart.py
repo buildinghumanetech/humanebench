@@ -4,6 +4,10 @@ Create candlestick/range chart showing bidirectional steerability of LLMs.
 Shows how far each model can be steered toward humane (+) vs harmful (-) behavior.
 """
 
+# Paper: produces figures/steerability_candlestick_paper.pdf (shipped as fig_steerability.pdf) -- the per-model HumaneScore range figure across the three conditions (supplement, "Per-Model Steerability Ranges").
+# Paper: paper mode sorts models by bad-persona HumaneScore and draws the 95% paired-bootstrap CI whiskers on the good- and bad-persona endpoints only, omitting the uniformly tight baseline CIs, as the figure caption states.
+# Paper: reads steerability_comparison.csv, the same per-model persona scores and deltas reported in Table 1.
+
 import json
 import os
 

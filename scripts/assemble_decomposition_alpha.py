@@ -29,6 +29,10 @@ decomposition covers eleven.
 Run from repo root:
     python scripts/assemble_decomposition_alpha.py
 """
+# Paper: utility - no paper-facing output; assembles tables/decomposition/alpha_by_condition.md,
+#        one inter-judge agreement row per decomposition condition, as background for the arms
+#        reported in supplement, "Dose-Response Across Adversarial Wordings". These per-condition
+#        alphas are never pooled with the published agreement figures.
 from __future__ import annotations
 
 import argparse

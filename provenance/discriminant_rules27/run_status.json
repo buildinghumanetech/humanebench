@@ -1,0 +1,71 @@
+{
+  "finished_at": "2026-07-27T23:25:42.048525+00:00",
+  "runs": [
+    {
+      "model": "llama-4-maverick",
+      "mode": "eval",
+      "log_dir": "logs/discriminant_rules27/llama-4-maverick",
+      "returncode": 0,
+      "success": true,
+      "duration_s": 190.0
+    },
+    {
+      "model": "claude-sonnet-4.5",
+      "mode": "eval",
+      "log_dir": "logs/discriminant_rules27/claude-sonnet-4.5",
+      "returncode": 0,
+      "success": true,
+      "duration_s": 190.6
+    },
+    {
+      "model": "gemini-2.5-pro",
+      "mode": "eval",
+      "log_dir": "logs/discriminant_rules27/gemini-2.5-pro",
+      "returncode": 0,
+      "success": true,
+      "duration_s": 203.1
+    }
+  ],
+  "archived_superseded": [],
+  "gate": {
+    "threshold": 0.98,
+    "expected_samples_per_model": 768,
+    "models": {
+      "claude-sonnet-4.5": {
+        "status": "ok",
+        "eval_file": "logs/discriminant_rules27/claude-sonnet-4.5/2026-07-27T19-22-20-04-00_discriminant-multilabel-claude-sonnet-4.5_ACFRR9Fs2mo27qrFe97Zrb.eval",
+        "fraction_scored": 1.0,
+        "n_samples": 768,
+        "n_excluded_by_flag": 0,
+        "n_fully_scored": 768,
+        "n_judge_failures": 0,
+        "n_off_scale": 0,
+        "n_nan_with_scores": 0
+      },
+      "llama-4-maverick": {
+        "status": "ok",
+        "eval_file": "logs/discriminant_rules27/llama-4-maverick/2026-07-27T19-22-20-04-00_discriminant-multilabel-llama-4-maverick_Dw8Z5G9NzFmTo8EgQxuAW3.eval",
+        "fraction_scored": 1.0,
+        "n_samples": 768,
+        "n_excluded_by_flag": 0,
+        "n_fully_scored": 768,
+        "n_judge_failures": 0,
+        "n_off_scale": 0,
+        "n_nan_with_scores": 0
+      },
+      "gemini-2.5-pro": {
+        "status": "ok",
+        "eval_file": "logs/discriminant_rules27/gemini-2.5-pro/2026-07-27T19-22-20-04-00_discriminant-multilabel-gemini-2.5-pro_hMJdCVuppsEkF8YVu2SbJF.eval",
+        "fraction_scored": 1.0,
+        "n_samples": 768,
+        "n_excluded_by_flag": 0,
+        "n_fully_scored": 768,
+        "n_judge_failures": 0,
+        "n_off_scale": 0,
+        "n_nan_with_scores": 0
+      }
+    },
+    "worst_fraction_scored": 1.0,
+    "passed": true
+  }
+}

@@ -6,6 +6,8 @@ through OpenRouter (:online models). When falling back to Cerebras direct API,
 validation continues but without web search capabilities, potentially affecting
 the quality of research-based assessments.
 """
+# Paper: implements the optional LLM quality-validation stage of the scenario construction pipeline -- sampled per-batch scoring with escalation on high failure rates and per-scenario salvage of rejected batches (supplement, "Scenario Construction Pipeline").
+# Paper: config.SKIP_VALIDATION is True in the released configuration, so validate_batch admits every generated scenario; admission is decided by deduplication and manual curation instead.
 
 import os
 import random

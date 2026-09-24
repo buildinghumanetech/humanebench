@@ -4,6 +4,9 @@
 Walks logs/{baseline,good_persona,bad_persona}/<model>/*.eval and writes
 tables/vp_sample_scores.csv with one row per sample per model per persona.
 """
+# Paper: produces tables/vp_sample_scores.csv - one row per scored sample tagged with principle
+#        and vulnerable population, the input the vulnerable-population tables and figure are
+#        computed from (supplement, "Vulnerable-Population Analysis").
 
 import argparse
 import json

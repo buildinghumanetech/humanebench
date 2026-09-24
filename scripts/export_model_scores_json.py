@@ -6,6 +6,8 @@ ScoreGrid / ScoreCarousel / ModelDetailPage components. displayName and provider
 fields are preserved from the existing JSON so they stay single-sourced there.
 """
 
+# Paper: utility -- no paper-facing output; exports the post-exclusion per-persona score CSVs to the model_scores.json consumed by the web front end.
+
 import argparse
 import csv
 import json

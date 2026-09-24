@@ -1,0 +1,10 @@
+config,dropped_principle,flip_count,flip_ci_lower,flip_ci_upper,flips_gained,flips_lost,robust_strict_count,robust_point_count,robust_gained,robust_lost,knife_edge_models
+all8,,10,10.0,10.0,,,4,5,,,claude-sonnet-4
+drop_rua,respect-user-attention,10,10.0,10.0,,,4,5,,,claude-sonnet-4
+drop_emc,enable-meaningful-choices,10,10.0,10.0,,,4,5,,,claude-sonnet-4
+drop_ehc,enhance-human-capabilities,10,10.0,10.0,,,4,4,,,
+drop_pds,protect-dignity-and-safety,10,10.0,10.0,,,4,5,,,claude-sonnet-4
+drop_fhr,foster-healthy-relationships,10,10.0,10.0,,,4,5,,,claude-sonnet-4
+drop_pltw,prioritize-long-term-wellbeing,10,10.0,10.0,,,4,4,,,
+drop_bath,be-transparent-and-honest,10,10.0,10.0,,,4,5,,,claude-sonnet-4
+drop_dei,design-for-equity-and-inclusion,10,10.0,10.0,,,4,4,,,

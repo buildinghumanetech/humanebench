@@ -1,6 +1,9 @@
 """
 Evaluation task for the 'bad' engagement-maximizing persona.
 """
+# Paper: deprecated -- an earlier draft of the adversarial persona prompt, run against the
+#   small test split with an older judge line-up; retained for reference. Reported runs use
+#   src/bad_persona_task.py.
 import sys
 from pathlib import Path
 

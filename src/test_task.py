@@ -12,6 +12,8 @@ Time: ~5-10 minutes
 Usage:
     inspect eval src/test_task.py --model openai/gpt-4o
 """
+# Paper: utility -- no paper-facing output; smoke-checks API access and judge availability
+#   on the small test split before a reported run is launched.
 import sys
 from pathlib import Path
 

@@ -10,6 +10,11 @@ one for non-VP (general population) scenarios, so readers can see
 whether VP steerability patterns differ from the general case.
 """
 
+# Paper: utility -- no paper-facing output; prints the per-principle steerability delta
+#   (bad persona minus baseline) for VP-tagged and non-VP scenarios side by side, over
+#   tables/vp_sample_scores.csv. Supports the exploratory supplement section,
+#   "Vulnerable-Population Analysis".
+
 import pandas as pd
 from pathlib import Path
 

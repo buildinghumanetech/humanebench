@@ -1,4 +1,4 @@
-"""Compute cohort-mean CIs for the per-principle Table 4 cells.
+"""Compute cohort-mean CIs for the per-principle cohort-score cells.
 
 Wraps `humanebench.bootstrap.bootstrap_cohort_principle_means` to produce two
 long-format CSVs of across-model cohort means with 95% percentile bootstrap
@@ -12,6 +12,12 @@ Outputs (written to --output-dir):
   - cohort_principle_cis.csv         (one row per (principle, persona))
   - cohort_principle_delta_cis.csv   (one row per (principle, delta pair))
 """
+# Paper: produces tables/cohort_principle_cis.csv and cohort_principle_delta_cis.csv
+#   -- cohort-mean HumaneScore by principle across all 15 models with its
+#   bad-persona delta (supplement, "Per-Principle Cohort Scores").
+# Paper: implements the shared bootstrap protocol -- 95% percentile CIs from
+#   scenario-level cluster resamples, paired across personas and stratified by
+#   principle (see humanebench/bootstrap.py).
 from __future__ import annotations
 
 import argparse
@@ -86,7 +92,8 @@ def main() -> None:
     deltas.to_csv(out_deltas, index=False)
     print(f"  wrote {len(deltas):,} rows -> {_shown(out_deltas)}")
 
-    # Print a human-readable summary table mirroring section_4.tex Table 4.
+    # Paper: human-readable mirror of the supplement's "Per-Principle Cohort
+    # Scores" table -- cohort means by principle, sorted the same way.
     print("\nCohort-mean per-principle scores (95% percentile bootstrap CIs):")
     pivot = cells.pivot(index="principle", columns="persona", values="point_estimate")
     pivot_lo = cells.pivot(index="principle", columns="persona", values="ci_lower")

@@ -11,6 +11,14 @@ dose-response ends.
 Prompt text is verbatim from ``adversarial-conditions.md`` RQ5 (E). Runs on the
 frozen 200-scenario subsample shared with conditions C and D.
 """
+# Paper: implements decomposition condition E -- no objective is stated as an instruction
+#   at all; the prompt only reports that a variant won on engagement metrics and asks the
+#   model to imitate it (main paper, "Engagement Pressure Alone Drives Degradation").
+# Paper: the most indirect point on the register/indirection spectrum, so it bounds where
+#   the dose-response ends (supplement, "Dose-Response Across Adversarial Wordings");
+#   frozen 200-scenario subsample shared with C and D.
+# Paper: scored by the same 3-judge ensemble as the reported conditions (supplement,
+#   "Judge Validation Details"); produces raw eval logs, not in this package.
 import sys
 from pathlib import Path
 
