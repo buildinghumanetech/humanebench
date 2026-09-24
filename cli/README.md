@@ -1,7 +1,7 @@
 # HumaneBench CLI
 
 A single-binary Rust CLI that scores your own conversation history against the HumaneBench
-v3 rubric and emits a local HTML report.
+v4 rubric and emits a local HTML report.
 
 The benchmark measures frontier models against synthetic prompts. This turns the same
 rubric on real conversations, so you can ask "is this assistant actually treating me
@@ -129,8 +129,10 @@ parsed — that is where `yourtool` belongs.
   ensemble ones.
 - **The rollup prompt is net-new** and, unlike the turn tier, has never been validated
   against human raters.
-- **No comparison against published benchmark numbers — same rubric, different statistic.**
-  The gap is arithmetic, not a claim about which assistant is more humane. Three mechanical
+- **No comparison against published benchmark numbers — different rubric *and* different
+  statistic.** The CLI runs **v4**. The published HumaneBench v1 results, the whitepaper and
+  the leaderboard are **v3**, which is frozen. Never place a v4 score beside a v3 one, and
+  never call a v4 score leaderboard-comparable. On top of the version gap, three mechanical
   divergences from the production scorer (`humanebench/scorer.py`):
   - **The denominator.** The benchmark scores each sample on the *one* principle its prompt
     was built to stress, so a principle's mean is taken only over turns that engage it. The
@@ -139,24 +141,28 @@ parsed — that is where `yourtool` belongs.
   - **One judge, not an ensemble.** The benchmark means severities across several judge
     models and yields NaN if any of them marks the item invalid. The CLI calls one model;
     `regime` is the literal `single`.
-  - **Opposite missing-data policy.** A principle with no usable score is 0 in the benchmark
-    and averaged into the HumaneScore (`scorer.py:130,136`); the CLI drops it from the mean
-    instead (`src/report/mod.rs`). This one cannot bite today — `parse_judgement` rejects any
-    judgement that does not carry exactly eight principles, so a stored record always has all
-    eight — but the aggregation layer encodes the opposite policy and would diverge the moment
-    that invariant is relaxed.
+  - **Opposite missing-data policy, and under v4 it bites constantly.** A principle with no
+    usable score is 0 in the benchmark and averaged into the HumaneScore
+    (`scorer.py:130,136`). The CLI excludes it. Under v3 this was theoretical, because every
+    principle always carried a score; under v4 three of the four outcomes carry no score at
+    all, so most turns now have a denominator smaller than eight. `not_applicable` is not a
+    zero, and a principle in scope on no turns reports as "not in scope" rather than 0.00.
 
   Smaller ones in the same direction: the benchmark rounds to 2dp at both aggregation stages
   and the CLI stores full precision (rounding is display-only); the benchmark has no tier
   concept, while the CLI aggregates turn and rollup tiers separately and never combines them.
 
-- **The judge prompt forks a draft, not the canonical rubric.** It is a byte-identical copy of
-  `evaluator/humanebench_evaluator.py`, which is a spin-off rather than a source of truth, and
-  it inherits three divergences from `rubrics/rubric_v3.md` — an invented 125-character limit on
-  sensitive-content responses, `-1.0` anchors gated on intent ("Deliberately"), and three of the
-  seven global rules missing. All three bias scores upward. The CLI's principle ids also fork
-  the benchmark's, so no tooling can join a CLI report to leaderboard output by principle.
-  `rubric/README.md` documents all of it, with the recommended fix.
+- **Principle ids still fork the benchmark's.** The CLI and `rubrics/judge_prompt_v4.md` both
+  use snake_case codes (`respect_attention`); the benchmark's published slugs are kebab-case
+  and descriptive (`respect-user-attention`). No tooling can join a CLI report to leaderboard
+  output by principle id without a translation table. Renaming them is a hash-invalidating
+  edit, so it is deliberately not bundled here.
+
+  The three prompt divergences this README used to list — an invented 125-character limit on
+  sensitive-content responses, `-1.0` anchors gated on intent ("Deliberately"), and three of
+  the seven global rules missing — are **gone**. They came from the CLI forking a draft
+  template rather than the rubric. v4 is compiled in from `rubrics/judge_prompt_v4.md`
+  directly, so there is no fork left to drift.
 
 ## Layout
 
@@ -167,5 +173,5 @@ src/judge/       prompt assembly, OpenRouter client, response parsing + validati
 src/store/       SQLite: turns, scores, content-hash cache
 src/report/      HTML rendering, full and --share
 src/mcp/         stdio server
-rubric/          judge_prompt_v3.md, include_str! at compile time
+rubric/          README.md only; the prompt itself is ../rubrics/judge_prompt_v4.md
 ```

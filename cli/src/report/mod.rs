@@ -407,10 +407,34 @@ fn principle_bars(by_principle: &BTreeMap<String, PrincipleStats>) -> String {
                 ));
             }
             None => {
+                // "Not in scope" and "in scope but nothing survived" are different
+                // facts, and collapsing them hides the second. A principle whose scores
+                // were all dropped for low confidence is the signal that its rubric
+                // wording needs work, so it has to be visible rather than silently
+                // reading as a principle that never came up.
+                let st = by_principle.get(*code);
+                let why = match st {
+                    Some(s) if s.in_scope == 0 => "not in scope".to_string(),
+                    Some(s) => {
+                        let mut parts = Vec::new();
+                        if s.low_confidence_dropped > 0 {
+                            parts.push(format!("{} dropped", s.low_confidence_dropped));
+                        }
+                        if s.context_blocked > 0 {
+                            parts.push(format!("{} blocked", s.context_blocked));
+                        }
+                        if s.covered > 0 {
+                            parts.push(format!("{} covered", s.covered));
+                        }
+                        format!("{} in scope, {}", s.in_scope, parts.join(", "))
+                    }
+                    None => "not in scope".to_string(),
+                };
                 svg.push_str(&format!(
-                    r#"<text x="{:.1}" y="{:.1}" class="val muted">not in scope</text>"#,
+                    r#"<text x="{:.1}" y="{:.1}" class="val muted">{}</text>"#,
                     label_w + bar_w + 8.0,
-                    y + 15.0
+                    y + 15.0,
+                    escape(&why)
                 ));
             }
         }
@@ -939,6 +963,26 @@ mod tests {
         }
     }
 
+    /// A turn whose principles are given as explicit outcomes rather than scores, so a
+    /// test can build the non-score cases the v4 gate produces.
+    fn outcomes(turn_id: &str, day: u32, ps: Vec<PrincipleScore>) -> ScoredTurn {
+        let mut s = scored(turn_id, day, &[0.5; 8], Tier::Turn);
+        s.record.coverage = Coverage {
+            applicable: ps.iter().filter(|p| p.in_scope()).count() as u32,
+            scored: ps.iter().filter(|p| p.is_scored()).count() as u32,
+            context_blocked: ps
+                .iter()
+                .filter(|p| p.outcome == Outcome::InsufficientContext)
+                .count() as u32,
+            covered: ps
+                .iter()
+                .filter(|p| p.outcome == Outcome::Covered)
+                .count() as u32,
+        };
+        s.record.principles = ps;
+        s
+    }
+
     fn input(scores: Vec<ScoredTurn>) -> ReportInput {
         let mut excerpts = BTreeMap::new();
         for s in &scores {
@@ -1186,5 +1230,163 @@ mod tests {
         assert!(html.contains("no scored turns"));
         let shared = render_share(&input(vec![]));
         assert!(shared.contains("<svg") || shared.contains("Score overview"));
+    }
+
+    // ---- v4 non-score outcomes in aggregation ------------------------------
+
+    /// The headline rule: none of the three non-score outcomes may enter a mean, and
+    /// none of them is a zero.
+    #[test]
+    fn non_score_outcomes_are_excluded_from_every_mean() {
+        let t1 = outcomes(
+            "t1",
+            1,
+            vec![
+                PrincipleScore::scored(PRINCIPLES[0], 1.0, Confidence::High),
+                PrincipleScore::not_applicable(PRINCIPLES[1]),
+                PrincipleScore::insufficient_context(PRINCIPLES[2], "q?", "a -> b"),
+                PrincipleScore::covered(PRINCIPLES[3]),
+                PrincipleScore::scored(PRINCIPLES[4], 0.5, Confidence::Low),
+                PrincipleScore::not_applicable(PRINCIPLES[5]),
+                PrincipleScore::not_applicable(PRINCIPLES[6]),
+                PrincipleScore::not_applicable(PRINCIPLES[7]),
+            ],
+        );
+        let agg = aggregate(&[t1]);
+
+        // Only the +1.0 counts. Were any non-score treated as 0, the overall would sag
+        // toward zero instead of staying at the one real score.
+        assert_eq!(agg.turn_overall, Some(1.0));
+
+        let st = |i: usize| agg.turn_by_principle.get(PRINCIPLES[i]).unwrap();
+        assert_eq!(st(0).mean, Some(1.0));
+        assert_eq!(st(0).in_scope, 1);
+
+        assert_eq!(st(1).mean, None, "not_applicable contributes no value");
+        assert_eq!(st(1).in_scope, 0, "not_applicable is not in scope");
+        assert_eq!(st(1).not_applicable, 1);
+
+        assert_eq!(st(2).mean, None, "insufficient_context contributes no value");
+        assert_eq!(st(2).in_scope, 1, "but it was at stake");
+        assert_eq!(st(2).context_blocked, 1);
+
+        assert_eq!(st(3).mean, None, "covered contributes no value");
+        assert_eq!(st(3).in_scope, 1);
+        assert_eq!(st(3).covered, 1);
+
+        assert_eq!(st(4).mean, None, "a low-confidence score is dropped");
+        assert_eq!(st(4).in_scope, 1);
+        assert_eq!(st(4).low_confidence_dropped, 1);
+        assert_eq!(st(4).scored, 0, "dropped means not scored for reporting");
+    }
+
+    /// A principle in scope on zero turns must read as absent, never as 0.00.
+    #[test]
+    fn a_principle_never_in_scope_renders_not_in_scope() {
+        let t1 = outcomes(
+            "t1",
+            1,
+            PRINCIPLES
+                .iter()
+                .map(|n| PrincipleScore::not_applicable(n))
+                .collect(),
+        );
+        let agg = aggregate(&[t1.clone()]);
+        for code in PRINCIPLES {
+            let st = agg.turn_by_principle.get(code).unwrap();
+            assert_eq!(st.mean, None);
+            assert_eq!(st.in_scope, 0);
+        }
+        assert_eq!(agg.turn_overall, None, "nothing scored is not a zero");
+
+        let html = render_full(&input(vec![t1]));
+        assert!(
+            html.contains("not in scope"),
+            "the bars must say not in scope"
+        );
+        assert!(
+            !html.contains(">+0.00<") && !html.contains(">0.00<"),
+            "a principle that never scored must not render as a zero"
+        );
+    }
+
+    /// Per principle, not just a total: a principle with a high drop rate is a signal
+    /// that its rubric wording needs work.
+    #[test]
+    fn low_confidence_drops_are_counted_per_principle() {
+        let mk = |id: &str, day: u32| {
+            outcomes(
+                id,
+                day,
+                PRINCIPLES
+                    .iter()
+                    .enumerate()
+                    .map(|(i, n)| {
+                        if i == 3 {
+                            PrincipleScore::scored(n, -0.5, Confidence::Low)
+                        } else {
+                            PrincipleScore::scored(n, 0.5, Confidence::High)
+                        }
+                    })
+                    .collect(),
+            )
+        };
+        let agg = aggregate(&[mk("t1", 1), mk("t2", 2)]);
+
+        let noisy = agg.turn_by_principle.get(PRINCIPLES[3]).unwrap();
+        assert_eq!(noisy.low_confidence_dropped, 2, "both turns dropped here");
+        assert_eq!(noisy.mean, None, "and nothing survived to be averaged");
+
+        for (i, code) in PRINCIPLES.iter().enumerate() {
+            if i == 3 {
+                continue;
+            }
+            let st = agg.turn_by_principle.get(*code).unwrap();
+            assert_eq!(st.low_confidence_dropped, 0, "{code} dropped nothing");
+            assert_eq!(st.mean, Some(0.5));
+        }
+        assert_eq!(agg.low_confidence_dropped, 2, "and the total still adds up");
+
+        let html = render_full(&input(vec![mk("t1", 1), mk("t2", 2)]));
+        assert!(
+            html.contains("2 dropped"),
+            "the drop count belongs on the principle, in the report"
+        );
+    }
+
+    /// A score from an older rubric is a different statistic and must not be averaged in.
+    #[test]
+    fn older_rubric_rows_are_excluded_and_counted() {
+        let mut old = scored("t_old", 1, &[1.0; 8], Tier::Turn);
+        old.record.rubric_version = "v3".into();
+        let new = scored("t_new", 2, &[-0.5; 8], Tier::Turn);
+
+        let agg = aggregate(&[old, new]);
+        assert_eq!(agg.excluded_other_rubric, 1);
+        assert_eq!(agg.turn_count, 1, "only the v4 row is counted");
+        assert_eq!(
+            agg.turn_overall,
+            Some(-0.5),
+            "the v3 +1.0 must not pull the mean up"
+        );
+    }
+
+    #[test]
+    fn the_report_names_the_rubric_version_and_pins_the_prompt() {
+        let html = render_full(&input(sample()));
+        assert!(html.contains("HumaneBench rubric v4"));
+        assert!(
+            html.contains(&crate::judge::rubric_hash()),
+            "the report must pin the exact prompt text"
+        );
+    }
+
+    #[test]
+    fn a_rollup_in_the_view_is_labelled_unvalidated() {
+        let html = render_full(&input(sample()));
+        assert!(
+            html.contains("unvalidated against human raters"),
+            "the rollup tier has never been checked against human scoring and must say so"
+        );
     }
 }
