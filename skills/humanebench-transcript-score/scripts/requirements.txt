@@ -1,5 +1,5 @@
-# Default (Claude-only) scorer needs just the Anthropic SDK:
-anthropic>=0.40
-
-# For --ensemble you ALSO need the OpenAI + Google Gemini SDKs — install them with:
-#   pip install -r scripts/requirements-ensemble.txt
+# The scorer calls OpenRouter with the standard library, so the only dependency is the
+# hash the CLI uses, which keeps content hashes comparable across the two paths.
+blake3>=0.4
+# CA roots for HTTPS; python.org builds of Python on macOS ship without them.
+certifi>=2024.2

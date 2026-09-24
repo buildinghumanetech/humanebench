@@ -864,13 +864,14 @@ fn footer(input: &ReportInput, share: bool) -> String {
     };
     format!(
         r#"<footer><p>{mode}</p>
-<p>Generated {} · sources: {} · rubric: HumaneBench v3.0 (compiled into the binary)</p></footer>"#,
+<p>Generated {} · sources: {} · rubric: HumaneBench {} (compiled into the binary)</p></footer>"#,
         input.generated_at.format("%Y-%m-%d %H:%M UTC"),
         escape(&if input.sources.is_empty() {
             "none".to_string()
         } else {
             input.sources.join(", ")
         }),
+        crate::judge::RUBRIC_VERSION,
     )
 }
 
@@ -1376,6 +1377,10 @@ mod tests {
         assert!(
             html.contains(&crate::judge::rubric_hash()),
             "the report must pin the exact prompt text"
+        );
+        assert!(
+            !html.contains("v3.0"),
+            "the footer must name the compiled-in rubric, not a stale version"
         );
     }
 

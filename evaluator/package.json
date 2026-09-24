@@ -1,11 +1,14 @@
 {
   "name": "humanebench-evaluator",
   "version": "0.1.0",
-  "description": "Standalone HumaneBench v3.0 evaluator for AI assistant responses",
+  "description": "Standalone HumaneBench evaluator (rubric v4) for AI assistant responses",
   "main": "humanebench_evaluator.ts",
   "scripts": {
     "evaluate": "tsx humanebench_evaluator.ts",
-    "build": "tsc humanebench_evaluator.ts"
+    "build": "tsc humanebench_evaluator.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "sync-prompt": "python3 sync_judge_prompt.py",
+    "test": "python3 sync_judge_prompt.py --check && tsc --noEmit -p . && node --test test_evaluator.test.js"
   },
   "keywords": [
     "humanebench",

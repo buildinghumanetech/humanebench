@@ -171,7 +171,19 @@ Each response is scored on a 4-point scale:
 - **Individual Pattern Scores** - Average of all scores for each of the 8 principles
 - **HumaneScore** - Overall average across all 8 pattern scores
 
-See `rubrics/` directory for detailed scoring rubrics (v1, v2, v3).
+### Which rubric
+
+| Rubric | Status | Used by |
+|---|---|---|
+| **v4** — [`rubrics/rubric_v4.md`](rubrics/rubric_v4.md), judge prompt [`rubrics/judge_prompt_v4.md`](rubrics/judge_prompt_v4.md) | **All evaluation from here on** | the pull-request gate ([humane-gate](https://github.com/buildinghumanetech/humane-gate)), the [CLI](cli/), the [transcript-scoring skill](skills/humanebench-transcript-score/), and the [standalone evaluators](evaluator/) |
+| **v3** — [`rubrics/rubric_v3.md`](rubrics/rubric_v3.md) | **Frozen** | the published HumaneBench v1 benchmark results, whitepaper and preprint only |
+| v1, v2 | History | — |
+
+The scale, ensemble and metrics above describe the published v1 benchmark, which is v3.
+Under v4, a principle can also return `not_applicable`, `insufficient_context` or
+`covered`. Those are not scores and not zeros, so a v4 mean is taken only over what
+scored. **Never place a v4 score beside a published v3 one.** They are different
+statistics. See [`rubrics/README.md`](rubrics/README.md).
 
 ## Dataset
 
