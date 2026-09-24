@@ -14,6 +14,9 @@ low confidence, is not in scope: it enters no mean and is counted separately. A
 principle with no in-scope sample has no mean, and it is shown as "-" rather
 than 0.
 
+Both logs must come from the same tier (-T tier=try|full). A try-tier report is
+labelled as a first look: one judge and 3 samples per principle.
+
 The prompt text is never printed. Only its sha256 is.
 """
 from __future__ import annotations
@@ -36,6 +39,12 @@ from humanebench.scorer_v4 import (  # noqa: E402
 
 def label(rubric_version: str = RUBRIC_VERSION) -> str:
     return f"HumaneBench rubric {rubric_version}, not comparable to the v1 leaderboard."
+
+
+TRY_TIER_LABEL = (
+    "Single judge, small sample: a first look, not a result. "
+    "Run tier=full before you act on it."
+)
 SCORER_NAME = "overseer_v4"
 CONTEXT_BLOCKED_DIRECTIONAL = 0.15
 # Below this many in-scope samples in either condition, a per-principle delta is
@@ -153,6 +162,11 @@ def _task_name(log) -> str:
     return log.eval.task.split("/")[-1]
 
 
+def tier_of(log) -> str:
+    # Logs written before tiers existed were all scored by the three-judge ensemble.
+    return (log.eval.metadata or {}).get("tier") or "full"
+
+
 def find_pair(log_dir: Path):
     from inspect_ai.log import list_eval_logs, read_eval_log
 
@@ -165,6 +179,7 @@ def find_pair(log_dir: Path):
     for h in headers:
         if (_task_name(h) == "baseline_v4_eval" and h.status == "success"
                 and h.eval.model == custom.eval.model
+                and tier_of(h) == tier_of(custom)
                 and (h.eval.metadata or {}).get("per_principle") == (custom.eval.metadata or {}).get("per_principle")
                 and (h.eval.metadata or {}).get("seed") == (custom.eval.metadata or {}).get("seed")
                 and (h.eval.metadata or {}).get("rubric_version")
@@ -172,7 +187,7 @@ def find_pair(log_dir: Path):
             return h.location, custom.location
     raise SystemExit(
         f"No successful baseline_v4_eval log in {log_dir} for model {custom.eval.model} "
-        "with the same per_principle, seed and rubric version"
+        f"with the same tier ({tier_of(custom)}), per_principle, seed and rubric version"
     )
 
 
@@ -187,6 +202,12 @@ def check_pair(baseline_log, custom_log) -> list[str]:
     c_ver = (custom_log.eval.metadata or {}).get("rubric_version")
     if b_ver != c_ver:
         raise SystemExit(f"Different rubric versions: baseline {b_ver} vs custom {c_ver}. Re-run the baseline.")
+    if tier_of(baseline_log) != tier_of(custom_log):
+        raise SystemExit(
+            f"Different tiers: baseline {tier_of(baseline_log)} vs custom {tier_of(custom_log)}. "
+            "Their judges and sample sizes differ, so the delta would mean nothing. "
+            "Re-run the baseline with the same -T tier."
+        )
     if baseline_log.eval.model != custom_log.eval.model:
         raise SystemExit(
             f"Different models: baseline {baseline_log.eval.model} vs custom {custom_log.eval.model}"
@@ -217,13 +238,20 @@ def _fmt(v: float | None, signed: bool = False) -> str:
 
 
 def format_report(cmp: Comparison, model: str = "", prompt_sha: str | None = None,
-                  warnings: list[str] | None = None, rubric_version: str = RUBRIC_VERSION) -> str:
-    lines = [label(rubric_version), ""]
+                  warnings: list[str] | None = None, rubric_version: str = RUBRIC_VERSION,
+                  tier: str | None = None, judges: list[str] | None = None) -> str:
+    lines = [label(rubric_version)]
+    if tier == "try":
+        lines.append(TRY_TIER_LABEL)
+    lines.append("")
     if model:
         lines.append(f"Model:          {model}")
     if prompt_sha:
         lines.append(f"Prompt sha256:  {prompt_sha}")
-    if model or prompt_sha:
+    if tier:
+        who = f" ({'judge' if len(judges or []) == 1 else 'judges'}: {', '.join(judges)})" if judges else ""
+        lines.append(f"Tier:           {tier}{who}")
+    if model or prompt_sha or tier:
         lines.append("")
     header = f"{'Principle':<34}{'Baseline':>9}{'Custom':>9}{'Delta':>8}{'n base':>8}{'n cust':>8}"
     lines += [header, "-" * len(header)]
@@ -293,6 +321,8 @@ def format_report(cmp: Comparison, model: str = "", prompt_sha: str | None = Non
     lines.append("n = in-scope samples behind each mean. Small n means a noisy per-principle delta.")
     for w in warnings or []:
         lines.append(f"Warning: {w}")
+    if tier == "try":
+        lines += ["", TRY_TIER_LABEL]
     return "\n".join(lines)
 
 
@@ -314,12 +344,15 @@ def main(argv: list[str] | None = None) -> int:
     baseline_log, custom_log = read_eval_log(b_path), read_eval_log(c_path)
     warnings = check_pair(baseline_log, custom_log)
     cmp = compare(results_from_log(baseline_log), results_from_log(custom_log))
+    c_md = custom_log.eval.metadata or {}
     print(format_report(
         cmp,
         model=custom_log.eval.model,
-        prompt_sha=(custom_log.eval.metadata or {}).get("system_prompt_sha256"),
+        prompt_sha=c_md.get("system_prompt_sha256"),
         warnings=warnings,
-        rubric_version=(custom_log.eval.metadata or {}).get("rubric_version", RUBRIC_VERSION),
+        rubric_version=c_md.get("rubric_version", RUBRIC_VERSION),
+        tier=tier_of(custom_log),
+        judges=c_md.get("judges"),
     ))
     print(f"\nBaseline log: {b_path}\nCustom log:   {c_path}")
     return 0

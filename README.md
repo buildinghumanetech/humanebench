@@ -48,14 +48,31 @@ Does your system prompt make a model more or less humane than no system prompt a
 ```bash
 # 1. Score your prompt AND a no-system-prompt baseline, same model, same samples
 inspect eval src/custom_prompt_task.py \
-  -T system_prompt_file=path/to/prompt.md -T per_principle=10 \
+  -T system_prompt_file=path/to/prompt.md \
   --model openrouter/<provider>/<model>
 
 # 2. Compare them
 python scripts/compare_prompt.py
 ```
 
-Step 1 runs two tasks from `src/custom_prompt_task.py`: `custom_prompt_eval` (your prompt as the system message) and `baseline_v4_eval` (no system message). `per_principle=10` takes a seeded, stratified sample of 10 prompts per principle (80 in total). This is the recommended real run. Step 2 finds the newest matching pair in `./logs` and prints the comparison. This is real output from a 3-per-principle smoke run of the repo's good-persona prompt on `openai/gpt-4o-mini`:
+That is the **try tier**, the default: one judge (GPT-5.1), 3 prompts per principle (24 in total), your prompt and the baseline. **It cost $0.58** on `openai/gpt-4o-mini` (measured, September 2026). It is a first look, and the comparison says so on its first and last lines.
+
+**Before you act on it**, run the **full tier**: the three-judge ensemble on 10 prompts per principle (80 in total), about $12.50 to $17:
+
+```bash
+inspect eval src/custom_prompt_task.py \
+  -T system_prompt_file=path/to/prompt.md -T tier=full \
+  --model openrouter/<provider>/<model>
+python scripts/compare_prompt.py
+```
+
+Step 1 runs two tasks from `src/custom_prompt_task.py`: `custom_prompt_eval` (your prompt as the system message) and `baseline_v4_eval` (no system message), on a seeded, stratified sample. Step 2 finds the newest matching pair in `./logs` and prints the comparison. `-T per_principle=N` overrides a tier's sample size. The tier, judges and `per_principle` are recorded in each log's metadata, and `compare_prompt.py` refuses to compare a try-tier run with a full-tier one.
+
+**Why the try tier can mislead.** Its per-principle rows rest on 3 samples and one judge's opinion. The same good-persona prompt on `openai/gpt-4o-mini`, on the same 24 prompts, came out at +0.03 with the full ensemble (under the v4 judge prompt, the output below) and at -0.09 on the try tier (under v4.1). Fresh responses, one judge instead of three and a revised judge prompt were enough to flip the sign. Use the try tier to find out whether a prompt is worth a full run, not to decide whether it works.
+
+**Why GPT-5.1 is the try-tier judge.** On the v4.1 golden set ([docs/validation/golden_v4.1_direction_match_2026-09-24.json](docs/validation/golden_v4.1_direction_match_2026-09-24.json)) the three ensemble judges tie on agreement with human raters: each matches the human direction on 22 of 24 items. GPT-5.1 is the cheapest of the three by a wide margin, $0.015 per sample against $0.045 for Claude Sonnet 4.5 and $0.050 for Gemini 2.5 Pro. Two caveats: under the earlier v4 judge prompt GPT-5.1 was the weakest of the three (21 of 24, against 23), and on the stated-stop regression cases ([docs/validation/stated_stop_regression_2026-09-24.json](docs/validation/stated_stop_regression_2026-09-24.json)) it passed 5 of 9, between Sonnet (6) and Gemini (4). One judge has no one to disagree with, which is another reason the full tier is the one to act on.
+
+This is real output from a 3-per-principle run of the repo's good-persona prompt on `openai/gpt-4o-mini`, under the full ensemble:
 
 ```
 HumaneBench rubric v4, not comparable to the v1 leaderboard.
@@ -85,28 +102,30 @@ Rows marked noisy have fewer than 10 in-scope samples in a condition. [...]
 
 **Rubric version.** This scores under **rubric v4** (`rubrics/judge_prompt_v4.md`, via `humanebench/scorer_v4.py`). The baseline, good-persona and bad-persona tasks below reproduce the published v1 benchmark under **rubric v3**. **A v4 number is not comparable to the v1 leaderboard, the whitepaper or the preprint.** Compare your prompt against its own v4 baseline, which is what the script does. See [rubrics/README.md](rubrics/README.md).
 
-**Cost.** Each sample in each condition costs one target-model call plus one call to each of the 3 judges (Claude Sonnet 4.5, GPT-5.1, Gemini 2.5 Pro via OpenRouter). The judge prompt is about 8k tokens, so the judges account for nearly all of the cost.
+**Cost.** Each sample in each condition costs one target-model call plus one call to each judge. The judge prompt is about 8k tokens, so the judges account for nearly all of the cost.
 
-Measured cost on OpenRouter list prices, with `openai/gpt-4o-mini` as the target (September 2026, 88 logged samples): **$0.076 to $0.104 per sample per condition.**
+Measured on OpenRouter list prices, with `openai/gpt-4o-mini` as the target (September 2026):
+- **Try tier (GPT-5.1 alone):** $0.58 for a whole run, 24 samples × 2 conditions, about $0.012 per sample per condition. GPT-5.1 is cheap because most of the repeated judge prompt comes from its cache.
+- **Full tier (three judges):** $0.076 to $0.104 per sample per condition, from 88 logged samples. Most of it goes to the Gemini 2.5 Pro and Sonnet 4.5 judges.
 - **Why the range:** responses the judges score negatively cost more, because each negative finding needs a tier, evidence and rationale. Gemini 2.5 Pro wrote about 5 times as much output on the bad-persona run as on the baseline.
-- **Where the money goes:** the Gemini 2.5 Pro and Sonnet 4.5 judges account for most of it. GPT-5.1 is cheap because most of the repeated judge prompt comes from its cache.
 - **A pricier target model** adds its own tokens on top.
 
 Budget with the upper figure if your prompt might push the model somewhere bad.
 
 | Run | Samples × conditions | Judge calls | Approx. cost |
 |---|---|---|---|
-| `-T per_principle=3` (smoke test) | 24 × 2 | 144 | $3.76 to $4.45 measured |
-| `-T per_principle=10` (recommended) | 80 × 2 | 480 | ~$12.50 to $17 |
-| full dataset (788 after exclusions) | 788 × 2 | 4,728 | ~$123 to $164 |
+| `-T tier=try` (default: 1 judge, 3 per principle) | 24 × 2 | 48 | $0.58 measured |
+| `-T tier=full -T per_principle=3` | 24 × 2 | 144 | $3.76 to $4.45 measured |
+| `-T tier=full` (3 judges, 10 per principle) | 80 × 2 | 480 | ~$12.50 to $17 |
+| `-T tier=full -T per_principle=all` (788 after exclusions) | 788 × 2 | 4,728 | ~$123 to $164 |
 
 The task prints its call count to stderr when it starts. `--limit N` also works: samples are interleaved across principles, so the first N stay balanced. Judge retries on malformed output add a few calls.
 
-**Reusing a baseline.** A baseline doesn't depend on the prompt. To test a second prompt on the same model, run only the custom task and compare against the baseline you already have (use the same `per_principle` and `seed`):
+**Reusing a baseline.** A baseline doesn't depend on the prompt. To test a second prompt on the same model, run only the custom task and compare against the baseline you already have (use the same `tier`, `per_principle` and `seed`):
 
 ```bash
 inspect eval src/custom_prompt_task.py@custom_prompt_eval \
-  -T system_prompt_file=path/to/other.md -T per_principle=10 --model openrouter/<provider>/<model>
+  -T system_prompt_file=path/to/other.md -T tier=full --model openrouter/<provider>/<model>
 python scripts/compare_prompt.py --baseline logs/<baseline>.eval --custom logs/<new>.eval
 ```
 

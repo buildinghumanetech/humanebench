@@ -498,3 +498,112 @@ class TestComparison:
         votes = ["insufficient_context", "insufficient_context", "score"]
         c = cp.compare([r(P1, 0.5, votes=votes)], [r(P1, 0.5)])
         assert "Directional only" in cp.format_report(c)
+
+
+class TestTiers:
+    def _prompt(self, tmp_path):
+        f = tmp_path / "p.md"
+        f.write_text("x")
+        return str(f)
+
+    def test_try_is_the_default(self, tmp_path):
+        task = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path))
+        md = task.metadata
+        assert md["tier"] == "try"
+        assert md["judges"] == [cpt.TRY_JUDGE]
+        assert md["per_principle"] == 3
+        assert len(task.dataset) == 3 * len(cp.PRINCIPLES)
+
+    def test_full_is_the_three_judge_ensemble_at_ten(self, tmp_path):
+        task = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="full")
+        md = task.metadata
+        assert md["tier"] == "full"
+        assert md["judges"] == v4.DEFAULT_JUDGES
+        assert md["per_principle"] == 10
+        assert len(task.dataset) == 10 * len(cp.PRINCIPLES)
+
+    def test_baseline_records_the_same_tier(self, tmp_path):
+        for tier in ("try", "full"):
+            b = cpt.baseline_v4_eval(system_prompt_file=self._prompt(tmp_path), tier=tier).metadata
+            c = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier=tier).metadata
+            assert (b["tier"], b["judges"], b["per_principle"]) == (c["tier"], c["judges"], c["per_principle"])
+
+    def test_per_principle_overrides_the_tier_default(self, tmp_path):
+        md = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="try",
+                                    per_principle="all").metadata
+        assert md["tier"] == "try" and md["per_principle"] is None
+        md = cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="full",
+                                    per_principle=2).metadata
+        assert md["judges"] == v4.DEFAULT_JUDGES and md["per_principle"] == 2
+
+    def test_unknown_tier_fails_before_any_call(self, tmp_path):
+        with pytest.raises(ValueError, match="tier must be one of"):
+            cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="cheap")
+        with pytest.raises(ValueError, match="tier must be one of"):
+            cpt.baseline_v4_eval(tier="")
+
+    def test_tier_is_case_insensitive(self, tmp_path):
+        assert cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path),
+                                      tier=" Full ").metadata["tier"] == "full"
+
+
+class TestTierComparison:
+    @staticmethod
+    def log(task, tier, per_principle=3, model="m", location=None):
+        from types import SimpleNamespace as NS
+        md = {"rubric_version": "v4.1", "judge_prompt_sha256": "same", "seed": 42,
+              "per_principle": per_principle}
+        if tier is not None:
+            md["tier"] = tier
+        return NS(location=location or task, samples=[], status="success",
+                  eval=NS(task=task, model=model, metadata=md))
+
+    def test_check_pair_refuses_mixed_tiers(self):
+        with pytest.raises(SystemExit, match="Different tiers: baseline full vs custom try"):
+            cp.check_pair(self.log("baseline_v4_eval", "full"), self.log("custom_prompt_eval", "try"))
+        with pytest.raises(SystemExit, match="Different tiers"):
+            cp.check_pair(self.log("baseline_v4_eval", "try"), self.log("custom_prompt_eval", "full"))
+        assert cp.check_pair(self.log("baseline_v4_eval", "try"), self.log("custom_prompt_eval", "try")) == []
+
+    def test_logs_from_before_tiers_count_as_full(self):
+        """Every log written before tiers existed was scored by the three-judge ensemble."""
+        assert cp.check_pair(self.log("baseline_v4_eval", None), self.log("custom_prompt_eval", "full")) == []
+        with pytest.raises(SystemExit, match="Different tiers"):
+            cp.check_pair(self.log("baseline_v4_eval", None), self.log("custom_prompt_eval", "try"))
+
+    def test_find_pair_skips_a_baseline_from_another_tier(self, tmp_path):
+        headers = [
+            self.log("custom_prompt_eval", "try", location="custom-try"),
+            self.log("baseline_v4_eval", "full", location="base-full"),
+            self.log("baseline_v4_eval", "try", location="base-try"),
+        ]
+        with patch("inspect_ai.log.list_eval_logs", return_value=headers), \
+                patch("inspect_ai.log.read_eval_log", side_effect=lambda h, header_only=True: h):
+            assert cp.find_pair(tmp_path) == ("base-try", "custom-try")
+
+    def test_find_pair_names_the_tier_when_no_baseline_matches(self, tmp_path):
+        headers = [
+            self.log("custom_prompt_eval", "try", location="custom-try"),
+            self.log("baseline_v4_eval", "full", location="base-full"),
+        ]
+        with patch("inspect_ai.log.list_eval_logs", return_value=headers), \
+                patch("inspect_ai.log.read_eval_log", side_effect=lambda h, header_only=True: h), \
+                pytest.raises(SystemExit, match="tier"):
+            cp.find_pair(tmp_path)
+
+    def test_try_tier_report_is_labelled(self):
+        c = cp.compare([r(P1, 0.5)], [r(P1, 1.0)])
+        out = cp.format_report(c, tier="try", judges=["openrouter/openai/gpt-5.1"])
+        assert cp.TRY_TIER_LABEL == (
+            "Single judge, small sample: a first look, not a result. "
+            "Run tier=full before you act on it."
+        )
+        assert out.splitlines()[1] == cp.TRY_TIER_LABEL
+        assert out.rstrip().splitlines()[-1] == cp.TRY_TIER_LABEL, "repeated after the verdict"
+        assert "Tier:           try (judge: openrouter/openai/gpt-5.1)" in out
+
+    def test_full_tier_report_has_no_try_label(self):
+        c = cp.compare([r(P1, 0.5)], [r(P1, 1.0)])
+        out = cp.format_report(c, tier="full", judges=v4.DEFAULT_JUDGES)
+        assert cp.TRY_TIER_LABEL not in out
+        assert "Tier:           full (judges: " in out
