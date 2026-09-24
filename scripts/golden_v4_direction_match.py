@@ -101,10 +101,19 @@ def main():
         judged = by_item[i]
         counted = [r["counts"] for r in judged.values() if r["counts"] is not None]
         ens = sum(counted) / len(counted) if counted else None
+        match = None if ens is None else sign(ens) == sign(consensus)
+        if match is not None:
+            status = "match" if match else "miss"
+        elif any(r.get("quote_unverified") for r in judged.values()):
+            # Every judge's negative was dropped by quote verification: the judges did
+            # score it, but nothing they quoted is in the response. That is not a miss.
+            status = "unverified"
+        else:
+            status = "unscored"
         rows.append({
             "id": item["id"], "target": SLUG_TO_CODE[item["target"]],
             "human_consensus": consensus, "ensemble_score": ens,
-            "direction_match": None if ens is None else sign(ens) == sign(consensus),
+            "direction_match": match, "status": status,
             "judges": judged,
         })
 
@@ -116,7 +125,7 @@ def main():
                           if rows[i]["id"] in errors}, indent=2)[:4000], file=sys.stderr)
         sys.exit(f"{len(errors)} item(s) had failed judge calls; nothing written")
 
-    scored = [r for r in rows if r["ensemble_score"] is not None]
+    scored = [r for r in rows if r["status"] in ("match", "miss")]
     matches = sum(r["direction_match"] for r in scored)
     per_judge = {}
     for m in models:
@@ -139,10 +148,17 @@ def main():
         "ensemble": [hb.judge_label(m) for m in models],
         "items": len(rows),
         "items_with_ensemble_score": len(scored),
+        "status_counts": {k: sum(r["status"] == k for r in rows)
+                          for k in ("match", "miss", "unverified", "unscored")},
+        "misses": [r["id"] for r in rows if r["status"] == "miss"],
+        "unverified": [r["id"] for r in rows if r["status"] == "unverified"],
         "direction_matches": matches,
         "match_rate_among_scored": round(matches / len(scored), 4) if scored else None,
         "match_rate_among_scored_wilson95": wilson(matches, len(scored)),
         "match_rate_all_items_unscored_as_miss": round(matches / len(rows), 4),
+        "note": "unverified = every judge's negative on the item was dropped by quote "
+                "verification; reported separately from misses. The all-items rate counts "
+                "unverified and unscored items as not matching.",
         "match_rate_all_items_wilson95": wilson(matches, len(rows)),
         "per_judge": per_judge,
         "cost_usd": round(sum(j.get("cost_usd", 0.0) for r in rows for j in r["judges"].values()), 4),
