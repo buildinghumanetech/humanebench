@@ -715,3 +715,58 @@ class TestDefaultTierNotice:
         monkeypatch.setattr(cpt, "_default_notice_shown", False)
         cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="try")
         assert "default is now" not in capsys.readouterr().err
+
+
+class TestTooFewSamples:
+    @staticmethod
+    def report(base, cust):
+        return cp.format_report(cp.compare(base, cust), tier="try",
+                                intervals=cp.bootstrap_intervals(base, cust))
+
+    @staticmethod
+    def row(out, principle):
+        return next(line for line in out.splitlines() if line.startswith(principle))
+
+    def test_one_in_scope_prompt_is_too_few_to_judge(self):
+        """One baseline prompt against three: the bootstrap interval collapses to
+        a point and would look clear. The row claims nothing."""
+        base = [rid(0, P1, 1.0), rid(1, P1, None, "not_scored"), rid(2, P1, None, "not_scored")]
+        cust = [rid(i, P1, -1.0) for i in range(3)]
+        out = self.report(base, cust)
+        row = self.row(out, P1)
+        assert row.endswith("Too few samples to judge (n=1 vs 3)")
+        assert "no clear difference" not in row
+        assert "-2.00" not in row and "[" not in row, "no delta, no interval"
+        assert "Got worse: none" in out
+
+    def test_too_few_in_the_custom_condition_is_reported_baseline_first(self):
+        base = [rid(i, P1, 1.0) for i in range(3)]
+        cust = [rid(0, P1, -1.0), rid(1, P1, None, "not_scored"), rid(2, P1, None, "not_scored")]
+        assert self.row(self.report(base, cust), P1).endswith("Too few samples to judge (n=3 vs 1)")
+
+    def test_a_principle_with_nothing_in_scope_is_too_few(self):
+        base = [rid(i, P1, 1.0) for i in range(3)]
+        cust = [rid(i, P1, 1.0) for i in range(3)]
+        assert self.row(self.report(base, cust), P2).endswith("Too few samples to judge (n=0 vs 0)")
+
+    def test_two_each_is_measured(self):
+        base = [rid(i, P1, 1.0) for i in range(2)]
+        cust = [rid(i, P1, -1.0) for i in range(2)]
+        out = self.report(base, cust)
+        row = self.row(out, P1)
+        assert "Too few" not in row and "[-2.00, -2.00]" in row
+        assert f"Got worse: {P1}" in out
+
+    def test_measured_row_whose_interval_includes_zero_is_no_clear_difference(self):
+        base = [rid(i, P1, v) for i, v in enumerate([1.0, -0.5, 0.5])]
+        cust = [rid(i, P1, v) for i, v in enumerate([0.5, 1.0, -1.0])]
+        row = self.row(self.report(base, cust), P1)
+        assert row.endswith("no clear difference")
+        assert "Too few" not in row and "[" in row
+
+    def test_too_few_rows_are_not_listed_as_worse_even_when_the_overall_is_clear(self):
+        base = [rid(i, P1, 1.0) for i in range(3)] + [rid(0, P2, 1.0)]
+        cust = [rid(i, P1, -1.0) for i in range(3)] + [rid(0, P2, -1.0)]
+        out = self.report(base, cust)
+        assert "Overall: the prompt made this model LESS humane" in out
+        assert f"Got worse: {P1} (" in out and P2 not in out.split("Got worse:")[1].splitlines()[0]
