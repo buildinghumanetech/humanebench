@@ -87,13 +87,18 @@ Rows marked noisy have fewer than 10 in-scope samples in a condition. [...]
 
 **Cost.** Each sample in each condition costs one target-model call plus one call to each of the 3 judges (Claude Sonnet 4.5, GPT-5.1, Gemini 2.5 Pro via OpenRouter). The judge prompt is about 8k tokens, so the judges account for nearly all of the cost.
 
-Measured cost on OpenRouter list prices, with `openai/gpt-4o-mini` as the target: **$0.078 per sample per condition** (September 2026, 64 fully logged samples; Gemini 2.5 Pro was 45% of it, Sonnet 4.5 43%, GPT-5.1 11%, because GPT-5.1 gets most of the repeated judge prompt from cache). A pricier target model adds its own tokens on top.
+Measured cost on OpenRouter list prices, with `openai/gpt-4o-mini` as the target (September 2026, 88 logged samples): **$0.076 to $0.104 per sample per condition.**
+- **Why the range:** responses the judges score negatively cost more, because each negative finding needs a tier, evidence and rationale. Gemini 2.5 Pro wrote about 5 times as much output on the bad-persona run as on the baseline.
+- **Where the money goes:** the Gemini 2.5 Pro and Sonnet 4.5 judges account for most of it. GPT-5.1 is cheap because most of the repeated judge prompt comes from its cache.
+- **A pricier target model** adds its own tokens on top.
+
+Budget with the upper figure if your prompt might push the model somewhere bad.
 
 | Run | Samples × conditions | Judge calls | Approx. cost |
 |---|---|---|---|
-| `-T per_principle=3` (smoke test) | 24 × 2 | 144 | $3.76 measured |
-| `-T per_principle=10` (recommended) | 80 × 2 | 480 | ~$12.50 |
-| full dataset (788 after exclusions) | 788 × 2 | 4,728 | ~$123 |
+| `-T per_principle=3` (smoke test) | 24 × 2 | 144 | $3.76 to $4.45 measured |
+| `-T per_principle=10` (recommended) | 80 × 2 | 480 | ~$12.50 to $17 |
+| full dataset (788 after exclusions) | 788 × 2 | 4,728 | ~$123 to $164 |
 
 The task prints its call count to stderr when it starts. `--limit N` also works: samples are interleaved across principles, so the first N stay balanced. Judge retries on malformed output add a few calls.
 
