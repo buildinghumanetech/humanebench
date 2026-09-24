@@ -593,7 +593,7 @@ class TestTierComparison:
 
     def test_try_tier_report_is_labelled(self):
         base, cust = [r(P1, 0.5)], [r(P1, 1.0)]
-        out = cp.format_report(cp.compare(base, cust), tier="try", judges=["openrouter/openai/gpt-5.1"],
+        out = cp.format_report(cp.compare(base, cust), tier="try", judges=[cpt.TRY_JUDGE],
                                intervals=cp.bootstrap_intervals(base, cust))
         assert cp.TRY_TIER_LABEL == (
             "Single judge, small sample: a first look, not a result. "
@@ -601,7 +601,7 @@ class TestTierComparison:
         )
         assert out.splitlines()[1] == cp.TRY_TIER_LABEL
         assert out.rstrip().splitlines()[-1] == cp.TRY_TIER_LABEL, "repeated after the verdict"
-        assert "Tier:           try (judge: openrouter/openai/gpt-5.1)" in out
+        assert f"Tier:           try (judge: {cpt.TRY_JUDGE})" in out
 
     def test_full_tier_report_has_no_try_label(self):
         c = cp.compare([r(P1, 0.5)], [r(P1, 1.0)])

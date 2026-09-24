@@ -52,11 +52,11 @@ from humanebench.scorer_v4 import (
 DATASET_PATH = Path(__file__).resolve().parent.parent / "data" / "humane_bench.jsonl"
 DEFAULT_SEED = 42
 
-# The try tier's single judge. On the v4.1 golden set (docs/validation/
-# golden_v4.1_direction_match_2026-09-24.json) the three ensemble judges tie at
-# 22 direction matches of 24, and GPT-5.1 costs about a third per sample of the
-# other two ($0.015 against $0.045 and $0.050).
-TRY_JUDGE = "openrouter/openai/gpt-5.1"
+# The try tier's single judge: best agreement on the v4.1 golden set, then the
+# cheapest per sample (docs/validation/golden_v4.1_direction_match_2026-09-24.json).
+# Sonnet 4.5 and Gemini 2.5 Pro tie at 22 of 23 direction matches (GPT-5.1: 20),
+# and Sonnet costs less per sample ($0.046 against $0.052).
+TRY_JUDGE = "openrouter/anthropic/claude-sonnet-4.5"
 TIERS: dict[str, dict] = {
     "try": {"judges": [TRY_JUDGE], "per_principle": 3},
     "full": {"judges": list(DEFAULT_JUDGES), "per_principle": 10},

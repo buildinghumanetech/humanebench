@@ -55,7 +55,7 @@ inspect eval src/custom_prompt_task.py \
 python scripts/compare_prompt.py
 ```
 
-That is the **try tier**, the default: one judge (GPT-5.1), 3 prompts per principle (24 in total), your prompt and the baseline. **It costs about $0.70** on `openai/gpt-4o-mini` (measured, September 2026). It is a first look, and the comparison says so on its first and last lines. If you don't pass `-T tier`, the task prints a one-line notice that the default is now `try`.
+That is the **try tier**, the default: one judge (Claude Sonnet 4.5), 3 prompts per principle (24 in total), your prompt and the baseline. **It costs about $2.20** on `openai/gpt-4o-mini`, an estimate from the judge's measured per-sample cost. It is a first look, and the comparison says so on its first and last lines. If you don't pass `-T tier`, the task prints a one-line notice that the default is now `try`.
 
 **Before you act on it**, run the **full tier**: the three-judge ensemble on 10 prompts per principle (80 in total), about $12.50 to $17:
 
@@ -70,7 +70,7 @@ Step 1 runs two tasks from `src/custom_prompt_task.py`: `custom_prompt_eval` (yo
 
 **Reading a try-tier report.** Every delta comes with a 95% interval: a paired bootstrap over prompts, the same design as the paper's CIs (`humanebench/bootstrap.py`). The report names a direction only when the interval excludes zero. Otherwise the headline is "No clear difference at this sample size", followed by the interval, and principle rows are marked "no clear difference". A principle with fewer than 2 in-scope prompts in either condition gets no delta, interval or direction. Its row reads "Too few samples to judge (n=1 vs 2)", baseline first, because a single prompt can't vary and its interval would collapse to a point that looks clear. With 3 prompts per principle the intervals are rough. When the few prompts agree, an interval can still shrink to a single point.
 
-What it caught on `openai/gpt-4o-mini`, against the same try-tier baseline:
+What it caught on `openai/gpt-4o-mini`, against the same try-tier baseline. These runs used GPT-5.1 as the single judge, under a judge prompt revision just before the current one; they have not been repeated with Sonnet 4.5:
 - **The repo's bad-persona prompt:** HumaneScore -0.54, 95% CI -0.71 to -0.34. A clear drop.
 - **The good-persona prompt:** -0.09, 95% CI -0.17 to +0.00, so "No clear difference at this sample size". A 3-per-principle full-ensemble run under the earlier v4 judge prompt put the same prompt at +0.03.
 
@@ -90,7 +90,15 @@ HumaneScore (mean of principles)       0.83     0.29   -0.54   [-0.71, -0.34]
 Overall: the prompt made this model LESS humane than no prompt (-0.54, 95% CI -0.71 to -0.34).
 ```
 
-**Why GPT-5.1 is the try-tier judge.** On the v4.1 golden set ([docs/validation/golden_v4.1_direction_match_2026-09-24.json](docs/validation/golden_v4.1_direction_match_2026-09-24.json)) the three ensemble judges tie on agreement with human raters: each matches the human direction on 22 of 24 items. GPT-5.1 is the cheapest of the three by a wide margin, $0.015 per sample against $0.045 for Claude Sonnet 4.5 and $0.050 for Gemini 2.5 Pro. Two caveats: under the earlier v4 judge prompt GPT-5.1 was the weakest of the three (21 of 24, against 23), and on the stated-stop regression cases ([docs/validation/stated_stop_regression_2026-09-24.json](docs/validation/stated_stop_regression_2026-09-24.json)) it passed 5 of 9, between Sonnet (6) and Gemini (4). One judge has no one to disagree with, which is another reason the full tier is the one to act on.
+**Why Claude Sonnet 4.5 is the try-tier judge.** The rule is the best agreement with human raters on the v4.1 golden set ([docs/validation/golden_v4.1_direction_match_2026-09-24.json](docs/validation/golden_v4.1_direction_match_2026-09-24.json)), then the lowest cost per sample:
+
+| Judge | Matches human direction | Cost per sample |
+|---|---|---|
+| Claude Sonnet 4.5 | 22 of 23 | $0.046 |
+| Gemini 2.5 Pro | 22 of 23 | $0.052 |
+| GPT-5.1 | 20 of 23 | $0.014 |
+
+Sonnet and Gemini tie on agreement, and Sonnet is cheaper. It also passed the most stated-stop regression cases ([docs/validation/stated_stop_regression_2026-09-24.json](docs/validation/stated_stop_regression_2026-09-24.json)): 6 of 9, against 5 for GPT-5.1 and 4 for Gemini. One judge has no one to disagree with, which is another reason the full tier is the one to act on.
 
 Full-tier output has no intervals yet. It flags rows with fewer than 10 in-scope samples as noisy instead. This is real output from a 3-per-principle run of the repo's good-persona prompt on `openai/gpt-4o-mini` under the full ensemble and the v4 judge prompt:
 
@@ -125,7 +133,7 @@ Rows marked noisy have fewer than 10 in-scope samples in a condition. [...]
 **Cost.** Each sample in each condition costs one target-model call plus one call to each judge. The judge prompt is about 8k tokens, so the judges account for nearly all of the cost.
 
 Measured on OpenRouter list prices, with `openai/gpt-4o-mini` as the target (September 2026):
-- **Try tier (GPT-5.1 alone):** about $0.70 for a whole run, 24 samples × 2 conditions, about $0.015 per sample per condition. That is what OpenRouter billed for three try-tier conditions ($1.04). Token counts at list price put it lower, $0.55 to $0.58 per run. GPT-5.1 is cheap because most of the repeated judge prompt comes from its cache.
+- **Try tier (Sonnet 4.5 alone):** about $2.20 for a whole run, 24 samples × 2 conditions, at Sonnet's measured $0.046 per sample on the golden set; up to about $3 if every response cost as much as the priciest golden item. This is an estimate, not a live run. The same method put GPT-5.1 at $0.014 per sample, and a live GPT-5.1 run came in at $0.012 to $0.015.
 - **Full tier (three judges):** $0.076 to $0.104 per sample per condition, from 88 logged samples. Most of it goes to the Gemini 2.5 Pro and Sonnet 4.5 judges.
 - **Why the range:** responses the judges score negatively cost more, because each negative finding needs a tier, evidence and rationale. Gemini 2.5 Pro wrote about 5 times as much output on the bad-persona run as on the baseline.
 - **A pricier target model** adds its own tokens on top.
@@ -134,7 +142,7 @@ Budget with the upper figure if your prompt might push the model somewhere bad.
 
 | Run | Samples × conditions | Judge calls | Approx. cost |
 |---|---|---|---|
-| `-T tier=try` (default: 1 judge, 3 per principle) | 24 × 2 | 48 | ~$0.70 measured |
+| `-T tier=try` (default: 1 judge, 3 per principle) | 24 × 2 | 48 | ~$2.20 estimated |
 | `-T tier=full -T per_principle=3` | 24 × 2 | 144 | $3.76 to $4.45 measured |
 | `-T tier=full` (3 judges, 10 per principle) | 80 × 2 | 480 | ~$12.50 to $17 |
 | `-T tier=full -T per_principle=all` (788 after exclusions) | 788 × 2 | 4,728 | ~$123 to $164 |
