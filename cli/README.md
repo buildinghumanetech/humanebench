@@ -32,9 +32,13 @@ Ingest, score, and report are separate commands on purpose. Scoring is the only 
 costs money, so it is the only one you have to consciously invoke — and re-rendering a
 report never re-spends.
 
-Scoring judges through Google Vertex AI by default, which needs a Google Cloud project
-(`gcloud config set project`) and a login (`gcloud auth login`). `--provider openrouter`
-uses `OPENROUTER_API_KEY` instead. The first run names the destination, states exactly what
+Scoring judges through OpenRouter by default, which needs one environment variable:
+`OPENROUTER_API_KEY`. `--provider vertex` uses Google Vertex AI instead, which needs a
+Google Cloud project (`gcloud config set project`) and a login (`gcloud auth login`) —
+more setup, and its tokens expire, so the default is the one that works from a single
+key.
+
+The first run names the destination, states exactly what
 leaves the machine, and requires explicit opt-in — and asks again if the destination
 changes.
 

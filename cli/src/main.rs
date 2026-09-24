@@ -67,7 +67,7 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
         /// Judge backend.
-        #[arg(long, value_parser = ["openrouter", "vertex"], default_value = "vertex")]
+        #[arg(long, value_parser = ["openrouter", "vertex"], default_value = "openrouter")]
         provider: String,
         /// Judge model, as the chosen provider names it.
         #[arg(long)]
@@ -1057,6 +1057,18 @@ mod tests {
             Some("anthropic/claude-sonnet-4.5".into()),
         );
         assert_eq!(label, "openrouter/anthropic/claude-sonnet-4.5");
+    }
+
+    /// The default provider is the one that needs a single environment variable.
+    /// Vertex works, but its tokens expire, and a default that stops working after a
+    /// while is a bad default for a tool people run occasionally.
+    #[test]
+    fn the_default_provider_is_openrouter() {
+        let cli = Cli::try_parse_from(["humanebench", "score"]).unwrap();
+        match cli.command {
+            Command::Score { provider, .. } => assert_eq!(provider, "openrouter"),
+            _ => panic!("expected the score subcommand"),
+        }
     }
 
     fn ts(s: &str) -> DateTime<Utc> {
