@@ -389,6 +389,24 @@ Here is a video of Humane Tech member Jack Senechal running this Inspect framewo
 
 [![Inspect LLM Demo](https://p144.p3.n0.cdn.zight.com/items/6qupqLxX/293550a6-cea8-4cc4-bb0a-f7f6f530c577.png)](https://drodio.wistia.com/medias/njfoa1856w)
 
+## License
+
+HumaneBench is open source. Code and content are licensed separately.
+
+**Code** is licensed under the [Apache License 2.0](LICENSE). That covers the evaluation harness, scorers, scripts, CLI, tests and everything else that runs.
+
+**Data and rubric** are licensed under [Creative Commons Attribution 4.0 International](LICENSE-DATA) (CC BY 4.0). That covers:
+
+- `data/`: the scenarios, golden questions and human ratings
+- `rubrics/`: every rubric version and the judge prompt
+- `docs/`, `tables/` and `figures/`: the principles text, published results and charts
+
+You can use, adapt and redistribute both, commercially or not. For the data and rubric, credit "HumaneBench, Building Humane Tech" and link to this repository. Material published here before the CC BY 4.0 notice was added also remains available under Apache 2.0.
+
+**Trademarks.** HumaneBench and Humane Gate are trademarks of Building Humane Tech. Neither license grants rights to the names or logos. You can say you ran, built on, or are compatible with HumaneBench. A modified version is not HumaneBench, and a score from a modified rubric, scenario set or judge is not a HumaneBench score.
+
+**Contributing.** Contributions come in under the same licenses they go out under. See [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Acknowledgements
 We thank the [DarkBench](https://github.com/apartresearch/DarkBench/tree/main) authors for open-sourcing their code and dataset, which offered significant guidance for our programmers in working with the Inspect AI framework.
 
