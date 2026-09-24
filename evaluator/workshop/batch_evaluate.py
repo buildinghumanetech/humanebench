@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Batch-evaluate a JSONL of {user_prompt, response} entries via HumaneBench.
+"""Batch-evaluate a JSONL of {user_prompt, response} entries via HumaneBench rubric v4.
 
 Workshop helper: takes the mock conversations file (or any JSONL with the
 same shape) and writes evaluation results to a second JSONL that the
@@ -26,7 +26,13 @@ from pathlib import Path
 
 # Make the parent evaluator package importable when run from this directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from humanebench_evaluator import evaluate  # noqa: E402
+from humanebench_evaluator import (  # noqa: E402
+    DIRECTIONAL_CONTEXT_BLOCKED_RATE,
+    RUBRIC_VERSION,
+    counted_score,
+    evaluate,
+    overall_score,
+)
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "openai/gpt-4o-mini"
@@ -44,26 +50,35 @@ def evaluate_one(entry: dict, api_key: str, model: str, base_url: str) -> dict:
             model=model,
             base_url=base_url,
         )
-        scores = {p["name"]: p["score"] for p in result["principles"]}
+        principles = result["principles"]
+        # Only a counted score goes in `scores`: not_applicable, insufficient_context,
+        # covered and low-confidence scores are None, never 0, so no mean includes them.
+        scores = {p["name"]: counted_score(p) for p in principles}
         rationales = {
-            p["name"]: p.get("rationale", "")
-            for p in result["principles"]
-            if p["score"] is not None and p["score"] < 0 and p.get("rationale")
+            p["name"]: p["rationale"]
+            for p in principles
+            if counted_score(p) is not None and p["score"] < 0 and p.get("rationale")
         }
-        valid_scores = [s for s in scores.values() if s is not None]
-        humane_score = sum(valid_scores) / len(valid_scores) if valid_scores else None
         return {
             "id": entry.get("id"),
             "timestamp": started,
+            "rubric_version": RUBRIC_VERSION,
             "user_prompt": entry["user_prompt"],
             "response": entry["response"],
             "principle_focus": entry.get("principle_focus"),
             "expected_severity": entry.get("expected_severity"),
             "scores": scores,
-            "humane_score": humane_score,
-            "global_violations": result["globalViolations"],
+            "outcomes": {p["name"]: p["outcome"] for p in principles},
+            "confidences": {p["name"]: p.get("confidence") for p in principles},
+            "questions": {
+                p["name"]: p["question"] for p in principles if p["outcome"] == "insufficient_context"
+            },
+            # Mean over the principles that counted; None ("not in scope") when none did.
+            "humane_score": overall_score(result),
+            "coverage": result["coverage"],
+            "covered": result["covered"],
+            "notes": result["notes"],
             "rationales": rationales,
-            "confidence": result["confidence"],
             "model": model,
             "error": None,
         }
@@ -75,11 +90,16 @@ def evaluate_one(entry: dict, api_key: str, model: str, base_url: str) -> dict:
             "response": entry.get("response"),
             "principle_focus": entry.get("principle_focus"),
             "expected_severity": entry.get("expected_severity"),
+            "rubric_version": RUBRIC_VERSION,
             "scores": None,
+            "outcomes": None,
+            "confidences": None,
+            "questions": None,
             "humane_score": None,
-            "global_violations": None,
+            "coverage": None,
+            "covered": None,
+            "notes": None,
             "rationales": None,
-            "confidence": None,
             "model": model,
             "error": str(e),
         }
@@ -111,6 +131,7 @@ def main() -> int:
     mode = "a" if args.append else "w"
     start = time.time()
     completed = 0
+    rows: list[dict] = []
 
     with output_path.open(mode) as out, ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {
@@ -119,20 +140,51 @@ def main() -> int:
         }
         for fut in as_completed(futures):
             row = fut.result()
+            rows.append(row)
             out.write(json.dumps(row) + "\n")
             out.flush()
             completed += 1
             if row["error"]:
                 status = "ERROR"
             elif row["humane_score"] is None:
-                status = "score=—"
+                status = "not in scope"
             else:
                 status = f"score={row['humane_score']:+.2f}"
             print(f"  [{completed}/{len(entries)}] {row['id']}: {status}", file=sys.stderr)
 
     elapsed = time.time() - start
     print(f"\nWrote {completed} results to {output_path} in {elapsed:.1f}s", file=sys.stderr)
+    for line in summarize(rows):
+        print(line, file=sys.stderr)
     return 0
+
+
+def summarize(rows: list[dict]) -> list[str]:
+    """Run-level summary lines. Non-scores never enter the mean as 0."""
+    ok = [r for r in rows if not r["error"]]
+    if not ok:
+        return ["No successful evaluations."]
+    counted = [r["humane_score"] for r in ok if r["humane_score"] is not None]
+    overall = f"{sum(counted) / len(counted):+.2f}" if counted else "not in scope (nothing scored)"
+    in_scope = sum(r["coverage"]["applicable"] for r in ok)
+    blocked = sum(r["coverage"]["context_blocked"] for r in ok)
+    dropped = sum(
+        1 for r in ok for name, outcome in r["outcomes"].items()
+        if outcome == "score" and r["confidences"].get(name) == "low"
+    )
+    lines = [
+        f"HumaneScore (rubric {RUBRIC_VERSION}): {overall} over {len(counted)} of {len(ok)} conversations with a counted score",
+        f"Low-confidence scores dropped: {dropped}",
+    ]
+    if in_scope:
+        rate = blocked / in_scope
+        lines.append(f"Context-blocked: {rate:.0%} of in-scope principle-turns")
+        if rate > DIRECTIONAL_CONTEXT_BLOCKED_RATE:
+            lines.append(
+                "DIRECTIONAL, NOT DEFINITIVE: more than 15% of in-scope principle-turns "
+                "came back insufficient_context."
+            )
+    return lines
 
 
 if __name__ == "__main__":
