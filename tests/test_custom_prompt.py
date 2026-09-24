@@ -592,8 +592,9 @@ class TestTierComparison:
             cp.find_pair(tmp_path)
 
     def test_try_tier_report_is_labelled(self):
-        c = cp.compare([r(P1, 0.5)], [r(P1, 1.0)])
-        out = cp.format_report(c, tier="try", judges=["openrouter/openai/gpt-5.1"])
+        base, cust = [r(P1, 0.5)], [r(P1, 1.0)]
+        out = cp.format_report(cp.compare(base, cust), tier="try", judges=["openrouter/openai/gpt-5.1"],
+                               intervals=cp.bootstrap_intervals(base, cust))
         assert cp.TRY_TIER_LABEL == (
             "Single judge, small sample: a first look, not a result. "
             "Run tier=full before you act on it."
@@ -607,3 +608,110 @@ class TestTierComparison:
         out = cp.format_report(c, tier="full", judges=v4.DEFAULT_JUDGES)
         assert cp.TRY_TIER_LABEL not in out
         assert "Tier:           full (judges: " in out
+
+
+def rid(i, principle, value, status="scored"):
+    return cp.SampleResult(f"{principle}-{i}", principle, status, value, [])
+
+
+class TestTryTierIntervals:
+    def test_interval_brackets_the_reported_delta(self):
+        base = [rid(i, P1, v) for i, v in enumerate([1.0, 0.5, 1.0, 0.5, 1.0])]
+        cust = [rid(i, P1, v) for i, v in enumerate([-0.5, -1.0, 0.5, -0.5, -1.0])]
+        iv = cp.bootstrap_intervals(base, cust)
+        d = cp.compare(base, cust).principle_delta(P1)
+        lo, hi = iv[P1]
+        assert lo <= d <= hi
+        assert hi < 0, "every pair dropped: the interval excludes zero"
+        assert iv[cp.OVERALL] == iv[P1], "one principle: HumaneScore delta is that principle's"
+
+    def test_interval_is_seeded(self):
+        base = [rid(i, P1, v) for i, v in enumerate([1.0, -0.5, 0.5])]
+        cust = [rid(i, P1, v) for i, v in enumerate([0.5, 1.0, -1.0])]
+        assert cp.bootstrap_intervals(base, cust) == cp.bootstrap_intervals(base, cust)
+
+    def test_resampling_is_paired(self):
+        """The same prompts are resampled in both conditions. A constant shift
+        on every prompt has a zero-width interval, which unpaired resampling of
+        spread-out scores would not give."""
+        vals = [-1.0, -0.5, 0.5, 1.0, -1.0, 1.0]
+        base = [rid(i, P1, v) for i, v in enumerate(vals)]
+        cust = [rid(i, P1, v - 0.5) for i, v in enumerate(vals)]
+        lo, hi = cp.bootstrap_intervals(base, cust)[P1]
+        assert lo == pytest.approx(-0.5) and hi == pytest.approx(-0.5)
+
+    def test_out_of_scope_samples_do_not_enter_either_mean(self):
+        base = [rid(0, P1, 1.0), rid(1, P1, None, "not_scored"), rid(2, P1, 1.0)]
+        cust = [rid(0, P1, 1.0), rid(1, P1, -1.0), rid(2, P1, 1.0)]
+        lo, hi = cp.bootstrap_intervals(base, cust)[P1]
+        assert lo <= cp.compare(base, cust).principle_delta(P1) <= hi
+        assert not any(map(math.isnan, (lo, hi)))
+
+    def test_principle_without_scores_has_no_interval(self):
+        base = [rid(0, P1, 1.0), rid(0, P2, None, "not_scored")]
+        cust = [rid(0, P1, 1.0), rid(0, P2, 1.0)]
+        assert cp.bootstrap_intervals(base, cust)[P2] is None
+
+    def test_headline_when_the_interval_includes_zero(self):
+        base = [rid(i, P1, v) for i, v in enumerate([1.0, -0.5, 0.5])]
+        cust = [rid(i, P1, v) for i, v in enumerate([0.5, 1.0, -1.0])]
+        c = cp.compare(base, cust)
+        iv = cp.bootstrap_intervals(base, cust)
+        out = cp.format_report(c, tier="try", intervals=iv)
+        lo, hi = iv[cp.OVERALL]
+        assert f"Overall: No clear difference at this sample size (95% CI {lo:+.2f} to {hi:+.2f})." in out
+        assert "MORE humane" not in out and "LESS humane" not in out
+        row = next(line for line in out.splitlines() if line.startswith(P1))
+        assert f"[{lo:+.2f}, {hi:+.2f}]" in row and "no clear difference" in row
+        assert "Got worse: none" in out
+
+    def test_headline_when_the_interval_excludes_zero(self):
+        base = [rid(i, P1, 1.0) for i in range(4)]
+        cust = [rid(i, P1, -1.0) for i in range(4)]
+        c = cp.compare(base, cust)
+        out = cp.format_report(c, tier="try", intervals=cp.bootstrap_intervals(base, cust))
+        assert "Overall: the prompt made this model LESS humane than no prompt (-2.00, 95% CI -2.00 to -2.00)." in out
+        assert f"Got worse: {P1} (-2.00, 95% CI -2.00 to -2.00)" in out
+
+    def test_try_tier_never_prints_a_bare_delta(self):
+        """Every signed number in a try-tier report sits next to its interval."""
+        base = [rid(i, p, 0.5) for p in (P1, P2) for i in range(3)]
+        cust = [rid(i, P1, 1.0) for i in range(3)] + [rid(i, P2, -0.5) for i in range(3)]
+        out = cp.format_report(cp.compare(base, cust), tier="try",
+                               intervals=cp.bootstrap_intervals(base, cust))
+        for line in out.splitlines():
+            if line.startswith((P1, P2, "HumaneScore")) or line.startswith(("Overall", "Got worse")):
+                if any(tok in line for tok in ("+0.", "-0.", "+1.", "-1.")):
+                    assert "CI" in line or "[" in line, line
+
+    def test_try_tier_report_requires_intervals(self):
+        with pytest.raises(ValueError, match="never printed bare"):
+            cp.format_report(cp.compare([r(P1, 0.5)], [r(P1, 1.0)]), tier="try")
+
+    def test_full_tier_report_is_unchanged(self):
+        c = cp.compare([r(P1, 0.5), r(P2, 0.5)], [r(P1, 1.0), r(P2, 0.0)])
+        assert cp.format_report(c, tier="full") == cp.format_report(c, tier="full", intervals=None)
+        assert "95% CI" not in cp.format_report(c, tier="full")
+
+
+class TestDefaultTierNotice:
+    def _prompt(self, tmp_path):
+        f = tmp_path / "p.md"
+        f.write_text("x")
+        return str(f)
+
+    def test_notice_when_tier_is_not_passed(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setattr(cpt, "_default_notice_shown", False)
+        cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path))
+        cpt.baseline_v4_eval(system_prompt_file=self._prompt(tmp_path))
+        err = capsys.readouterr().err
+        notices = [line for line in err.splitlines() if "default is now" in line]
+        assert notices == [
+            '[humanebench v4] No -T tier given: the default is now "try" (single judge, '
+            '3 per principle). Pass -T tier=full for the three-judge ensemble.'
+        ], "one line, once per run"
+
+    def test_no_notice_when_tier_is_passed(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setattr(cpt, "_default_notice_shown", False)
+        cpt.custom_prompt_eval(system_prompt_file=self._prompt(tmp_path), tier="try")
+        assert "default is now" not in capsys.readouterr().err

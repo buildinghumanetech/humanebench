@@ -62,6 +62,7 @@ TIERS: dict[str, dict] = {
     "full": {"judges": list(DEFAULT_JUDGES), "per_principle": 10},
 }
 DEFAULT_TIER = "try"
+_default_notice_shown = False
 
 
 class PromptFileError(ValueError):
@@ -154,6 +155,8 @@ def verbatim_system_message(content: str) -> Solver:
 
 def resolve_tier(tier: str | None, per_principle) -> tuple[str, list[str], int | None]:
     """(tier, judges, per_principle). An explicit per_principle overrides the tier's."""
+    if tier is None:
+        _notice_default_tier()
     name = str(tier if tier is not None else DEFAULT_TIER).strip().lower()
     if name not in TIERS:
         raise ValueError(f"tier must be one of {', '.join(TIERS)}, got {tier!r}")
@@ -161,9 +164,22 @@ def resolve_tier(tier: str | None, per_principle) -> tuple[str, list[str], int |
     return name, list(TIERS[name]["judges"]), n
 
 
+def _notice_default_tier() -> None:
+    # Once per run: the command builds both tasks, and one line is enough.
+    global _default_notice_shown
+    if _default_notice_shown:
+        return
+    _default_notice_shown = True
+    t = TIERS[DEFAULT_TIER]
+    print(
+        f'[humanebench v4] No -T tier given: the default is now "{DEFAULT_TIER}" (single judge, '
+        f'{t["per_principle"]} per principle). Pass -T tier=full for the three-judge ensemble.',
+        file=sys.stderr,
+    )
+
+
 def _build(condition: str, system_prompt: str | None, prompt_sha: str | None,
-           tier: str | None, per_principle, seed: int) -> Task:
-    tier, judges, per_principle = resolve_tier(tier, per_principle)
+           tier: str, judges: list[str], per_principle: int | None, seed: int) -> Task:
     samples = stratify(load_samples(), per_principle, seed)
     judge_prompt_sha = rubric_sha256(load_judge_prompt(JUDGE_PROMPT_PATH))
     _print_estimate(condition, tier, len(samples), len(judges))
@@ -203,20 +219,20 @@ def _print_estimate(condition: str, tier: str, n_samples: int, n_judges: int) ->
 @task
 def custom_prompt_eval(
     system_prompt_file: str | None = None,
-    tier: str = DEFAULT_TIER,
+    tier: str | None = None,
     per_principle: int | None = None,
     seed: int = DEFAULT_SEED,
 ):
     """Your system prompt, scored under rubric v4."""
-    resolve_tier(tier, per_principle)  # a bad tier fails before the prompt file is read
+    tier, judges, per_principle = resolve_tier(tier, per_principle)  # before the prompt file is read
     text, sha = load_system_prompt(system_prompt_file)
-    return _build("custom_prompt", text, sha, tier, per_principle, int(seed))
+    return _build("custom_prompt", text, sha, tier, judges, per_principle, int(seed))
 
 
 @task
 def baseline_v4_eval(
     system_prompt_file: str | None = None,
-    tier: str = DEFAULT_TIER,
+    tier: str | None = None,
     per_principle: int | None = None,
     seed: int = DEFAULT_SEED,
 ):
@@ -226,9 +242,9 @@ def baseline_v4_eval(
     pass it. The prompt is never sent; if given, its hash is recorded so the
     comparison can confirm which prompt this baseline was run alongside.
     """
-    resolve_tier(tier, per_principle)
+    tier, judges, per_principle = resolve_tier(tier, per_principle)
     sha = load_system_prompt(system_prompt_file)[1] if system_prompt_file else None
-    return _build("baseline", None, sha, tier, per_principle, int(seed))
+    return _build("baseline", None, sha, tier, judges, per_principle, int(seed))
 
 
 def _int_or_none(v) -> int | None:
