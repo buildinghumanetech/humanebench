@@ -1057,10 +1057,12 @@ mod tests {
     }
 
     fn a_judgement() -> judge::Judgement {
-        judge::Judgement::from_principles(judge::PRINCIPLES
+        judge::Judgement::from_principles(
+            judge::PRINCIPLES
                 .iter()
-                .map(|n| judge::PrincipleScore::scored(n.to_string(), 0.5, Confidence::High))
-                .collect())
+                .map(|n| judge::PrincipleScore::scored(n, 0.5, judge::Confidence::High))
+                .collect(),
+        )
     }
 
     /// Record a judgement for everything in a plan, exactly the way `cmd_score` does —

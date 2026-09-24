@@ -263,7 +263,7 @@ impl Store {
             "#,
         )?;
         {
-            let mut stmt = tx.prepare(&score_upsert_sql("scores_v2"))?;
+            let mut stmt = tx.prepare(&score_upsert_sql_v2("scores_v2"))?;
             for row in &existing {
                 stmt.execute(params![
                     row.identity,
@@ -274,11 +274,9 @@ impl Store {
                     row.session_id,
                     row.regime,
                     row.scored_at,
-                    "v3",
                     row.principles,
-                    "[]",
-                    "{}",
-                    "",
+                    row.global_violations,
+                    row.confidence,
                     row.source,
                     row.model,
                     row.timestamp,
@@ -578,8 +576,8 @@ impl Store {
                 rec.session_id,
                 rec.regime,
                 rec.scored_at.to_rfc3339(),
-                serde_json::to_string(&rec.principles)?,
                 rec.rubric_version.clone(),
+                serde_json::to_string(&rec.principles)?,
                 serde_json::to_string(&rec.covered)?,
                 serde_json::to_string(&rec.coverage)?,
                 rec.notes.clone(),
@@ -703,8 +701,34 @@ struct V1ScoreRow {
     timestamp: String,
 }
 
-/// The one upsert both the runtime and the v2 migration write through, so the two can
-/// never disagree about what supersedes what.
+/// The v2-era upsert, frozen.
+///
+/// `migrate_to_v2` rebuilds the v2 table and must keep writing v2-shaped rows; the
+/// runtime's upsert has moved on to the v3 columns. Sharing one function between them is
+/// what broke the moment v3 added columns, so they are deliberately separate now and the
+/// migration's copy never changes again.
+fn score_upsert_sql_v2(table: &str) -> String {
+    format!(
+        "INSERT INTO {table}(identity, tier, judge_model, content_hash, turn_id, session_id,
+                             regime, scored_at, principles, global_violations, confidence,
+                             source, model, timestamp)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+         ON CONFLICT(identity, tier, judge_model) DO UPDATE SET
+           content_hash=excluded.content_hash,
+           turn_id=excluded.turn_id,
+           session_id=excluded.session_id,
+           regime=excluded.regime,
+           scored_at=excluded.scored_at,
+           principles=excluded.principles,
+           global_violations=excluded.global_violations,
+           confidence=excluded.confidence,
+           source=excluded.source,
+           model=excluded.model,
+           timestamp=excluded.timestamp"
+    )
+}
+
+/// The upsert the runtime writes through, on the v3 columns.
 fn score_upsert_sql(table: &str) -> String {
     format!(
         "INSERT INTO {table}(identity, tier, judge_model, content_hash, turn_id, session_id,
@@ -869,7 +893,7 @@ mod tests {
         s.insert_score(&r, "claude-code", None).unwrap();
         let reused = s.judgement_for_hash("blake3:abc").unwrap().unwrap();
         assert_eq!(reused.principles.len(), PRINCIPLES.len());
-        assert!((reused.confidence - 0.8).abs() < 1e-9);
+        assert_eq!(reused.coverage.scored, PRINCIPLES.len() as u32);
     }
 
     #[test]
@@ -997,9 +1021,9 @@ mod tests {
     }
 
     #[test]
-    fn overall_is_the_mean_of_eight() {
+    fn overall_is_the_mean_of_what_scored() {
         let r = score_record("t1", "s1", Tier::Turn, "h", "m", "single", judgement());
-        assert!((r.overall() - 0.5).abs() < 1e-9);
+        assert!((r.overall().unwrap() - 0.5).abs() < 1e-9);
     }
 
     // ---- F2: identical bytes, different turns -------------------------------

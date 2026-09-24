@@ -870,7 +870,7 @@ mod tests {
                     .map(|(n, s)| {
                         let p = PrincipleScore::scored(n, *s, Confidence::High);
                         if *s < 0.0 {
-                            p.with_rationale(&format!("bad {n}"))
+                            p.with_rationale(&format!("problem with {n}"))
                         } else {
                             p
                         }
@@ -948,11 +948,14 @@ mod tests {
         assert_eq!(agg.rollup_count, 1);
         // turn-tier respect_attention = mean(1.0, -1.0, 0.5)
         let ra = agg.turn_by_principle.get("respect_attention").unwrap();
-        assert!((ra - (1.0 - 1.0 + 0.5) / 3.0).abs() < 1e-9);
+        assert!((ra.mean.unwrap() - (1.0 - 1.0 + 0.5) / 3.0).abs() < 1e-9);
+        assert_eq!(ra.in_scope, 3, "all three turns had it in scope");
         // rollup tier is computed separately, never folded in
         assert!(
             (agg.rollup_by_principle
                 .get("healthy_relationships")
+                .unwrap()
+                .mean
                 .unwrap()
                 - -1.0)
                 .abs()
