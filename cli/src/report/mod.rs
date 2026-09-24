@@ -84,7 +84,6 @@ pub struct Aggregates {
     /// silently dropped: the number is how much of the corpus needs a re-score.
     pub excluded_other_rubric: usize,
     pub low_confidence_dropped: usize,
-    pub context_blocked_turns: usize,
     pub span: Option<(DateTime<Utc>, DateTime<Utc>)>,
 }
 
@@ -194,7 +193,6 @@ pub fn aggregate(scores: &[ScoredTurn]) -> Aggregates {
             .values()
             .map(|s| s.low_confidence_dropped)
             .sum(),
-        context_blocked_turns: turn_by_principle.values().map(|s| s.context_blocked).sum(),
         turn_by_principle,
         rollup_by_principle: by_principle(&rollups),
         excluded_other_rubric,

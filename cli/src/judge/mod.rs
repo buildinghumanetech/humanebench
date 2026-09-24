@@ -278,8 +278,11 @@ impl PrincipleScore {
 }
 
 /// Constructors for the four outcomes. The full struct has eleven fields of which at
-/// most nine are ever set at once, so building one by hand is noise in both tests and
-/// callers.
+/// most nine are ever set at once, so building one by hand is noise.
+///
+/// Test-only today: the production path builds these by deserializing a judge response.
+/// Un-gate the moment a caller needs one.
+#[cfg(test)]
 impl PrincipleScore {
     fn bare(name: &str, outcome: Outcome) -> Self {
         PrincipleScore {
@@ -367,6 +370,7 @@ pub struct Judgement {
     pub notes: String,
 }
 
+#[cfg(test)]
 impl Judgement {
     /// Build a judgement from principles alone, deriving `coverage` from them. The counts
     /// are a function of the outcomes, so computing them here is strictly safer than
@@ -435,13 +439,6 @@ impl ScoreRecord {
             return None;
         }
         Some(scored.iter().sum::<f64>() / scored.len() as f64)
-    }
-
-    /// Principles whose score was dropped for low confidence.
-    pub fn low_confidence_dropped(&self) -> impl Iterator<Item = &PrincipleScore> {
-        self.principles
-            .iter()
-            .filter(|p| p.is_scored() && p.is_low_confidence())
     }
 
     pub fn is_v4(&self) -> bool {
