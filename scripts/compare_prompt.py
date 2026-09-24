@@ -28,11 +28,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from humanebench.scorer_v4 import (  # noqa: E402
     PRINCIPLE_CODES,
+    RUBRIC_VERSION,
+    STATUS_QUOTE_UNVERIFIED,
     SAMPLE_JUDGE_FAILED,
     SAMPLE_SCORED,
 )
 
-LABEL = "HumaneBench rubric v4, not comparable to the v1 leaderboard."
+def label(rubric_version: str = RUBRIC_VERSION) -> str:
+    return f"HumaneBench rubric {rubric_version}, not comparable to the v1 leaderboard."
 SCORER_NAME = "overseer_v4"
 CONTEXT_BLOCKED_DIRECTIONAL = 0.15
 # Below this many in-scope samples in either condition, a per-principle delta is
@@ -163,11 +166,13 @@ def find_pair(log_dir: Path):
         if (_task_name(h) == "baseline_v4_eval" and h.status == "success"
                 and h.eval.model == custom.eval.model
                 and (h.eval.metadata or {}).get("per_principle") == (custom.eval.metadata or {}).get("per_principle")
-                and (h.eval.metadata or {}).get("seed") == (custom.eval.metadata or {}).get("seed")):
+                and (h.eval.metadata or {}).get("seed") == (custom.eval.metadata or {}).get("seed")
+                and (h.eval.metadata or {}).get("rubric_version")
+                == (custom.eval.metadata or {}).get("rubric_version")):
             return h.location, custom.location
     raise SystemExit(
         f"No successful baseline_v4_eval log in {log_dir} for model {custom.eval.model} "
-        "with the same per_principle and seed"
+        "with the same per_principle, seed and rubric version"
     )
 
 
@@ -176,8 +181,12 @@ def check_pair(baseline_log, custom_log) -> list[str]:
     for log, want in ((baseline_log, "baseline_v4_eval"), (custom_log, "custom_prompt_eval")):
         if _task_name(log) != want:
             raise SystemExit(f"{log.location} is {_task_name(log)}, expected {want}")
-        if (log.eval.metadata or {}).get("rubric_version") != "v4":
+        if not str((log.eval.metadata or {}).get("rubric_version", "")).startswith("v4"):
             raise SystemExit(f"{log.location} was not scored under rubric v4")
+    b_ver = (baseline_log.eval.metadata or {}).get("rubric_version")
+    c_ver = (custom_log.eval.metadata or {}).get("rubric_version")
+    if b_ver != c_ver:
+        raise SystemExit(f"Different rubric versions: baseline {b_ver} vs custom {c_ver}. Re-run the baseline.")
     if baseline_log.eval.model != custom_log.eval.model:
         raise SystemExit(
             f"Different models: baseline {baseline_log.eval.model} vs custom {custom_log.eval.model}"
@@ -208,8 +217,8 @@ def _fmt(v: float | None, signed: bool = False) -> str:
 
 
 def format_report(cmp: Comparison, model: str = "", prompt_sha: str | None = None,
-                  warnings: list[str] | None = None) -> str:
-    lines = [LABEL, ""]
+                  warnings: list[str] | None = None, rubric_version: str = RUBRIC_VERSION) -> str:
+    lines = [label(rubric_version), ""]
     if model:
         lines.append(f"Model:          {model}")
     if prompt_sha:
@@ -266,11 +275,19 @@ def format_report(cmp: Comparison, model: str = "", prompt_sha: str | None = Non
     failed_c = sum(s.failed for s in cmp.custom.principles.values())
     lines.append("")
     lines.append(
-        f"Out of scope (not_applicable / insufficient_context / covered / low confidence on every judge), "
+        f"Out of scope (not_applicable / insufficient_context / covered / low confidence / "
+        f"unverified quote on every judge), "
         f"excluded from means: baseline {not_scored_b}, custom {not_scored_c}."
     )
     if failed_b or failed_c:
         lines.append(f"Judge or sample failures, excluded: baseline {failed_b}, custom {failed_c}.")
+    unverified_b = sum(s.judge_votes.get(STATUS_QUOTE_UNVERIFIED, 0) for s in cmp.baseline.principles.values())
+    unverified_c = sum(s.judge_votes.get(STATUS_QUOTE_UNVERIFIED, 0) for s in cmp.custom.principles.values())
+    if unverified_b or unverified_c:
+        lines.append(
+            f"Negative judge scores dropped because no quote matched the response: "
+            f"baseline {unverified_b}, custom {unverified_c}."
+        )
     if directional:
         lines.append("Directional only (over 15% of in-scope judge votes context-blocked): " + "; ".join(directional))
     lines.append("n = in-scope samples behind each mean. Small n means a noisy per-principle delta.")
@@ -302,6 +319,7 @@ def main(argv: list[str] | None = None) -> int:
         model=custom_log.eval.model,
         prompt_sha=(custom_log.eval.metadata or {}).get("system_prompt_sha256"),
         warnings=warnings,
+        rubric_version=(custom_log.eval.metadata or {}).get("rubric_version", RUBRIC_VERSION),
     ))
     print(f"\nBaseline log: {b_path}\nCustom log:   {c_path}")
     return 0
