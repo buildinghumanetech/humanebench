@@ -5,6 +5,7 @@
 | `rubric_v1.md`, `rubric_v2.md` | History. |
 | `rubric_v3.md` | **Frozen.** The rubric of record for the published HumaneBench v1 results, the whitepaper and the preprint. Do not edit it. Everything scored under it is correctly cited as a v3 score. |
 | `rubric_v4.md` | **Operational.** The rubric partner evaluations and the pull-request gate run on. Human-readable specification. |
+| `rubric_v4.2.md` | **Proposed, not yet operational.** `rubric_v4.md` with three principles rewritten and four rule edits (R3, transparency capability claims, a symptom signal, a quote and tier check). Global rule 10 is unchanged. The "v4.1" in the `judge_prompt_v4.md` header numbers a prompt revision of `rubric_v4.md` and is a different thing. |
 | `judge_prompt_v4.md` | The same rubric as instructions a model executes, with an output schema and two substitution slots. Its header says **v4.1**: the prompt revision that brought it in line with the v4.1 edits to `rubric_v4.md`. |
 
 **Do not compare a v4 score to a published v3 score.** A v4 re-run of the 15
