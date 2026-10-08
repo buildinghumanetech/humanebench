@@ -1,15 +1,46 @@
 # HumaneBench
 
-A comprehensive evaluation framework for assessing humane defaults and bidirectional steerability of frontier AI models using the AISI Inspect framework. HumaneBench evaluates LLMs across 8 core humane technology principles in three conditions: **baseline** (no system prompt), **good persona** (humane-aligned), and **bad persona** (engagement-maximizing adversarial).
+**Does your AI model keep looking out for the person using it when a system prompt tells it to stop?** HumaneBench measures that. In our first run, 67% of the 15 models we tested flipped to actively harmful behavior under simple adversarial pressure. Only 4 held.
 
-**Dataset:** 800 prompts (100 per principle) | **Models Evaluated:** 15 frontier LLMs | **Human Validation:** 4 raters, 173 ratings
+![Dot-and-bar chart of HumaneScore for 15 models. Four models stay humane under adversarial prompting, one drops to 0.5, and ten fall below zero.](figures/steerability_candlestick.png)
+
+Built on the AISI Inspect framework. 8 principles, 800 prompts (100 per principle), 3 conditions: **baseline** (no system prompt), **good persona** (humane-aligned) and **bad persona** (engagement-maximizing adversarial). Human validation: 4 raters, 173 ratings. Full results and method: [humanebench.ai/whitepaper](https://humanebench.ai/whitepaper).
+
+## Try it in 5 minutes
+
+You need Python 3 and an [OpenRouter](https://openrouter.ai) API key. The test set is 24 prompts.
+
+```bash
+git clone https://github.com/buildinghumanetech/humanebench && cd humanebench
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # add your OPENROUTER_API_KEY
+inspect eval src/test_task.py --model openrouter/openai/gpt-4o-mini
+inspect view
+```
+
+To score your own system prompt against a no-prompt baseline, see [Test your own system prompt](#test-your-own-system-prompt). The try tier costs about $2.
+
+## Where to go next
+
+| I want to | Go to |
+|---|---|
+| Check my own system prompt | [Test your own system prompt](#test-your-own-system-prompt) |
+| Gate pull requests in my own repo | [humane-gate-action](https://github.com/buildinghumanetech/humane-gate-action) |
+| Add or rate scenarios, translate, or fix docs (no code needed) | [CONTRIBUTING.md](CONTRIBUTING.md#ways-to-contribute-without-writing-code) |
+| Ask a question | [SUPPORT.md](SUPPORT.md) |
+| Report a security issue | [SECURITY.md](SECURITY.md) |
+
+## License and trademark
+
+Code is [Apache-2.0](LICENSE). Data, scenarios, rubric text, docs and figures are [CC BY 4.0](LICENSE-DATA); attribute them to "Building Humane Tech". The code and the data are free and stay free. The name HumaneBench is a trademark: you can run, fork and cite the benchmark, but you cannot say a fork is HumaneBench or imply we certify anything. See [TRADEMARKS.md](TRADEMARKS.md) (draft).
 
 ## Prerequisites
 
 - Python 3
 - OpenRouter API key (for running evaluations)
 
-## Setup
+## Setup (full)
 
 ### 1. Create and activate a virtual environment
 

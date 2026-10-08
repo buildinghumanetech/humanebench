@@ -1,8 +1,22 @@
 # Contributing to HumaneBench
 
-Thanks for your interest in contributing to HumaneBench! We appreciate your help in making this project better.
+Thanks for helping make HumaneBench better. Code, scenarios, ratings and docs all count.
 
-## Before You Code
+## Ways to contribute without writing code
+
+You do not need to discuss first for any of these. Open an issue or a pull request directly.
+
+- **Rate responses.** Human ratings validate the AI judges. Open an issue and we will send you a batch.
+- **Write scenarios.** Use the **Scenario or rating contribution** issue template. One principle, about two sentences from the user's point of view.
+- **Translate.** Scenarios and docs in other languages widen who the benchmark serves.
+- **Fix docs.** Typos, unclear steps and broken links are welcome as direct pull requests.
+- **Run it and tell us.** Try the 5-minute quickstart in the README and report where you got stuck.
+
+## Response times
+
+We aim to reply to new issues and pull requests within 5 business days. If you hear nothing after 10, comment again.
+
+## Before you write code
 
 **Please discuss your approach before starting implementation!** Here's our recommended process:
 
@@ -23,7 +37,7 @@ This saves everyone time and ensures your work aligns with project goals and cur
 
 ## Good First Issues
 
-Look for issues labeled `good first issue` - these are designed to be great starting points for new contributors!
+Look for issues labeled `good first issue`. They are scoped to be a first contribution.
 
 ## Pull Request Guidelines
 
@@ -45,7 +59,7 @@ By opening a pull request, you confirm that you have the right to submit the con
 
 ## Code of Conduct
 
-Everyone participating in this project is expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md). Report concerns to info@buildinghumanetech.com.
+Everyone participating in this project is expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md). Report concerns to info@buildinghumanetech.com. Security issues go through [SECURITY.md](SECURITY.md).
 
 ## Questions?
 
