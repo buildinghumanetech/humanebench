@@ -1,6 +1,6 @@
 # Trademark guidelines for HumaneBench and Humane Gate
 
-> The code stays under [Apache-2.0](LICENSE) and the data under [CC BY 4.0](LICENSE-DATA) regardless of anything below. Bracketed items are open decisions.
+> The code stays under [Apache-2.0](LICENSE) and the data under [CC BY 4.0](LICENSE-DATA) regardless of anything below.
 
 **In short:** you can run, fork, cite and build on HumaneBench. You cannot call a modified version HumaneBench, say we certify, approve or endorse you, or put our name in your own product or domain name.
 
@@ -18,9 +18,8 @@ This Policy covers our word trademarks and service marks (the “Word Marks”) 
 
 | Word Mark | Symbol | Nouns we prefer after it |
 |---|---|---|
-| HumaneBench | ™ [® on issue] | benchmark, evaluation, evaluation harness, rubric, scenarios, results |
-| Humane Gate | ™ [® on issue] | check, workflow, action, review |
-| HumaneScore | [™] | score, result [confirm whether this mark stays in] |
+| HumaneBench | ™ | benchmark, evaluation, evaluation harness, rubric, scenarios, results |
+| Humane Gate | ™ | check, workflow, action, review |
 | Building Humane Tech | ™ | company, team, project |
 
 The Logos are the HumaneBench logo and the Building Humane Tech torch. Our source repositories do not contain Logo image files, so a copy of our source does not carry a licence to our Logos with it.
@@ -96,7 +95,7 @@ We publish a list of teams who tell us they run the Humane Gate in production. E
 - Use of the Marks in connection with any conference, other than a user group as described above. Contact us if you want to.
 - Use of the Marks on merchandise or in paid advertising.
 - Any use that states or implies that we endorse, approve, certify, verify, audit or partner with you, unless we do and you are describing it accurately.
-Permission requests go to info@buildinghumanetech.com. We answer within [10] business days and we say yes more often than not.
+Permission requests go to info@buildinghumanetech.com. We answer within 15 business days and we say yes more often than not.
 ## 6. General information
 
 ### 6.1 Trademark marking and legends
