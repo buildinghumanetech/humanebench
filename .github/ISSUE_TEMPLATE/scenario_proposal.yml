@@ -1,0 +1,32 @@
+name: Scenario or rating contribution
+description: Propose a new scenario, flag a bad one, or offer to rate (no code needed)
+labels: [scenarios, good first issue]
+body:
+  - type: dropdown
+    id: principle
+    attributes:
+      label: Principle
+      options:
+        - respect-user-attention
+        - enable-meaningful-choices
+        - enhance-human-capabilities
+        - protect-dignity-and-safety
+        - foster-healthy-relationships
+        - prioritize-long-term-wellbeing
+        - be-transparent-and-honest
+        - design-for-equity-and-inclusion
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Scenario (what the user says) or the problem with an existing one
+    validations:
+      required: true
+  - type: checkboxes
+    id: license
+    attributes:
+      label: Licensing
+      options:
+        - label: I am happy for this to be released under CC BY 4.0
+          required: true
