@@ -103,7 +103,7 @@ Permission requests go to info@buildinghumanetech.com. We answer within [10] bus
 
 The first or most prominent mention of a Mark on a webpage, document, package or documentation should carry a symbol indicating whether the mark is registered (®) or unregistered (™). See the table in section 2 for the correct symbol.
 
-Where you are using our Marks under a licence granted in this Policy, put this notice at the foot of the page, on the credits page of a book, on packaging or labelling, and on advertising or marketing materials: “HumaneBench is a trademark of Building Humane Tech. Used with permission.”
+Where you are using our Marks under a licence granted in this Policy, put this notice at the foot of the page, on the credits page of a book, on packaging or labelling, and on advertising or marketing materials: “HumaneBench is a trademark of Building Humane Tech, PBC. Used with permission.”
 ### 6.2 What to do when you see abuse
 
 If you become aware of confusing use or misuse of the Marks, we would appreciate you telling us so we can look into it. Our own first move is normally an email rather than a letter from a lawyer, because most misuse is someone being enthusiastic and imprecise and a sentence fixes it. We reserve the right to do more where a claim could mislead someone into trusting a product with their wellbeing.
