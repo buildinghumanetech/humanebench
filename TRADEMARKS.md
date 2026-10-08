@@ -1,6 +1,6 @@
 # Trademark guidelines for HumaneBench and Humane Gate
 
-> **Draft. Not in force. Not legal advice.** This text is under review by counsel and has not been approved. Bracketed items are open decisions. Until it is merged, nothing here changes what you may do. The code stays under [Apache-2.0](LICENSE) and the data under [CC BY 4.0](LICENSE-DATA) regardless.
+> The code stays under [Apache-2.0](LICENSE) and the data under [CC BY 4.0](LICENSE-DATA) regardless of anything below. Bracketed items are open decisions.
 
 **In short:** you can run, fork, cite and build on HumaneBench. You cannot call a modified version HumaneBench, say we certify, approve or endorse you, or put our name in your own product or domain name.
 
@@ -131,4 +131,4 @@ These guidelines are based on the Model Trademark Guidelines, available at model
 
 ---
 
-Draft revision 3, Thursday, September 17th, 2026.
+Last updated Wednesday, October 7th, 2026.
