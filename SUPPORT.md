@@ -8,4 +8,4 @@
 | Report a security problem | See [SECURITY.md](SECURITY.md) |
 | Reach the team privately | info@buildinghumanetech.com |
 
-We aim to reply to new issues within 5 business days. We are a small team; a slow reply is not a no.
+We aim to reply to new issues within 10 business days. We are a small team; a slow reply is not a no.

@@ -14,7 +14,7 @@ You do not need to discuss first for any of these. Open an issue or a pull reque
 
 ## Response times
 
-We aim to reply to new issues and pull requests within 5 business days. If you hear nothing after 10, comment again.
+We aim to reply to new issues and pull requests within 10 business days. If you hear nothing after 20, comment again.
 
 ## Before you write code
 
