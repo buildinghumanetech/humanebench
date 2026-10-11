@@ -9,23 +9,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import textwrap
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
 from inspect_ai.solver import system_message, generate
 
+from dataset_source import humane_dataset
 from humanebench.scorer import overseer
 
 @task
-def baseline_eval():
+def baseline_eval(dataset: str | None = None):
     return Task(
-        dataset=json_dataset(
-            "../data/humane_bench.jsonl",
-            sample_fields=FieldSpec(
-                input="input",
-                target="target",
-                id="id",
-                metadata=["metadata"]
-            )
-        ),
+        dataset=humane_dataset(dataset),
         solver=[
             generate()
         ],
