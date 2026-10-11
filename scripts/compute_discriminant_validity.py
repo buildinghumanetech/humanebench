@@ -90,6 +90,7 @@ from humanebench.discriminant import (  # noqa: E402
     PARENT_IDS_PATH,
     PRINCIPLE_SHORT,
     SOURCE_MODELS,
+    load_overseer_template,
 )
 
 FHR = "foster-healthy-relationships"
@@ -148,15 +149,28 @@ def select_eval(paths: list[Path]) -> Path:
 
 
 # --- loading -----------------------------------------------------------------
-def load_run_scores(logs_dir: Path, models: list[str]) -> tuple[pd.DataFrame, dict]:
+def _resolve_attachment(text, attachments: dict) -> str:
+    """Inspect stores long strings out-of-line as ``attachment://<hash>``."""
+    if isinstance(text, str) and text.startswith("attachment://"):
+        return str(attachments.get(text[len("attachment://"):], text))
+    return "" if text is None else str(text)
+
+
+def load_run_scores(logs_dir: Path,
+                    models: list[str]) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Long table of the multi-label run, one row per judged call.
 
     Admission mirrors ``compute_inter_judge_agreement.collect_long_table``: a
     sample counts only if its severity is on the canonical 4-point scale. Using
     a looser rule here would build the matrix from a different population than
     every other table in the paper.
+
+    The judge's reasoning is returned as a *separate* frame rather than a column
+    on the matrix table, so it cannot leak into the bootstrap input or change
+    the schema of ``matrix_long.csv``.
     """
     rows: list[dict] = []
+    reasons: list[dict] = []
     stats = {"samples_seen": 0, "admitted": 0, "no_score": 0, "off_scale": 0,
              "invalid_flagged": 0, "files": []}
 
@@ -188,20 +202,29 @@ def load_run_scores(logs_dir: Path, models: list[str]) -> tuple[pd.DataFrame, di
                 # All judges answered but one flagged the response unassessable.
                 # The severity survives; the analysis admits it, as upstream does.
                 stats["invalid_flagged"] += 1
-            rows.append({
+            key = {
                 "scenario_id": meta.get("scenario_id"),
                 "source_model": meta.get("source_model") or model,
                 "designed_principle": meta.get("designed_principle"),
                 "scored_principle": meta.get("scored_principle") or sample.get("target"),
+            }
+            rows.append({
+                **key,
                 "domain": meta.get("domain", ""),
                 "score": float(individual[0]),
+            })
+            reasons.append({
+                **key,
+                "score": float(individual[0]),
+                "reasoning": " ".join(_resolve_attachment(
+                    overseer.get("explanation"), sample.get("attachments") or {}).split()),
             })
             stats["admitted"] += 1
 
     df = pd.DataFrame(rows)
     if not df.empty and df[["scenario_id", "designed_principle", "scored_principle"]].isna().any().any():
         raise SystemExit("run logs are missing the metadata the analysis keys on")
-    return df, stats
+    return df, pd.DataFrame(reasons), stats
 
 
 def load_main_run(raw_csv: Path, scenarios: set[str], models: list[str]) -> pd.DataFrame:
@@ -323,6 +346,100 @@ def item_level_correlations(long: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFr
                             columns="scored_principle", values="score")
     wide = wide[[p for p in PRINCIPLES if p in wide.columns]].dropna()
     return wide.corr(method="pearson"), wide.corr(method="spearman"), int(len(wide))
+
+
+# --- post-hoc ----------------------------------------------------------------
+# Everything below this line was written AFTER the run returned a diagonal
+# *above* its row rather than below it. It is labelled post-hoc in the report
+# for that reason. It adds no new judge calls, changes no pre-committed
+# statistic, and is reported alongside section 1, never in place of it. Its
+# purpose is to say why the sign came out as it did, since "reversed, cause
+# unknown" invites the reader to conclude the instrument is broken when the
+# cause is a documented property of the instrument.
+
+_NO_NEUTRAL_RULE_PREFIX = "2. Minimal but technically harmless"
+
+
+def rubric_no_neutral_rule() -> str | None:
+    """The global rule that forces an unengaged principle to a negative score.
+
+    Read out of the live template rather than quoted from memory, so the report
+    cannot keep asserting a rule the scorer no longer contains.
+    """
+    for line in load_overseer_template().splitlines():
+        text = line.strip()
+        if text.startswith(_NO_NEUTRAL_RULE_PREFIX):
+            return text
+    return None
+
+
+def severity_distribution(long: pd.DataFrame) -> pd.DataFrame:
+    """Share of each severity level on the diagonal vs off it."""
+    diag = long["designed_principle"] == long["scored_principle"]
+    rows = []
+    for label, sub in (("diagonal", long[diag]), ("off-diagonal", long[~diag])):
+        row = {"cells": label, "n": int(len(sub))}
+        for level in ORDINAL_LEVELS:
+            row[f"share_{level:+.1f}"] = (float((sub["score"] == level).mean())
+                                          if len(sub) else float("nan"))
+            row[f"n_{level:+.1f}"] = int((sub["score"] == level).sum())
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def offdiagonal_column_means(long: pd.DataFrame) -> pd.DataFrame:
+    """Per-rubric leniency, measured only where the principle is off-target.
+
+    A column's own diagonal is excluded so the leniency estimate is not
+    contaminated by the cell the contrast is about.
+    """
+    diag = long["designed_principle"] == long["scored_principle"]
+    off = long[~diag].groupby("scored_principle")["score"].mean()
+    on = long[diag].groupby("scored_principle")["score"].mean()
+    out = pd.DataFrame({"off_diagonal_mean": off, "diagonal": on})
+    out.index.name = "scored_principle"
+    return out.reindex([p for p in PRINCIPLES if p in out.index]).reset_index()
+
+
+def offdiagonal_examples(reasons: pd.DataFrame) -> pd.DataFrame:
+    """One verbatim judge rationale per scored principle, chosen deterministically.
+
+    The rule is fixed in advance of reading any of the text, and rotates the
+    *source* of the example so the eight do not all land on whichever scenario
+    happens to sort first: for the j-th principle in canonical order, prefer a
+    scenario designed for the (j+1)-th principle and the (j mod n_models)-th
+    model, then take the first (scenario, model) in sort order. Where that cell
+    has no -0.5 call, fall back to the first in sort order for the column.
+    Selecting by content instead would be cherry-picking; this is auditable
+    against the logs either way.
+    """
+    if reasons.empty:
+        return reasons
+    off = reasons[(reasons["designed_principle"] != reasons["scored_principle"])
+                  & (reasons["score"] == -0.5)]
+    if off.empty:
+        return off
+    off = off.sort_values(["scored_principle", "designed_principle",
+                           "scenario_id", "source_model"])
+    models = sorted(off["source_model"].unique())
+
+    picks = []
+    for j, scored in enumerate(PRINCIPLES):
+        column = off[off["scored_principle"] == scored]
+        if column.empty:
+            continue
+        want_designed = PRINCIPLES[(j + 1) % len(PRINCIPLES)]
+        want_model = models[j % len(models)]
+        for candidate in (
+            column[(column["designed_principle"] == want_designed)
+                   & (column["source_model"] == want_model)],
+            column[column["designed_principle"] == want_designed],
+            column,
+        ):
+            if not candidate.empty:
+                picks.append(candidate.iloc[0])
+                break
+    return pd.DataFrame(picks).reset_index(drop=True)
 
 
 # --- report ------------------------------------------------------------------
@@ -534,13 +651,204 @@ def interpretation_section(
     return L
 
 
+def posthoc_section(
+    dist: pd.DataFrame, colmeans: pd.DataFrame, examples: pd.DataFrame,
+    ranks: pd.DataFrame, centered: pd.DataFrame, rule: str | None,
+) -> list[str]:
+    """Why the sign came out reversed. Post-hoc, and labelled as such."""
+    d = dist.set_index("cells")
+    on, off = d.loc["diagonal"], d.loc["off-diagonal"]
+    n_all = int(on["n"] + off["n"])
+    n_worst = int(on["n_-1.0"] + off["n_-1.0"])
+
+    L = ["## Post-hoc: why the diagonal sits above its row\n"]
+    L.append(
+        "**Written after seeing the sign.** Section 1 and the pre-committed "
+        "interpretation above are untouched; nothing here was used to select "
+        "between the committed outcomes. It is here because a reversed result "
+        "reported without a mechanism invites the reader to conclude the "
+        "instrument is broken, when the cause is a documented property of the "
+        "instrument.\n"
+    )
+
+    L.append("### The scale has no neutral level\n")
+    if rule:
+        L.append(f"> {rule}\n")
+    else:
+        L.append(
+            "> **The global rule this section is about was not found in the "
+            "current scorer template.** The paragraph below describes the "
+            "instrument as it was at the time of the run and must be re-checked "
+            "against `humanebench/scorer.py` before being quoted.\n"
+        )
+    L.append(
+        "The severity levels are -1.0, -0.5, +0.5, +1.0. There is no zero and no "
+        "*not applicable*: a response that neither violates a principle nor "
+        "engages it has nowhere to go but -0.5. Under single-label scoring, "
+        "where every scenario engages the principle it was written for, that is "
+        "an anti-hedging rule and it does what it was meant to do. Under "
+        "multi-label scoring it becomes the dominant term, because seven of the "
+        "eight rubrics applied to any given response ask about something the "
+        "scenario never raised.\n"
+    )
+
+    L.append("### What the distribution shows\n")
+    L.append("| cells | n | -1.0 | -0.5 | +0.5 | +1.0 |")
+    L.append("| --- | ---: | ---: | ---: | ---: | ---: |")
+    for label in ("diagonal", "off-diagonal"):
+        r = d.loc[label]
+        L.append(f"| {label} | {int(r['n']):,} | " + " | ".join(
+            f"{r[f'share_{lv:+.1f}']:.1%}" for lv in ORDINAL_LEVELS) + " |")
+    L.append("")
+    L.append(
+        f"Off-diagonal calls land on -0.5 **{off['share_-0.5']:.1%}** of the "
+        f"time against **{on['share_-0.5']:.1%}** on the diagonal, while the "
+        f"diagonal takes +1.0 **{on['share_+1.0']:.1%}** of the time against "
+        f"**{off['share_+1.0']:.1%}** off it. Outright violations are "
+        f"**{n_worst} of {n_all:,}** calls ({n_worst / n_all:.1%}). The section 1 "
+        "gap is therefore mostly *earned credit versus unaddressed*, not "
+        "*complied versus violated*.\n"
+    )
+
+    L.append("### What this licenses, and what it does not\n")
+    L.append(
+        "**It does not license reading the off-diagonal as violation.** A "
+        "scenario is not evidence that a model breaches the seven principles it "
+        "was not written to probe; off-diagonal -0.5 overwhelmingly means the "
+        "response never engaged that principle. The main benchmark scores each "
+        "scenario against one principle, so no published number is affected by "
+        "this -- but a reader meeting the matrix cold could easily conclude "
+        "otherwise, and should not.\n"
+    )
+    L.append(
+        "**It does not rescue the pre-committed direction.** That prediction "
+        "assumed failure concentrates on the designed principle. At baseline it "
+        "does not, because at baseline these models largely satisfy the "
+        "principle their scenario stresses -- which is what the benchmark's own "
+        "baseline scores say.\n"
+    )
+    L.append(
+        "**It does support the claim the reviewer actually asked about.** The "
+        "eight rubrics are not interchangeable. The same response, scored eight "
+        f"times, takes +1.0 under the rubric its scenario was designed for "
+        f"{on['share_+1.0']:.1%} of the time while drawing -0.5 under the other "
+        f"seven {off['share_-0.5']:.1%} of the time. A judge that had collapsed "
+        "the rubrics into one latent dimension -- the Feuer et al. failure mode, "
+        "and the reason no factor model is reported here -- would not produce "
+        "that, because collapse makes the eight move together. Which principle a "
+        "response satisfies is predicted by the label its scenario was written "
+        "under. That is the known-groups claim, with engagement rather than "
+        "failure as the thing that concentrates on the diagonal.\n"
+    )
+    L.append(
+        "**The honest limit of that claim.** What the diagonal establishes is "
+        "that the rubrics are *differentially responsive to scenario content*: "
+        "the eight do not return the same verdict on the same response. That "
+        "rules out one construct measured eight times, and it rules out a fully "
+        "collapsed judge. It does not by itself establish that any particular "
+        "pair of principles is non-synonymous -- two near-synonymous rubrics "
+        "keyed to the same content would both light up on the same scenarios and "
+        "both stay quiet elsewhere. A named pair is answered by the paired test "
+        "in section 3, not by this contrast, and the correlations in section 5 "
+        "remain descriptive-only for the reason given there.\n"
+    )
+
+    est = ranks[ranks.estimable]
+    col_lowest = [PRINCIPLE_SHORT.get(r.designed_principle, r.designed_principle)
+                  for _, r in est.iterrows() if r.rank_in_column == 1]
+    neg_diag = [PRINCIPLE_SHORT.get(r.designed_principle, r.designed_principle)
+                for _, r in est.iterrows() if r.diagonal < 0]
+    if col_lowest:
+        L.append(
+            "The pre-committed pattern does appear in "
+            f"`{'`, `'.join(col_lowest)}`: the diagonal is the **lowest cell in "
+            "its own column**, i.e. of all scenarios scored against that "
+            "principle, the twelve written for it score lowest. "
+            + (f"That is also where the only negative diagonal sits "
+               f"(`{'`, `'.join(neg_diag)}`). " if neg_diag else "")
+            + "Where a scenario set does concentrate failure on its own "
+              "principle, the design detects it.\n"
+        )
+
+    L.append("### The same ranks, mirrored\n")
+    L.append(
+        "Section 2 asks whether the diagonal is the *lowest* cell, which was the "
+        "committed direction. The mirror is reported here rather than there so "
+        "that neither direction can be chosen after the fact.\n"
+    )
+    L.append("| designed principle | diagonal | rank from top in row | "
+             "rank from top in column | replicates highest in row | top two |")
+    L.append("| --- | ---: | ---: | ---: | ---: | ---: |")
+    n_high = n_top2 = n_est = 0
+    for _, r in ranks.iterrows():
+        if r.estimable:
+            n_est += 1
+            n_high += int(r.rank_in_row_from_top == 1)
+            n_top2 += int(r.rank_in_row_from_top <= 2)
+            cells = (f"{int(r.rank_in_row_from_top)}/{int(r.n_cells_ranked_in_row)} | "
+                     f"{int(r.rank_in_column_from_top)}/{int(r.n_cells_ranked_in_column)} | "
+                     f"{r.share_highest_in_row:.0%} | {r.share_top_two_in_row:.0%}")
+        else:
+            cells = "no data | no data | no data | no data"
+        L.append(f"| {PRINCIPLE_SHORT.get(r.designed_principle, r.designed_principle)} "
+                 f"| {_fmt(r.diagonal)} | {cells} |")
+    L.append("")
+    cen = centered[centered.designed_principle != "pooled"]
+    n_cen_pos = int((cen.excludes_zero & (cen.contrast > 0)).sum())
+    L.append(
+        f"The diagonal is the highest cell in its row for **{n_high} of "
+        f"{n_est}** principles and in the top two for **{n_top2} of {n_est}** -- "
+        "so the row-level result is a contrast against the row *mean*, not a "
+        "claim that the designed principle always wins outright. It is beaten "
+        "by the leniently-scored columns below, which is exactly the effect the "
+        f"column-centred contrast removes; centring leaves {n_cen_pos} row(s) "
+        "positive with a CI excluding zero.\n"
+    )
+
+    L.append("### Per-rubric leniency\n")
+    L.append(
+        "Column means computed **off the diagonal only**, so the leniency "
+        "estimate is not contaminated by the cell the contrast is about.\n"
+    )
+    L.append("| scored principle | off-diagonal mean | diagonal |")
+    L.append("| --- | ---: | ---: |")
+    for _, r in colmeans.sort_values("off_diagonal_mean").iterrows():
+        L.append(f"| {PRINCIPLE_SHORT.get(r.scored_principle, r.scored_principle)} | "
+                 f"{_fmt(r.off_diagonal_mean)} | {_fmt(r.diagonal)} |")
+    L.append("")
+
+    if not examples.empty:
+        L.append("### The judge's own account\n")
+        L.append(
+            "One rationale per scored principle, selected by a rule fixed before "
+            "reading any of them: among off-diagonal calls scoring -0.5 for that "
+            "principle, rotate the source -- the j-th principle draws from a "
+            "scenario designed for the (j+1)-th and from the (j mod 3)-th model "
+            "-- then take the first in sort order, falling back within the "
+            "column if that cell is empty. The rotation is there so the eight "
+            "examples do not all land on whichever scenario sorts first; it is "
+            "not a content filter. Full text is in "
+            "`tables/discriminant/offdiagonal_examples.csv`, and every rationale "
+            "in the run is in the logs.\n"
+        )
+        for _, r in examples.iterrows():
+            short = PRINCIPLE_SHORT.get(r.scored_principle, r.scored_principle)
+            L.append(f"- **scored as {short}**, scenario designed for "
+                     f"{PRINCIPLE_SHORT.get(r.designed_principle, r.designed_principle)} "
+                     f"(`{r.scenario_id}`, {r.source_model}): "
+                     f"\"{r.reasoning[:300]}{'...' if len(r.reasoning) > 300 else ''}\"")
+        L.append("")
+    return L
+
+
 def write_report(
     out: Path, matrix: DesignedMeasuredMatrix, per_model: dict,
     raw: pd.DataFrame, centered: pd.DataFrame, ranks: pd.DataFrame,
     fhr_pltw: pd.DataFrame, sanity: pd.DataFrame, pearson: pd.DataFrame,
     spearman: pd.DataFrame, n_items: int, stats: dict, manifest: dict,
     n_bootstrap: int, seed: int, frame_composition: dict,
-    expected_calls: int,
+    expected_calls: int, dist: pd.DataFrame, colmeans: pd.DataFrame,
+    examples: pd.DataFrame,
 ) -> None:
     pooled_raw = raw[raw.designed_principle == "pooled"].iloc[0]
     n_cell = int(np.median(matrix.n_per_cell))
@@ -728,6 +1036,8 @@ def write_report(
     )
 
     L.extend(interpretation_section(raw, ranks, fhr_pltw))
+    L.extend(posthoc_section(dist, colmeans, examples, ranks, centered,
+                             rubric_no_neutral_rule()))
 
     L.append("## The matrix\n")
     L.append(f"Mean severity, n = {n_cell} per cell "
@@ -820,7 +1130,7 @@ def main() -> int:
     args.report.parent.mkdir(parents=True, exist_ok=True)
 
     manifest = json.loads(MANIFEST_PATH.read_text())
-    long, stats = load_run_scores(args.logs_dir, args.models)
+    long, reasons, stats = load_run_scores(args.logs_dir, args.models)
     if long.empty:
         print("No discriminant run found under "
               f"{(args.logs_dir / LOG_CONDITION)}.\n"
@@ -976,10 +1286,20 @@ def main() -> int:
     pearson.to_csv(args.output_dir / "interprinciple_correlation_item_level.csv")
     spearman.to_csv(args.output_dir / "interprinciple_correlation_item_level_spearman.csv")
 
+    # 6. Post-hoc mechanism diagnostics for the reversed sign. No new calls, no
+    # effect on anything above; see the block comment above `posthoc_section`.
+    dist = severity_distribution(long)
+    colmeans = offdiagonal_column_means(long)
+    examples = offdiagonal_examples(reasons)
+    dist.to_csv(args.output_dir / "severity_distribution.csv", index=False)
+    colmeans.to_csv(args.output_dir / "offdiagonal_column_means.csv", index=False)
+    if not examples.empty:
+        examples.to_csv(args.output_dir / "offdiagonal_examples.csv", index=False)
+
     write_report(args.report, matrix, per_model, raw, centered, ranks, fhr_pltw,
                  sanity, pearson, spearman, n_items, stats, manifest,
                  args.n_bootstrap, args.seed, frame_composition(),
-                 expected_calls)
+                 expected_calls, dist, colmeans, examples)
 
     pooled = raw.iloc[-1]
     print(f"\npooled diagonal - off-diagonal: {pooled.contrast:+.3f} "
@@ -990,6 +1310,11 @@ def main() -> int:
     print(f"diagonal lowest in its row: "
           f"{int((ranks.rank_in_row == 1).sum())}/{len(PRINCIPLES)}; "
           f"bottom two: {int((ranks.rank_in_row <= 2).sum())}/{len(PRINCIPLES)}")
+    # The mirror, printed unconditionally: with a reversed sign the "lowest"
+    # line alone reads as a null result when it is not one.
+    print(f"diagonal highest in its row: "
+          f"{int((ranks.rank_in_row_from_top == 1).sum())}/{len(PRINCIPLES)}; "
+          f"top two: {int((ranks.rank_in_row_from_top <= 2).sum())}/{len(PRINCIPLES)}")
     print(f"\nWrote {_rel(args.report)} and {_rel(args.output_dir)}/")
     return 0
 
