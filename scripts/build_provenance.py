@@ -125,11 +125,124 @@ def build_run_entry(persona: str, model: str, path: Path) -> dict:
     }
 
 
+def build_decomposition_entry(condition: str, model: str, path: Path,
+                              triples: dict[str, tuple[str, str]]) -> dict:
+    """Run entry for a decomposition condition.
+
+    A subset run cannot reproduce ``FROZEN_PROMPT_HASH`` -- that hash is over the
+    whole 800-item set -- so the content-binding guarantee is expressed two other
+    ways: the run's prompts hash to the frozen *subset* hash, and every
+    ``(id, input, target)`` triple it scored is byte-identical to the frozen
+    dataset's triple for that id. Together those are strictly stronger than a
+    single aggregate digest, because they also prove no prompt was edited.
+    """
+    from humanebench import decomposition as dc
+
+    entry = build_run_entry(condition, model, path)
+    entry["condition"] = entry.pop("persona")
+    spec = dc.CONDITIONS_BY_TASK_TYPE[condition]
+    entry["condition_label"] = spec.label
+    entry["scale"] = spec.scale
+    entry["subset_of_frozen"] = spec.scale == "subset"
+    entry["prompt_hash_matches_subset"] = entry["prompt_hash"] == dc.SUBSET_PROMPT_HASH
+    entry["expected_prompt_hash"] = dc.expected_prompt_hash(spec)
+    entry["prompt_hash_matches_expected"] = entry["prompt_hash"] == entry["expected_prompt_hash"]
+
+    scored_ids: list[str] = []
+    mismatched: list[str] = []
+    unknown: list[str] = []
+    for sample in prov.iter_eval_samples(path):
+        sid = sample.get("id")
+        scored_ids.append(sid)
+        if sid not in triples:
+            unknown.append(sid)
+        elif (sample.get("input"), sample.get("target")) != triples[sid]:
+            mismatched.append(sid)
+    entry["n_ids_scored"] = len(scored_ids)
+    entry["ids_subset_of_frozen"] = not unknown
+    entry["triples_byte_identical_to_frozen"] = not mismatched and not unknown
+    entry["n_triples_mismatched"] = len(mismatched)
+    entry["n_ids_not_in_frozen"] = len(unknown)
+    return entry
+
+
+def dc_summary_rel() -> str:
+    from humanebench import decomposition as dc
+    return str(dc.SUBSET_SUMMARY_PATH.relative_to(prov.REPO_ROOT))
+
+
+def build_decomposition_anchors() -> dict | None:
+    """Anchor block for the frozen subsample and the launch manifest."""
+    from humanebench import decomposition as dc
+
+    if not dc.SUBSET_SUMMARY_PATH.exists():
+        return None
+    summary = dc.load_subset_summary()
+    ids_ok = dc.SUBSET_IDS_PATH.exists()
+    data_ok = dc.SUBSET_DATASET_PATH.exists()
+    block = {
+        "subset_ids_file": dc.SUBSET_IDS_REL,
+        "subset_dataset_file": dc.SUBSET_DATASET_REL,
+        "subset_prompt_hash": dc.SUBSET_PROMPT_HASH,
+        "subset_prompt_hash_matches_summary":
+            summary.get("subset_prompt_hash") == dc.SUBSET_PROMPT_HASH,
+        "subset_ids_sha256": prov.file_sha256(dc.SUBSET_IDS_PATH) if ids_ok else None,
+        "subset_dataset_sha256":
+            prov.file_sha256(dc.SUBSET_DATASET_PATH) if data_ok else None,
+        "subset_seed": summary.get("seed"),
+        "subset_n_scenarios": summary.get("n_scenarios"),
+        "subset_stratification": summary.get("stratification"),
+        "temporal_caveat": dc.TEMPORAL_CAVEAT,
+    }
+    launch = prov.REPO_ROOT / "provenance" / "decomposition" / "LAUNCH_MANIFEST.json"
+    block["launch_manifest"] = "provenance/decomposition/LAUNCH_MANIFEST.json" if launch.exists() else None
+    block["launch_manifest_sha256"] = prov.file_sha256(launch) if launch.exists() else None
+    return block
+
+
 def build_manifest(logs_dir: Path) -> dict:
     runs = []
     for persona, model, path in prov.reported_runs(logs_dir):
         print(f"  hashing {persona}/{model} ...", flush=True)
         runs.append(build_run_entry(persona, model, path))
+
+    decomp_runs = []
+    decomp_anchors = build_decomposition_anchors()
+    # The run walk is NOT gated on the anchors. Gating it meant a missing or
+    # renamed subsample summary silently dropped completed runs from the
+    # manifest, and verify_provenance would then pass on a manifest that
+    # documents none of them.
+    on_disk = prov.decomposition_runs(logs_dir)
+    if on_disk and decomp_anchors is None:
+        raise SystemExit(
+            f"{len(on_disk)} decomposition run(s) are on disk but "
+            f"{dc_summary_rel()} is missing, so their subset hash cannot be "
+            "verified. Restore it (or re-run build_decomposition_subsample.py) "
+            "before building provenance."
+        )
+    if on_disk:
+        from humanebench import decomposition as dc
+
+        triples = prov.frozen_triples()
+        for condition, model, path in on_disk:
+            # The manifest is a record of FINISHED artifacts. An in-progress run
+            # cannot reproduce its expected prompt hash -- it has scored only
+            # part of the set -- so recording it would enter a permanent, and
+            # meaningless, failure into the manifest for the duration of every
+            # run. It is picked up on the next build once complete.
+            spec = dc.CONDITIONS_BY_TASK_TYPE.get(condition)
+            n_have = sum(1 for _ in prov.iter_eval_samples(path))
+            # Completeness here must match the runner's gate (>= 98% fully
+            # scored, not 100% of samples): a run the gate blessed at 799/800
+            # would otherwise be skipped as "in progress" forever and never
+            # enter the manifest.
+            floor = int(0.98 * spec.expected_samples) if spec else 0
+            if spec is not None and n_have < floor:
+                print(f"  skipping {condition}/{model}: in progress "
+                      f"({n_have}/{spec.expected_samples})", flush=True)
+                continue
+            print(f"  hashing {condition}/{model} ...", flush=True)
+            decomp_runs.append(build_decomposition_entry(condition, model, path, triples))
 
     anchors = build_anchors()
 
@@ -147,8 +260,23 @@ def build_manifest(logs_dir: Path) -> dict:
         and anchors.get("frozen_prompt_hash_selfcheck_ok") in (True, None)
     )
 
-    return {
-        "schema": "humanebench-provenance/1",
+    # Deliberately NOT folded into all_pass. That flag is the reported-run
+    # provenance claim -- the one the paper rests on -- and it must not go red
+    # because a robustness analysis is mid-flight or incomplete. The
+    # decomposition gets its own flag -- and that flag is None, not True, when
+    # there is nothing to attest: all() over an empty list is vacuously true,
+    # and "decomposition_all_pass: true" over zero runs would be a provenance
+    # claim about data that does not exist.
+    decomp_ok = (
+        all(r["prompt_hash_matches_expected"] and r["triples_byte_identical_to_frozen"]
+            for r in decomp_runs)
+        if decomp_runs else None
+    )
+
+    manifest = {
+        # Schema 2 adds the decomposition blocks. The `reported_runs` entries are
+        # produced by the same code path as schema 1 and are unchanged.
+        "schema": "humanebench-provenance/2",
         "description": "Content-binding provenance: each reported eval run scored "
                        "prompts byte-identical to the frozen HumaneBench dataset.",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -163,6 +291,22 @@ def build_manifest(logs_dir: Path) -> dict:
             "all_pass": all_pass,
         },
     }
+    if decomp_anchors is not None:
+        manifest["anchors"]["decomposition"] = decomp_anchors
+        manifest["decomposition_runs"] = decomp_runs
+        manifest["summary"]["n_decomposition_runs"] = len(decomp_runs)
+        manifest["summary"]["decomposition_runs_prompt_hash_matches_expected"] = sum(
+            1 for r in decomp_runs if r["prompt_hash_matches_expected"]
+        )
+        manifest["summary"]["decomposition_runs_triples_byte_identical"] = sum(
+            1 for r in decomp_runs if r["triples_byte_identical_to_frozen"]
+        )
+        manifest["summary"]["decomposition_all_pass"] = decomp_ok
+        manifest["summary"]["decomposition_note"] = (
+            "The Zenodo deposit covers the reported runs only; decomposition logs "
+            "are repo-local until the deposit is updated."
+        )
+    return manifest
 
 
 def write_markdown(manifest: dict, path: Path) -> None:
@@ -214,6 +358,45 @@ def write_markdown(manifest: dict, path: Path) -> None:
             f"{r['created_after_freeze']} | `{r['file_sha256'][:16]}…` |"
         )
     lines.append("")
+
+    # Schema 2 carries the decomposition runs in the JSON. Rendering them here
+    # too: MANIFEST.md is the file a reader opens, and a human-readable manifest
+    # that silently covers half the runs on disk reads as if the other half had
+    # no provenance at all.
+    decomp = manifest.get("decomposition_runs")
+    if decomp:
+        lines += [
+            "## Decomposition runs (robustness analysis)",
+            "",
+            f"**{s['n_decomposition_runs']}** runs · "
+            f"prompt-hash match: **{s['decomposition_runs_prompt_hash_matches_expected']}"
+            f"/{s['n_decomposition_runs']}** · "
+            f"(id, input, target) triples byte-identical to the frozen dataset: "
+            f"**{s['decomposition_runs_triples_byte_identical']}/{s['n_decomposition_runs']}** · "
+            f"all pass: **{s['decomposition_all_pass']}**",
+            "",
+            "These are a robustness analysis of the reported three conditions, not "
+            "a fourth reported condition. Condition B scores the full frozen "
+            "dataset; C, D and E score the frozen 200-scenario subsample nested "
+            "inside it, so `expected prompt hash` differs by scale.",
+            "",
+        ]
+        if s.get("decomposition_note"):
+            lines += [f"_{s['decomposition_note']}_", ""]
+        lines += [
+            "| condition | model | created | prompts | expected hash | match | triples identical | file sha256 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for r in decomp:
+            lines.append(
+                f"| {r['condition_label']} (`{r['condition']}`) | {r['model_dir']} | "
+                f"{r['eval_created']} | {r['n_samples_hashed']} | "
+                f"`{r['expected_prompt_hash'][:16]}…` | "
+                f"{r['prompt_hash_matches_expected']} | "
+                f"{r['triples_byte_identical_to_frozen']} | "
+                f"`{r['file_sha256'][:16]}…` |"
+            )
+        lines.append("")
     path.write_text("\n".join(lines))
 
 

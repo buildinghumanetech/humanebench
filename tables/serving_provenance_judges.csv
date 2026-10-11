@@ -1,0 +1,6 @@
+judge_model,provider,n
+openrouter/anthropic/claude-4.5-sonnet,Amazon Bedrock,1
+openrouter/anthropic/claude-4.5-sonnet,Google,36259
+openrouter/google/gemini-2.5-pro,Google,36082
+openrouter/google/gemini-2.5-pro,Google AI Studio,97
+openrouter/openai/gpt-5.1,OpenAI,36012

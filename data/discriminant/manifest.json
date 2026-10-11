@@ -1,0 +1,62 @@
+{
+  "schema": "humanebench-discriminant-multilabel/1",
+  "generated_at": "2026-07-26T20:51:37.576358+00:00",
+  "design": "designed x measured matrix; baseline responses only",
+  "n_scenarios": 96,
+  "n_source_models": 3,
+  "n_principles": 8,
+  "n_judge_calls": 2304,
+  "one_call_per_principle": true,
+  "total_judge_prompt_chars": 13033936,
+  "pricing_calibration": {
+    "chars_per_input_token": 4.483,
+    "output_tokens_mean": 315,
+    "measured_on_n_calls": 287,
+    "source": "logs/baseline/<model>/*.eval, gpt-5.1 judge events"
+  },
+  "frame_ids_file": "data/decomposition/discriminant_96_ids.txt",
+  "frame_ids_sha256": "039c96c62d4dbf4db4d1b16dff2ebd02b681b9f4eebb64ca5c69efebff8ff515",
+  "frame_subset_prompt_hash": "ac100073ab9367a8de13db524176400296fd9c1781f8a5b4767e0609e69aa570",
+  "parent_ids_file": "data/decomposition/subsample_200_ids.txt",
+  "parent_ids_sha256": "5b89e73d28611bdd1db9108157c0a383a4db2b6111b8536dffd0d75c66e9d3ec",
+  "source_dataset_sha256": "3ca6145ec60981dd6e184261e75cd71f7616352aeec7de89195efb9c70ee8bc3",
+  "judge": {
+    "models": [
+      "openrouter/openai/gpt-5.1"
+    ],
+    "temperature": 0.0,
+    "score_attempts": 3,
+    "rationale": "the only main-run ensemble judge that is not among the three scored models, so the diagonal is a same-judge replication"
+  },
+  "expected_prompt_hashes_file": "data/discriminant/expected_prompt_hashes.csv",
+  "expected_prompt_hashes_sha256": "2caaf4ff0f4d942398b117e05b87a2b119f8a337817b18a23e5ef429c7a23bbd",
+  "per_model": {
+    "claude-sonnet-4.5": {
+      "source_eval": "logs/baseline/claude-sonnet-4.5/2025-11-17T00-30-25-05-00_baseline-eval_HAZnjV4xYGbjHnNjXBsbC3.eval",
+      "source_eval_sha256": "811dc76ba2472074b2385a64d381209f42870638f001cef4ca2677db4fe1c909",
+      "n_responses": 96,
+      "response_sha256": "ece5a6413691b3893187efb30e0914869902c94548d859fa740f0a691172844e",
+      "dataset_file": "data/discriminant/multilabel_claude-sonnet-4.5.jsonl",
+      "dataset_file_sha256": "71cdde48b69b04cb8b019459b5066f53c4fe48c04114bae1e07441f0239d0329",
+      "n_rows": 768
+    },
+    "llama-4-maverick": {
+      "source_eval": "logs/baseline/llama-4-maverick/2025-11-17T00-30-25-05-00_baseline-eval_RYyVutBQ8c6uSfPbxUNL54.eval",
+      "source_eval_sha256": "ab1adf9220e880c57167f44310a63fbcc5414a3985e86314d1e64145441ce128",
+      "n_responses": 96,
+      "response_sha256": "a487e5465434a2b082e65b3cc87950b3f6f9cb2b4471374e2167bfae2c8302c4",
+      "dataset_file": "data/discriminant/multilabel_llama-4-maverick.jsonl",
+      "dataset_file_sha256": "bbd1f3a70d7ab0f4038be4df647b17bf7a39fbbb24671bf06f81b15898b5bd34",
+      "n_rows": 768
+    },
+    "gemini-2.5-pro": {
+      "source_eval": "logs/baseline/gemini-2.5-pro/2025-11-17T00-30-25-05-00_baseline-eval_3jPn9jSs458RCzhukv8X3p.eval",
+      "source_eval_sha256": "77f24cd394df4fa3ae992113fbed78b22afd3b5f9f1778883e98b64ec8437171",
+      "n_responses": 96,
+      "response_sha256": "95903d01eacb1d47cc3253df03e60d4a639088808e142ea2ad90eee787c0dd8c",
+      "dataset_file": "data/discriminant/multilabel_gemini-2.5-pro.jsonl",
+      "dataset_file_sha256": "55e8eb63f6b1d38a4b4ba3a8bdeb0a456e5d8567fbd38423060a722dafb2ed76",
+      "n_rows": 768
+    }
+  }
+}
