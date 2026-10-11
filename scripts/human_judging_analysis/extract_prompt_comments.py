@@ -3,6 +3,11 @@ Extract Prompt Comments from Langfuse
 Aggregates rater comments about input prompts (sample_id level)
 """
 
+# Paper: utility -- no paper-facing output; collects the raters' free-text comments on the
+#   scenario prompts from the completed annotation queues into output/prompt_comments.csv,
+#   for qualitative review of the rated scenarios. Supports the human validation reported
+#   in the supplement, "Judge Validation Details".
+
 import os
 import json
 import pandas as pd

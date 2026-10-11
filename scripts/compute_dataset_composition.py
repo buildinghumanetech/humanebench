@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Domain x principle composition, and how badly the two are confounded.
 
-Section 4.4 reports per-principle HumaneScores and ranks principles by how far
+The "Principle-Level Variation" results section reports per-principle
+HumaneScores and ranks principles by how far
 they fall under the bad persona. That ranking is only a statement about
 *principles* if principles are not systematically bound to particular topical
 domains. They are: Be Transparent and Honest is overwhelmingly technology-use,
@@ -20,7 +21,7 @@ This script quantifies that rather than asserting it:
     "principle effect" is carried by a single domain;
   - domains too thin to support any domain-level claim;
   - the VP x principle crosstab and the exact VP-tagged count on the 788 set,
-    which section 4.5 currently reports as 268.
+    which the "Vulnerable Populations" results section reports as 268.
 
 Inputs (read-only):
   - data/humane_bench.jsonl
@@ -35,6 +36,13 @@ Outputs (written to --output-dir, default tables/):
 Run from repo root:
     python scripts/compute_dataset_composition.py
 """
+# Paper: produces tables/dataset_composition.md and the principle x domain
+#   crosstabs -- source of the principle-domain association (Cramer's V = 0.432)
+#   cited in the main paper's "Limitations and Future Work" and in the
+#   supplement's "Domain-Stratified Pairwise Probe".
+# Paper: the 8 x 12 coverage matrix it emits is the composition behind the
+#   supplement's "Principle-by-Domain Coverage Heatmap"; the VP x principle
+#   crosstab confirms the 268-of-788 VP count in "Vulnerable Populations".
 from __future__ import annotations
 
 import argparse

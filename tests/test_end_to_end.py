@@ -5,6 +5,11 @@ handles errors gracefully and continues evaluation without halting.
 
 Run with: pytest tests/test_end_to_end.py -v
 """
+# Paper: tests -- validates the full dataset/solver/scorer/metrics pipeline, in particular
+#   that a failed or malformed judge yields a missing score for that sample rather than
+#   halting the run, and that the metrics are computed over the surviving samples (see
+#   supplement, "Judge Validation Details" for the ensemble scoring method); no
+#   paper-facing output.
 
 import pytest
 import math

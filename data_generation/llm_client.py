@@ -4,6 +4,7 @@ LLM client with fallback support between OpenRouter and Cerebras APIs.
 OpenRouter provides access to multiple providers (Anthropic, xAI, etc.) with optional web search.
 Cerebras direct API serves as fallback for reliability but without web search capabilities.
 """
+# Paper: utility -- no paper-facing output; provides the chat-completion client, with provider fallback, used by the generation and validation stages of the scenario construction pipeline.
 
 import os
 from typing import Optional, Dict, Any, List

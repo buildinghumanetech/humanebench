@@ -17,6 +17,8 @@ Outputs:
     data_generation/inter_principle_similarity.json
     data_generation/inter_principle_similarity.md
 """
+# Paper: produces data_generation/inter_principle_similarity.json and inter_principle_similarity.md -- the 8x8 intra/inter-principle cosine similarity matrix (mean within-principle 0.238, mean between-principle 0.152) quantifying scenario heterogeneity (supplement, "Scenario Construction Pipeline").
+# Paper: also builds data_generation/cache/principle_embeddings.npz, the text-embedding-3-large cache reused by compute_similarity_distributions.py for the near-duplicate rate and pairwise similarity distributions.
 from __future__ import annotations
 
 import json

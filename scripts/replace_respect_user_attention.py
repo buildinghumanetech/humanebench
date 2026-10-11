@@ -4,6 +4,12 @@ Script to replace all enhance-human-capabilities entries in data/humane_bench.js
 with new data from enhance-human-capabilities.csv
 """
 
+# Paper: utility -- no paper-facing output; one-off dataset edit that rewrote the
+#   enhance-human-capabilities scenarios in data/humane_bench.jsonl from a CSV during
+#   scenario construction (supplement, "Scenario Construction Pipeline"). Despite the file
+#   name, the entries it replaces are enhance-human-capabilities, not
+#   respect-user-attention.
+
 import json
 import csv
 import shutil

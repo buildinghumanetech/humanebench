@@ -45,6 +45,10 @@ Outputs (written to --output-dir, default tables/):
 Run from repo root:
     python scripts/compute_loo_sensitivity.py
 """
+# Paper: produces tables/loo_model_scores.csv, loo_cohort_counts.csv, loo_alpha.csv and
+#        loo_sensitivity.md - the leave-one-judge-out ablation: anti-humane flip count,
+#        robust-set membership and Krippendorff's alpha with each judge dropped in turn
+#        (supplement, "Judge Validation Details", judge-independence paragraph).
 from __future__ import annotations
 
 import argparse

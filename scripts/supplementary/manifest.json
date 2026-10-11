@@ -3,6 +3,11 @@
   "zip_root_readme": "scripts/supplementary/README_supplementary.md",
   "include": [
     {
+      "src": "review_inputs/supplement.pdf",
+      "dst": "supplement.pdf",
+      "why": "the compiled Supplementary Document (appendices); the review platform takes a single supplementary file, so the PDF travels at the root of the code-and-data zip"
+    },
+    {
       "src": "requirements.txt",
       "why": "pinned environment"
     },
@@ -89,6 +94,51 @@
       "src": "data/discriminant/multilabel_claude-sonnet-4.5.jsonl",
       "root": "aux",
       "why": "multi-label judgements behind the discriminant-validity section. Gitignored for size and because they embed archived responses, so it is named explicitly rather than swept up by a directory walk that would behave differently in another checkout."
+    },
+    {
+      "src": "data/discriminant_expansion/multilabel_claude-sonnet-4.5.jsonl",
+      "root": "aux",
+      "why": "multi-label judgements for the fresh 24-per-principle redraw behind the pooled separability result. Gitignored for size and because they embed archived responses; named explicitly like the original draw's files."
+    },
+    {
+      "src": "data/discriminant_expansion/multilabel_gemini-2.5-pro.jsonl",
+      "root": "aux",
+      "why": "same rationale, expansion redraw"
+    },
+    {
+      "src": "data/discriminant_expansion/multilabel_llama-4-maverick.jsonl",
+      "root": "aux",
+      "why": "same rationale, expansion redraw"
+    },
+    {
+      "src": "data/discriminant_rules27/multilabel_claude-sonnet-4.5.jsonl",
+      "root": "aux",
+      "why": "multi-label judgements for the rules-suppressed replication"
+    },
+    {
+      "src": "data/discriminant_rules27/multilabel_gemini-2.5-pro.jsonl",
+      "root": "aux",
+      "why": "same rationale, rules-suppressed replication"
+    },
+    {
+      "src": "data/discriminant_rules27/multilabel_llama-4-maverick.jsonl",
+      "root": "aux",
+      "why": "same rationale, rules-suppressed replication"
+    },
+    {
+      "src": "data/discriminant_canary/multilabel_claude-sonnet-4.5.jsonl",
+      "root": "aux",
+      "why": "multi-label judgements for the judge-drift canary gating the pooled result"
+    },
+    {
+      "src": "data/discriminant_canary/multilabel_gemini-2.5-pro.jsonl",
+      "root": "aux",
+      "why": "same rationale, judge-drift canary"
+    },
+    {
+      "src": "data/discriminant_canary/multilabel_llama-4-maverick.jsonl",
+      "root": "aux",
+      "why": "same rationale, judge-drift canary"
     },
     {
       "src": "data_generation",
@@ -185,6 +235,13 @@
       "why": "the rubric appendix; paper content"
     },
     {
+      "src": "results/serving_sensitivity_rows.csv",
+      "root": "aux",
+      "dst": "results/serving_sensitivity_rows.csv.gz",
+      "transform": "gzip",
+      "why": "8.2 MB -> ~1.5 MB. One row per scored generation call across the main and decomposition runs with the provider that served it; the per-call evidence behind the supplement's provider-mix table and the serving-sensitivity analysis. Referenced by name in the supplement."
+    },
+    {
       "src": "results/decomposition_precommitment.md",
       "root": "aux",
       "dst": "results/decomposition_precommitment.md",
@@ -218,6 +275,9 @@
     "tables/decomposition/response_disclosure_rates.csv",
     "tables/decomposition/alpha_*/inter_judge_raw.csv",
     "data/discriminant/multilabel_*.jsonl",
+    "data/discriminant_expansion/multilabel_*.jsonl",
+    "data/discriminant_rules27/multilabel_*.jsonl",
+    "data/discriminant_canary/multilabel_*.jsonl",
     "tables/inter_judge_raw.csv",
     "data_generation/malformed_outputs.log"
   ],

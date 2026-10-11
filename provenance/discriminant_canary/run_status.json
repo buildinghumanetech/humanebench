@@ -1,0 +1,71 @@
+{
+  "finished_at": "2026-07-27T23:14:21.933784+00:00",
+  "runs": [
+    {
+      "model": "llama-4-maverick",
+      "mode": "eval",
+      "log_dir": "logs/discriminant_canary/llama-4-maverick",
+      "returncode": 0,
+      "success": true,
+      "duration_s": 10.7
+    },
+    {
+      "model": "gemini-2.5-pro",
+      "mode": "eval",
+      "log_dir": "logs/discriminant_canary/gemini-2.5-pro",
+      "returncode": 0,
+      "success": true,
+      "duration_s": 11.3
+    },
+    {
+      "model": "claude-sonnet-4.5",
+      "mode": "eval",
+      "log_dir": "logs/discriminant_canary/claude-sonnet-4.5",
+      "returncode": 0,
+      "success": true,
+      "duration_s": 13.3
+    }
+  ],
+  "archived_superseded": [],
+  "gate": {
+    "threshold": 0.98,
+    "expected_samples_per_model": 32,
+    "models": {
+      "claude-sonnet-4.5": {
+        "status": "ok",
+        "eval_file": "logs/discriminant_canary/claude-sonnet-4.5/2026-07-27T19-14-09-04-00_discriminant-multilabel-claude-sonnet-4.5_KHxxxrd6DNAGdCKhm4TSih.eval",
+        "fraction_scored": 1.0,
+        "n_samples": 32,
+        "n_excluded_by_flag": 0,
+        "n_fully_scored": 32,
+        "n_judge_failures": 0,
+        "n_off_scale": 0,
+        "n_nan_with_scores": 0
+      },
+      "llama-4-maverick": {
+        "status": "ok",
+        "eval_file": "logs/discriminant_canary/llama-4-maverick/2026-07-27T19-14-09-04-00_discriminant-multilabel-llama-4-maverick_JzVmNzdwEyTCDDxC7ScYLd.eval",
+        "fraction_scored": 1.0,
+        "n_samples": 32,
+        "n_excluded_by_flag": 0,
+        "n_fully_scored": 32,
+        "n_judge_failures": 0,
+        "n_off_scale": 0,
+        "n_nan_with_scores": 0
+      },
+      "gemini-2.5-pro": {
+        "status": "ok",
+        "eval_file": "logs/discriminant_canary/gemini-2.5-pro/2026-07-27T19-14-09-04-00_discriminant-multilabel-gemini-2.5-pro_R9NLZ9nE4H8aYi9eax8Y3m.eval",
+        "fraction_scored": 1.0,
+        "n_samples": 32,
+        "n_excluded_by_flag": 0,
+        "n_fully_scored": 32,
+        "n_judge_failures": 0,
+        "n_off_scale": 0,
+        "n_nan_with_scores": 0
+      }
+    },
+    "worst_fraction_scored": 1.0,
+    "passed": true
+  }
+}

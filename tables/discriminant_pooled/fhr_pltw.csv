@@ -1,0 +1,3 @@
+comparison,designed_principle,scored_a,scored_b,difference,ci_lower,ci_upper,estimable,excludes_zero
+fhr-designed: fhr minus pltw,foster-healthy-relationships,foster-healthy-relationships,prioritize-long-term-wellbeing,-0.13888888888888895,-0.21759259259259256,-0.06944444444444442,True,True
+pltw-designed: pltw minus fhr,prioritize-long-term-wellbeing,prioritize-long-term-wellbeing,foster-healthy-relationships,0.6435185185185185,0.5,0.7916666666666667,True,True

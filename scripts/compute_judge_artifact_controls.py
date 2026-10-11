@@ -37,6 +37,11 @@ table for the scores used to split disclosures by outcome.
 Run from repo root:
     python scripts/compute_judge_artifact_controls.py
 """
+# Paper: utility - no paper-facing output; writes tables/judge_blinding_check.csv,
+#        response_disclosure_rates.csv and judge_artifact_controls.md, showing that the judge
+#        prompt scaffolding is byte-identical across the three persona conditions and measuring
+#        how often a response discloses its own condition. Supports the three-condition design
+#        and the rubric/persona overlap the circularity objection targets.
 from __future__ import annotations
 
 import argparse

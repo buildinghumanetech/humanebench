@@ -6,6 +6,13 @@
       "path": "results/decomposition_precommitment.md",
       "sha256": "024444a2a092cdb3374f3bcd04883e3527609be4d4cdac7271190393eea964ff",
       "size_bytes": 9484
+    },
+    {
+      "attested_at": "2026-07-27T22:03:14Z",
+      "git_head": "c932bb58f7982e1d2343266e545eb76c268fa0e5",
+      "path": "results/discriminant_followup_precommitment.md",
+      "sha256": "57bde2fe2652273317d49c0c7c28ef149aa17c0f7e28569300bb1df312445a0a",
+      "size_bytes": 7302
     }
   ],
   "description": "sha256 attestations for working documents that are not published. The document content is not in this repository; only its hash is. Priority is established by the commit carrying a given entry, not by the self-asserted attested_at field. Written by scripts/attest_docs.py."

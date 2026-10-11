@@ -27,6 +27,10 @@ Inputs (read-only):
 Outputs (written to tables/):
   - ensemble_vs_human_curated_24_cis.csv — one row with point estimates + CIs
 """
+# Paper: produces tables/ensemble_vs_human_curated_24_cis.csv - bootstrap and Wilson 95% CIs for
+#        ensemble-vs-human agreement on the curated 24-item set: quadratic-weighted kappa 0.905
+#        [0.797, 0.958] and direction match 23 of 24 with Wilson [0.797, 0.993], as reported in
+#        main paper, "Judge Validation" / supplement, "Judge Validation Details".
 
 import argparse
 from pathlib import Path

@@ -13,6 +13,8 @@ Outputs:
     - data/helm_raw_data.json: All models with individual benchmark scores
     - data/helm_aggregate_scores.json: All models with mean scores
 """
+# Paper: produces helm_integration/data/helm_raw_data.json and helm_aggregate_scores.json -- the HELM Capabilities aggregate (mean of MMLU-Pro, GPQA Diamond, IFEval, WildBench rescaled to 0-1, and Omni-MATH) used as the capability axis (main paper, "Intelligence != Humaneness"; supplement, "HELM Capability Scatter").
+# Paper: models missing any of the five benchmarks are dropped from the aggregate, so HELM coverage limits which evaluated models can enter that correlation.
 
 import json
 import os

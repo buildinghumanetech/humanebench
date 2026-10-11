@@ -6,6 +6,14 @@ Verifies:
    arms share a positive within-prompt correlation.
 3. Seed reproducibility: same seed → same CI bounds bit-for-bit.
 """
+# Paper: tests -- validates humanebench/bootstrap.py, the resampling protocol behind every
+#   reported confidence interval: CI coverage on synthetic data, within-prompt pairing of
+#   persona deltas, scenario-level (not model-level) resampling, and seed reproducibility
+#   (see "Overall Performance", where the resulting intervals are reported in Table 1);
+#   no paper-facing output.
+# Paper: tests -- also covers the cohort flip counts behind "The Anti-Humane Flip" and the
+#   designed x scored interaction contrasts plus Holm adjustment used by the separability
+#   analysis (see supplement, "Domain-Stratified Pairwise Probe").
 from __future__ import annotations
 
 import numpy as np

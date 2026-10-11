@@ -11,6 +11,10 @@ Usage:
     python scripts/check_eval_status.py --show-errors
 """
 
+# Paper: utility -- no paper-facing output; reports per-model sample completeness across
+#   the baseline / good persona / bad persona and decomposition B-E log directories, and
+#   emits an inspect eval-retry command for each run that is short.
+
 import argparse
 import os
 import sys

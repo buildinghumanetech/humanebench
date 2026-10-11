@@ -51,6 +51,11 @@ Outputs (written to --output-dir, default tables/):
 Run from repo root:
     python scripts/compute_rubric_sensitivity.py
 """
+# Paper: utility - no paper-facing output; writes tables/rubric_sensitivity_counts.csv,
+#        rubric_sensitivity_model_scores.csv and rubric_sensitivity.md, recomputing the flip
+#        count under a binary collapse of the four-point rubric, with the lowest-agreement
+#        principle dropped, and at alternative flip thresholds. Supports the flip count in main
+#        paper, "The Anti-Humane Flip", which uses the four-point rubric and the sign rule.
 from __future__ import annotations
 
 import argparse

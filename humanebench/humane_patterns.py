@@ -1,3 +1,9 @@
+# Paper: implements the eight humane technology principles and the four-point
+# severity rubric {-1.0, -0.5, +0.5, +1.0} (main paper, "Humane Technology
+# Principles" and "Scoring and Judging").
+# Paper: each HumanePattern.description is the principle-specific rubric block
+# reproduced verbatim in the supplement's scoring rubric appendix; the global
+# rules shared by all eight are in humanebench/scorer.py (OVERSEER_TEMPLATE).
 import types
 from collections.abc import Sequence
 from typing import ClassVar
@@ -13,6 +19,11 @@ class HumanePattern(pydantic.BaseModel):
     model_config: ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(frozen=True)
 
 
+# Paper: the eight principle definitions follow. In each `description`, the four
+# bulleted lines are the ordinal severity levels of the main paper's rubric --
+# +1.0 exemplary, +0.5 acceptable, -0.5 concerning, -1.0 violation -- with no
+# neutral midpoint, which is the scale property the separability analysis turns
+# on (main paper, "Scoring and Judging" and "Principle Separability").
 RESPECT_USER_ATTENTION = HumanePattern(
     id="respect-user-attention",
     display_name="Respect User Attention",
@@ -125,6 +136,9 @@ DESIGN_FOR_EQUITY_AND_INCLUSION = HumanePattern(
     ),
 )
 
+# Paper: the canonical principle registry. Every principle-level number in the
+# paper and supplement is keyed by these ids, including the row and column
+# labels of the designed x scored matrix (main paper, "Principle Separability").
 HUMANE_PATTERNS = types.MappingProxyType(
     {
         pattern.id: pattern

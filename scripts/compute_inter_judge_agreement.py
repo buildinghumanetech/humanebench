@@ -32,6 +32,13 @@ which reproduces all three passes (full corpus, 48-scenario human slice,
 golden 24) byte-for-byte, using the shipped per-slice tables and the log-scan
 counts recorded in tables/inter_judge_raw_stats.json.
 """
+# Paper: produces tables/inter_judge_agreement.* -- Krippendorff's alpha = 0.706
+#   on the four-point ordinal scale and 0.757 on the binarized judgment, the
+#   ensemble-reliability numbers in the main paper's "Judge Validation" section
+#   (method and stratified breakdowns in the supplement's "Judge Validation
+#   Details").
+# Paper: also emits tables/inter_judge_raw.csv, the per-judge long table every
+#   bootstrap CI script downstream resamples from.
 
 import argparse
 import json

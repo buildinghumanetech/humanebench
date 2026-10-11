@@ -1,6 +1,7 @@
 """
 Semantic similarity-based deduplication using sentence transformers.
 """
+# Paper: implements the admission-time deduplication of the scenario construction pipeline -- all-MiniLM-L6-v2 sentence embeddings, cosine similarity against every previously admitted scenario, reject at >= 0.60 (supplement, "Scenario Construction Pipeline").
 
 import numpy as np
 import pickle

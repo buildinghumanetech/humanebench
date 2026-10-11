@@ -3,6 +3,10 @@
 Reorder rater CSV files to match template ordering while preserving completed ratings.
 """
 
+# Paper: utility -- no paper-facing output; re-orders each rater's golden-question rating
+#   CSV onto the shared template ordering while preserving completed ratings. Supports the
+#   human validation reported in the supplement, "Judge Validation Details".
+
 import csv
 from pathlib import Path
 from collections import defaultdict

@@ -11,6 +11,14 @@ Prompt text is verbatim from ``adversarial-conditions.md`` RQ5 (D), except that
 the spec's ``[Product]`` placeholder is resolved to a concrete referent -- see
 ``PRODUCT_NAME``. Runs on the frozen 200-scenario subsample shared with C and E.
 """
+# Paper: implements decomposition condition D -- the engagement objective delivered as a
+#   quarterly OKR rather than as a standing instruction, no tactics named (main paper,
+#   "Engagement Pressure Alone Drives Degradation").
+# Paper: one step more indirect than condition C on the register/indirection spectrum
+#   (supplement, "Dose-Response Across Adversarial Wordings"); frozen 200-scenario
+#   subsample shared with C and E.
+# Paper: scored by the same 3-judge ensemble as the reported conditions (supplement,
+#   "Judge Validation Details"); produces raw eval logs, not in this package.
 import sys
 from pathlib import Path
 

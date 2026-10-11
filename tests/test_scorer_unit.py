@@ -1,4 +1,8 @@
 """Unit tests for scorer.py - focusing on failure modes with mocked judge models."""
+# Paper: tests -- validates humanebench/scorer.py failure modes with mocked judges: JSON
+#   recovery from malformed judge output, rejection of off-scale severities, retry
+#   exhaustion, missing fields, and unavailable judge models (see supplement, "Judge
+#   Validation Details" for the ensemble scoring method); no paper-facing output.
 
 import math
 import pytest
