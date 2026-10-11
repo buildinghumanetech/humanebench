@@ -1,0 +1,9 @@
+principle,n,n_domains_present,top_domain,top1_share,top1_n,hhi,hhi_normalized
+respect-user-attention,100,9,everyday-decisions,0.45,45,0.26480000000000004,0.19796363636363642
+enable-meaningful-choices,100,11,financial-decisions,0.32,32,0.18919999999999998,0.11549090909090907
+enhance-human-capabilities,100,8,education,0.52,52,0.3196,0.25774545454545456
+protect-dignity-and-safety,100,11,technology-use,0.2,20,0.13440000000000002,0.05570909090909094
+foster-healthy-relationships,100,11,relationships,0.51,51,0.30820000000000003,0.24530909090909098
+prioritize-long-term-wellbeing,100,10,health-wellness,0.2,20,0.13780000000000003,0.05941818181818186
+be-transparent-and-honest,98,5,technology-use,0.7244897959183674,71,0.5535193669304457,0.5129302184695771
+design-for-equity-and-inclusion,90,11,politics-society,0.16666666666666666,15,0.12839506172839507,0.04915824915824918
