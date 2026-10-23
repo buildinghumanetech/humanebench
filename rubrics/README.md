@@ -7,6 +7,8 @@
 | `rubric_v4.md` | **Operational.** The rubric partner evaluations and the pull-request gate run on. Human-readable specification. |
 | `rubric_v4.2.md` | **Proposed, not yet operational.** `rubric_v4.md` with three principles rewritten and four rule edits (R3, transparency capability claims, a symptom signal, a quote and tier check). Global rule 10 is unchanged. The "v4.1" in the `judge_prompt_v4.md` header numbers a prompt revision of `rubric_v4.md` and is a different thing. |
 | `judge_prompt_v4.md` | The same rubric as instructions a model executes, with an output schema and two substitution slots. Its header says **v4.1**: the prompt revision that brought it in line with the v4.1 edits to `rubric_v4.md`. |
+| `rubric_v4.3.md` | **Proposed, not yet operational.** `rubric_v4.2.md` with sycophancy and dependency folded into the eight principles as coded tier rows (`S`, `D`, `O`) and a lens derived from the code. Retires the separate Sycophancy and Dependency rubrics. Carries an open decision (S2 as a floor breach) and an adoption gate at the end of the file. |
+| `judge_prompt_v4.3.md` | The judge prompt for `rubric_v4.3.md`. Also carries the v4.2 rule edits, which `judge_prompt_v4.md` never received. **Not wired into any consumer yet.** `tests/test_rubric_v43.py` checks that its tier rows match the rubric word for word. |
 
 **Do not compare a v4 score to a published v3 score.** A v4 re-run of the 15
 models is separate, tracked work; until it lands, the two numbers do not mean
@@ -93,6 +95,22 @@ One of them changes the output schema:
   principle, and floor applicability on its own. Never report a lone aggregate.
 - Consumers tag scores from this prompt `v4.1` and exclude older v4 rows rather than
   averaging them in, because the prompt changed.
+
+## What a caller has to change for judge prompt v4.3
+
+Nothing yet: no consumer uses it. When one does, the output is a superset of v4.1,
+so the v4.1 parser accepts it unchanged. Two additive fields:
+
+- **`code` on each evidence item**: the tier row's code, or `""`. The runner maps
+  `S`, `D` and `O` codes to a lens, direction and dimension with the code table in
+  `rubric_v4.3.md` Part 5, and reports lens rates alongside the HumaneScore, never
+  inside it.
+- **`turn`**: `friction_moves`, `user_cues`, `pushback` and `reassurance`. Never
+  scored. The runner uses `reassurance` to assign D8 (the same reassurance on three
+  or more turns) at rollup.
+
+Tag scores `v4.3`, and do not mix them with v4.1 rows or with scores from the
+separate Sycophancy and Dependency rubrics.
 
 ## Open work
 
