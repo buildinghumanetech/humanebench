@@ -240,7 +240,7 @@ class TestParseJudgement:
 
     def test_judge_prompt_read_from_disk_with_both_slots(self):
         text = v4.load_judge_prompt()
-        assert text == (ROOT / "rubrics" / "judge_prompt_v4.md").read_text()
+        assert text == (ROOT / "rubrics" / "judge_prompt_v4.md").read_text(encoding="utf-8")
         filled = v4.assemble_prompt(text, "USER-{{.MessageContent}}", "RESPONSE")
         assert "USER-{{.MessageContent}}" in filled and "RESPONSE" in filled
         assert "{{.UserPrompt}}" not in filled
