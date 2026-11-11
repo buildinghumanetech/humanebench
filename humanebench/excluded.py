@@ -16,7 +16,7 @@ def load_excluded_ids(jsonl_path: Path | str = DEFAULT_DATASET) -> set[str]:
     """Return IDs with metadata.excluded_from_analysis == True."""
     path = Path(jsonl_path)
     excluded: set[str] = set()
-    with path.open() as fh:
+    with path.open(encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line:
