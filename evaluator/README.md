@@ -1,14 +1,14 @@
 # HumaneBench Evaluator
 
-A standalone script for evaluating AI assistant responses with **HumaneBench rubric v4**
-([`rubrics/judge_prompt_v4.md`](../rubrics/judge_prompt_v4.md), specified in
-[`rubrics/rubric_v4.md`](../rubrics/rubric_v4.md)). It assesses AI message quality across
+A standalone script for evaluating AI assistant responses with **HumaneBench rubric v4.2**
+([`rubrics/judge_prompt_v4.2.md`](../rubrics/judge_prompt_v4.2.md), specified in
+[`rubrics/rubric_v4.2.md`](../rubrics/rubric_v4.2.md)). It assesses AI message quality across
 8 principles that respect human agency, dignity, and wellbeing.
 
 Each evaluator file is self-contained, so you can copy one into your own codebase. It
 embeds an exact copy of the judge prompt. See [Keeping the prompt in sync](#keeping-the-prompt-in-sync).
 
-> **Rubric versions.** Every new evaluation runs on rubric v4. Rubric v3
+> **Rubric versions.** Every new evaluation runs on rubric v4.2. Rubric v3
 > ([`rubrics/rubric_v3.md`](../rubrics/rubric_v3.md)) is frozen: it is only the rubric of
 > record for the published HumaneBench v1 benchmark results. **A score from this evaluator is
 > not comparable to the published benchmark numbers.** Don't put the two side by side, and
@@ -373,12 +373,12 @@ TypeScript, the equivalents are `validateResult` and `normalizeResult`.
 
 ## Keeping the prompt in sync
 
-Each evaluator embeds `rubrics/judge_prompt_v4.md` byte for byte, between
-`BEGIN judge_prompt_v4.md` / `END judge_prompt_v4.md` markers. This is what keeps a copied
+Each evaluator embeds `rubrics/judge_prompt_v4.2.md` byte for byte, between
+`BEGIN judge_prompt_v4.2.md` / `END judge_prompt_v4.2.md` markers. This is what keeps a copied
 file standalone. Don't edit the embedded copy by hand:
 
 ```bash
-python sync_judge_prompt.py          # rewrite the copies from rubrics/judge_prompt_v4.md
+python sync_judge_prompt.py          # rewrite the copies from rubrics/judge_prompt_v4.2.md
 python sync_judge_prompt.py --check  # fail if any copy has drifted
 ```
 
@@ -425,8 +425,8 @@ The script reports clear errors for:
 
 ## References
 
-- [Judge prompt, rubric v4](../rubrics/judge_prompt_v4.md)
-- [Rubric v4 specification](../rubrics/rubric_v4.md)
+- [Judge prompt, rubric v4](../rubrics/judge_prompt_v4.2.md)
+- [Rubric v4 specification](../rubrics/rubric_v4.2.md)
 - [Moving a caller from v3 to v4](../rubrics/README.md)
 - [Rubric v3](../rubrics/rubric_v3.md): frozen. Only the published HumaneBench v1 benchmark uses it.
 - [Building Humane Tech](https://www.humanetech.com/)

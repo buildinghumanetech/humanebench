@@ -106,7 +106,7 @@ The try tier can show you a large effect. It can't settle a small one. Use it to
 This is real try-tier output: the repo's bad-persona prompt against a fresh baseline on `openai/gpt-4o-mini`, judged by Sonnet 4.5 under the current judge prompt (September 2026, $1.98). It catches the drop: HumaneScore -0.55, 95% CI -0.86 to -0.25. It shows all three kinds of row.
 
 ```
-HumaneBench rubric v4.1, not comparable to the v1 leaderboard.
+HumaneBench rubric v4.2, not comparable to the v1 leaderboard.
 Single judge, small sample: a first look, not a result. Run tier=full before you act on it.
 
 Model:          openrouter/openai/gpt-4o-mini
@@ -147,7 +147,7 @@ Sonnet and Gemini tie on agreement, and Sonnet is cheaper. It also passed the mo
 Full-tier output has no intervals yet. It flags rows with fewer than 10 in-scope samples as noisy instead. This is real output from a 3-per-principle run of the repo's good-persona prompt on `openai/gpt-4o-mini` under the full ensemble and the v4 judge prompt:
 
 ```
-HumaneBench rubric v4, not comparable to the v1 leaderboard.
+HumaneBench rubric v4.2, not comparable to the v1 leaderboard.
 
 Model:          openrouter/openai/gpt-4o-mini
 Prompt sha256:  e39e7ea8ef93a8ca15d0c782a52702c050cc812d0d711c6bda9b9c5626df7543
@@ -172,7 +172,7 @@ Rows marked noisy have fewer than 10 in-scope samples in a condition. [...]
 - **Rows marked `noisy`** have fewer than 10 in-scope samples in one of the conditions. Don't read those deltas as findings; judge the prompt on the overall delta, or rerun with more samples.
 - **Directional only:** if more than 15% of in-scope judge votes on a principle were context-blocked, the report labels that principle directional.
 
-**Rubric version.** This scores under **rubric v4** (`rubrics/judge_prompt_v4.md`, via `humanebench/scorer_v4.py`). The baseline, good-persona and bad-persona tasks below reproduce the published v1 benchmark under **rubric v3**. **A v4 number is not comparable to the v1 leaderboard, the whitepaper or the preprint.** Compare your prompt against its own v4 baseline, which is what the script does. See [rubrics/README.md](rubrics/README.md).
+**Rubric version.** This scores under **rubric v4.2** (`rubrics/judge_prompt_v4.2.md`, via `humanebench/scorer_v4.py`). The baseline, good-persona and bad-persona tasks below reproduce the published v1 benchmark under **rubric v3**. **A v4 number is not comparable to the v1 leaderboard, the whitepaper or the preprint.** Compare your prompt against its own v4 baseline, which is what the script does. See [rubrics/README.md](rubrics/README.md).
 
 **Cost.** Each sample in each condition costs one target-model call plus one call to each judge. The judge prompt is about 8k tokens, so the judges account for nearly all of the cost.
 
@@ -339,7 +339,8 @@ Each response is scored on a 4-point scale:
 
 | Rubric | Status | Used by |
 |---|---|---|
-| **v4** — [`rubrics/rubric_v4.md`](rubrics/rubric_v4.md), judge prompt [`rubrics/judge_prompt_v4.md`](rubrics/judge_prompt_v4.md) | **All evaluation from here on** | the pull-request gate ([humane-gate](https://github.com/buildinghumanetech/humane-gate)), the [CLI](cli/), the [transcript-scoring skill](skills/humanebench-transcript-score/), and the [standalone evaluators](evaluator/) |
+| **v4.2** — [`rubrics/rubric_v4.2.md`](rubrics/rubric_v4.2.md), judge prompt [`rubrics/judge_prompt_v4.2.md`](rubrics/judge_prompt_v4.2.md) | **All evaluation from here on** | the [CLI](cli/), the [transcript-scoring skill](skills/humanebench-transcript-score/), the [standalone evaluators](evaluator/), and the pull-request gate ([humane-gate](https://github.com/buildinghumanetech/humane-gate)) once its pin moves |
+| v4 — [`rubrics/rubric_v4.md`](rubrics/rubric_v4.md), judge prompt [`rubrics/judge_prompt_v4.md`](rubrics/judge_prompt_v4.md) | **Superseded** | scores tagged `v4` / `v4.1`; do not average with `v4.2` |
 | **v3** — [`rubrics/rubric_v3.md`](rubrics/rubric_v3.md) | **Frozen** | the published HumaneBench v1 benchmark results, whitepaper and preprint only |
 | v1, v2 | History | — |
 

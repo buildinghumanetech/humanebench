@@ -4,9 +4,10 @@
 |---|---|
 | `rubric_v1.md`, `rubric_v2.md` | History. |
 | `rubric_v3.md` | **Frozen.** The rubric of record for the published HumaneBench v1 results, the whitepaper and the preprint. Do not edit it. Everything scored under it is correctly cited as a v3 score. |
-| `rubric_v4.md` | **Operational.** The rubric partner evaluations and the pull-request gate run on. Human-readable specification. |
-| `rubric_v4.2.md` | **Proposed, not yet operational.** `rubric_v4.md` with three principles rewritten and four rule edits (R3, transparency capability claims, a symptom signal, a quote and tier check). Global rule 10 is unchanged. The "v4.1" in the `judge_prompt_v4.md` header numbers a prompt revision of `rubric_v4.md` and is a different thing. |
-| `judge_prompt_v4.md` | The same rubric as instructions a model executes, with an output schema and two substitution slots. Its header says **v4.1**: the prompt revision that brought it in line with the v4.1 edits to `rubric_v4.md`. |
+| `rubric_v4.md` | **Superseded.** History. Scores tagged `v4` and `v4.1` came from it. |
+| `judge_prompt_v4.md` | **Superseded.** The v4.1 prompt revision of `rubric_v4.md`. Kept so `v4.1` scores stay reproducible. |
+| `rubric_v4.2.md` | **Operational.** The rubric partner evaluations, the CLI, the transcript-score skill, and the evaluators run on, and the pull-request gate once its pin moves. Human-readable specification. `rubric_v4.md` with three principles rewritten and four rule edits (R3, transparency capability claims, a symptom signal, a quote and tier check). |
+| `judge_prompt_v4.2.md` | **Operational.** `rubric_v4.2.md` as instructions a model executes. Same output schema and substitution slots as the v4.1 prompt. Scores are tagged `v4.2`. |
 
 **Do not compare a v4 score to a published v3 score.** A v4 re-run of the 15
 models is separate, tracked work; until it lands, the two numbers do not mean
@@ -94,7 +95,30 @@ One of them changes the output schema:
 - Consumers tag scores from this prompt `v4.1` and exclude older v4 rows rather than
   averaging them in, because the prompt changed.
 
+## What a caller has to change for judge prompt v4.2
+
+No schema change. `judge_prompt_v4.2.md` parses with the v4.1 parser.
+
+- **Point at the new file and tag scores `v4.2`.** Exclude `v4`/`v4.1` rows from any
+  v4.2 average. Every cached score is invalidated, because cache keys derive from the
+  prompt text.
+- **Respect User Attention negatives carry a code.** The `tier` string for a `-0.5`
+  starts `-0.5, code R1` through `R4`. Parse it from `tier` if you want it as a field.
+- **Transparency trigger 5 is gone.** Claims about the world no longer score here.
+  Expect Transparency applicability to drop and Dignity & Safety to pick up harmful
+  guidance.
+- **Claims of feeling moved from Healthy Relationships to Transparency.** Expect
+  Healthy Relationships `-1.0` counts to drop and Transparency `-0.5` counts to rise.
+- **Quote and tier check is the runner's job** (rubric rule edit 4). No consumer
+  re-scores a quote that fits a different row yet. Until one does, the prompt asks the
+  judge to name the row the quote supports, and quote verification still drops
+  unquotable negatives.
+
 ## Open work
+
+- **Quote and tier check.** Rule edit 4 asks the runner to re-score a finding whose
+  quote fits a different tier row, and discard one that fits none. Not implemented
+  in any consumer.
 
 - **Re-resolution of `insufficient_context` at rollup** (rubric Gate rule 3, "Re-resolution").
   Where a later turn in the same session answers an `insufficient_context` question, the

@@ -2,7 +2,7 @@
 
 The published 23/24 (95.8%) direction match was measured with rubric v3 and does not carry
 over: v4 changes both the prompt and what a judge may return. This script judges the same
-pre-generated responses in `data/golden_questions.jsonl` with `rubrics/judge_prompt_v4.md`,
+pre-generated responses in `data/golden_questions.jsonl` with `rubrics/judge_prompt_v4.2.md`,
 using the cross-family ensemble the transcript-score skill recommends, and compares the
 ensemble's score on each item's target principle with the human consensus.
 
@@ -83,7 +83,7 @@ def main():
     ap.add_argument("--data", type=Path, default=REPO / "data" / "golden_questions.jsonl")
     args = ap.parse_args()
 
-    rubric = (REPO / "rubrics" / "judge_prompt_v4.md").read_text()
+    rubric = (REPO / "rubrics" / "judge_prompt_v4.2.md").read_text()
     items = [json.loads(l) for l in args.data.read_text().splitlines() if l.strip()]
     models = hb.ENSEMBLE_MODELS
     jobs = [(i, m) for i in range(len(items)) for m in models]
@@ -142,7 +142,7 @@ def main():
                                                         for r in rows)}
     summary = {
         "measured_at": datetime.now(timezone.utc).date().isoformat(),
-        "rubric": "rubrics/judge_prompt_v4.md",
+        "rubric": "rubrics/judge_prompt_v4.2.md",
         "rubric_version": hb.RUBRIC_VERSION,
         "rubric_hash": hb.rubric_hash(rubric),
         "ensemble": [hb.judge_label(m) for m in models],

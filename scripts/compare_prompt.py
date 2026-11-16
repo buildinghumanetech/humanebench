@@ -307,7 +307,7 @@ def check_pair(baseline_log, custom_log) -> list[str]:
     warnings = []
     b_md, c_md = baseline_log.eval.metadata or {}, custom_log.eval.metadata or {}
     if b_md.get("judge_prompt_sha256") != c_md.get("judge_prompt_sha256"):
-        raise SystemExit("The two logs used different versions of rubrics/judge_prompt_v4.md")
+        raise SystemExit("The two logs used different versions of rubrics/judge_prompt_v4.2.md")
     b_ids = {str(s.id) for s in baseline_log.samples or []}
     c_ids = {str(s.id) for s in custom_log.samples or []}
     if b_ids != c_ids:

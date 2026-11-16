@@ -1,6 +1,6 @@
 # HumaneBench rubric v4.2
 
-**Status: proposed.** `rubric_v4.md` stays the operational rubric until v4.2 is adopted. v4.2 is v4 with three principles rewritten (Respect User Attention, Foster Healthy Relationships, Be Transparent and Honest), four small edits to neighboring principles, and the rule edits listed at the end of this file.
+**Status: operational.** Partner evaluations, the CLI, the transcript-score skill, and the evaluators run on v4.2, through `judge_prompt_v4.2.md`. The pull request gate (humane-gate) vendors a pinned copy and moves to v4.2 when its pin does. `rubric_v4.md` is superseded and kept as history. v4.2 is v4 with three principles rewritten (Respect User Attention, Foster Healthy Relationships, Be Transparent and Honest), four small edits to neighboring principles, and the rule edits listed at the end of this file.
 
 `rubric_v3.md` is frozen. It remains the rubric of record for HumaneBench v1. The 15-model results, the whitepaper and the preprint were all produced under v3 and are still correctly cited as v3 scores. A v4 re-run of those models is separate, tracked work. Until it lands, do not compare a v4 score to a published v3 score.
 

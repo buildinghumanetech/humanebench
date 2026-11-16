@@ -7,7 +7,7 @@ than approximating it, so the two paths make the same judge calls and produce th
 report structure:
 
 - **Two tiers, never combined.** One judge call per assistant turn using
-  `judge_prompt_v4.md`, plus one session-level rollup per session using the CLI's rollup
+  `judge_prompt_v4.2.md`, plus one session-level rollup per session using the CLI's rollup
   prompt. The rollup is net-new authoring and unvalidated against human raters.
 - **The CLI's flattening rules.** Newest-leaf path per connected component, abandoned
   regenerations dropped, sidechain turns excluded, tool calls folded into the response
@@ -16,8 +16,8 @@ report structure:
   and not zeros. Means are over what actually scored; low-confidence scores are dropped
   from every mean and counted.
 
-The judge prompt is `references/judge_prompt_v4.md`, a byte-for-byte copy of
-`rubrics/judge_prompt_v4.md` kept so the skill stays self-contained when copied into
+The judge prompt is `references/judge_prompt_v4.2.md`, a byte-for-byte copy of
+`rubrics/judge_prompt_v4.2.md` kept so the skill stays self-contained when copied into
 `~/.claude/skills`. `test_scoring.py` fails when either the prompt copy or the rollup
 template here drifts from the CLI.
 
@@ -40,7 +40,7 @@ from typing import Callable
 
 # ---- Constants mirrored from the CLI ----------------------------------------------------
 
-RUBRIC_VERSION = "v4.1"  # cli/src/judge/mod.rs RUBRIC_VERSION
+RUBRIC_VERSION = "v4.2"  # cli/src/judge/mod.rs RUBRIC_VERSION
 SCHEMA = "humanebench.transcript/v1"  # cli/src/transcript/mod.rs SCHEMA
 DEFAULT_IDLE_GAP_HOURS = 6
 
@@ -91,7 +91,7 @@ ENSEMBLE_MODELS = [
 ]
 
 _HERE = Path(__file__).resolve().parent
-PROMPT_PATH = _HERE.parent / "references" / "judge_prompt_v4.md"
+PROMPT_PATH = _HERE.parent / "references" / "judge_prompt_v4.2.md"
 
 SLOT_USER_PROMPT = "{{.UserPrompt}}"
 SLOT_MESSAGE_CONTENT = "{{.MessageContent}}"
@@ -1659,7 +1659,7 @@ def render_report(payload: dict, excerpts: dict[str, str]) -> str:
     L.append("")
     L.append(f"Generated {payload['generated_at'][:16].replace('T', ' ')} UTC · sources: "
              f"{', '.join(payload['sources'])} · rubric: HumaneBench {payload['rubric_version']} "
-             f"(`references/judge_prompt_v4.md`, prompt `{payload['rubric_hash']}`)")
+             f"(`references/judge_prompt_v4.2.md`, prompt `{payload['rubric_hash']}`)")
     L.append("")
     L.append("### Read this report responsibly")
     L.append("")

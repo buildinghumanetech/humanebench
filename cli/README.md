@@ -59,7 +59,7 @@ turns cost eleven calls, not ten. The rollup is not a convenience — engagement
 fostered dependency, and sycophancy drift only exist across turns, so a per-turn judge is
 structurally blind to four of the eight principles.
 
-Each judge call uses the v4.1 judge prompt. The CLI checks every negative score's quoted
+Each judge call uses the v4.2 judge prompt. The CLI checks every negative score's quoted
 evidence against the response. A negative whose quote is not there verbatim is dropped from
 the report and counted. Reports show applicability and context-blocked rates per principle,
 and floor applicability separately, never as a single aggregate. See `rubric/README.md`.
@@ -161,7 +161,7 @@ parsed — that is where `yourtool` belongs.
   and the CLI stores full precision (rounding is display-only); the benchmark has no tier
   concept, while the CLI aggregates turn and rollup tiers separately and never combines them.
 
-- **Principle ids still fork the benchmark's.** The CLI and `rubrics/judge_prompt_v4.md` both
+- **Principle ids still fork the benchmark's.** The CLI and `rubrics/judge_prompt_v4.2.md` both
   use snake_case codes (`respect_attention`); the benchmark's published slugs are kebab-case
   and descriptive (`respect-user-attention`). No tooling can join a CLI report to leaderboard
   output by principle id without a translation table. Renaming them is a hash-invalidating
@@ -170,7 +170,7 @@ parsed — that is where `yourtool` belongs.
   The three prompt divergences this README used to list — an invented 125-character limit on
   sensitive-content responses, `-1.0` anchors gated on intent ("Deliberately"), and three of
   the seven global rules missing — are **gone**. They came from the CLI forking a draft
-  template rather than the rubric. v4 is compiled in from `rubrics/judge_prompt_v4.md`
+  template rather than the rubric. v4 is compiled in from `rubrics/judge_prompt_v4.2.md`
   directly, so there is no fork left to drift.
 
 ## Layout
@@ -182,5 +182,5 @@ src/judge/       prompt assembly, OpenRouter client, response parsing + validati
 src/store/       SQLite: turns, scores, content-hash cache
 src/report/      HTML rendering, full and --share
 src/mcp/         stdio server
-rubric/          README.md only; the prompt itself is ../rubrics/judge_prompt_v4.md
+rubric/          README.md only; the prompt itself is ../rubrics/judge_prompt_v4.2.md
 ```

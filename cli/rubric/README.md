@@ -3,8 +3,8 @@
 **There is no prompt in this directory any more, and that is the point.**
 
 The evaluator prompt the CLI compiles into its binary is
-[`rubrics/judge_prompt_v4.md`](../../rubrics/judge_prompt_v4.md) at the repository root.
-`src/judge/mod.rs` embeds it with `include_str!("../../../rubrics/judge_prompt_v4.md")`, so
+[`rubrics/judge_prompt_v4.2.md`](../../rubrics/judge_prompt_v4.2.md) at the repository root.
+`src/judge/mod.rs` embeds it with `include_str!("../../../rubrics/judge_prompt_v4.2.md")`, so
 a built binary cannot drift from the prompt it claims to implement.
 
 ## Why it moved
@@ -79,7 +79,7 @@ text is inside the content hash. Plan a full re-score of any corpus you care abo
 ## The principle-id fork, still open
 
 Zero of the eight principle ids match the benchmark's published slugs: the CLI and
-`judge_prompt_v4.md` use `respect_attention`, the benchmark uses `respect-user-attention`.
+`judge_prompt_v4.2.md` use `respect_attention`, the benchmark uses `respect-user-attention`.
 No tooling can join a CLI report to leaderboard output by principle id. Renaming is
 deliberately not done here — the ids are part of the prompt the judge is handed, so changing
 them changes every content hash and invalidates every cached score. Do it once, with a

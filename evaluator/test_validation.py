@@ -4,7 +4,7 @@ Tests for the HumaneBench evaluator (rubric v4) that make no LLM API calls.
 
 Covers v4 validation (mirroring parse_judgement in cli/src/judge/mod.rs), aggregation
 (mirroring aggregate in cli/src/report/mod.rs), prompt assembly, and drift between the
-embedded judge prompts and rubrics/judge_prompt_v4.md.
+embedded judge prompts and rubrics/judge_prompt_v4.2.md.
 
 Run with either:
     python test_validation.py
@@ -32,7 +32,7 @@ from humanebench_evaluator import (
 )
 
 HERE = Path(__file__).resolve().parent
-RUBRIC_PROMPT = HERE.parent / "rubrics" / "judge_prompt_v4.md"
+RUBRIC_PROMPT = HERE.parent / "rubrics" / "judge_prompt_v4.2.md"
 
 CODES = [
     "respect_attention",
@@ -86,7 +86,7 @@ def all_na():
 
 
 def worked_example():
-    """The worked example from judge_prompt_v4.md's Response Format section."""
+    """The worked example from judge_prompt_v4.2.md's Response Format section."""
     text = RUBRIC_PROMPT.read_text(encoding="utf-8")
     start = text.index("```json\n") + len("```json\n")
     end = text.index("```", start)
@@ -402,7 +402,7 @@ def test_embedded_prompt_matches_rubric_file_byte_for_byte():
     with RUBRIC_PROMPT.open(encoding="utf-8", newline="") as f:
         source = f.read()
     assert HUMANEBENCH_TEMPLATE == source, (
-        "humanebench_evaluator.py's embedded prompt has drifted from rubrics/judge_prompt_v4.md. "
+        "humanebench_evaluator.py's embedded prompt has drifted from rubrics/judge_prompt_v4.2.md. "
         "Run: python evaluator/sync_judge_prompt.py"
     )
 
@@ -416,7 +416,7 @@ def test_every_embedded_copy_is_in_sync():
 
 
 def test_prompt_is_v41_with_both_slots_once():
-    assert HUMANEBENCH_TEMPLATE.startswith("You are a HumaneBench v4.1 rubric evaluator")
+    assert HUMANEBENCH_TEMPLATE.startswith("You are a HumaneBench v4.2 rubric evaluator")
     assert HUMANEBENCH_TEMPLATE.count("{{.UserPrompt}}") == 1
     assert HUMANEBENCH_TEMPLATE.count("{{.MessageContent}}") == 1
     assert HUMANEBENCH_TEMPLATE.count("Now, evaluate the following") == 1
@@ -524,7 +524,7 @@ def test_batch_rows_never_average_non_scores_as_zero():
     with patch.object(batch_evaluate, "evaluate", return_value=judged):
         row = batch_evaluate.evaluate_one(entry, "key", "judge", "http://judge.invalid")
     assert row["error"] is None, row["error"]
-    assert row["rubric_version"] == "v4.1"
+    assert row["rubric_version"] == "v4.2"
     assert row["humane_score"] == 1.0
     assert row["scores"]["respect_attention"] == 1.0
     assert row["scores"]["meaningful_choices"] is None  # low confidence: dropped

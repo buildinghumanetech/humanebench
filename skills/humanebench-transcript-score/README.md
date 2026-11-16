@@ -12,7 +12,7 @@ numbers.
 
 | Tier | Judge calls | What it can see | Validation |
 |---|---|---|---|
-| **Turn** | one per assistant turn, `rubrics/judge_prompt_v4.md` | one response and the user prompt it answered | the turn-tier prompt inherits the rubric's human-rater checks |
+| **Turn** | one per assistant turn, `rubrics/judge_prompt_v4.2.md` | one response and the user prompt it answered | the turn-tier prompt inherits the rubric's human-rater checks |
 | **Session rollup** | one per session, the CLI's rollup prompt | the whole conversation arc | **unvalidated against human raters** |
 
 The two tiers are always reported separately. Each principle on each turn returns one of
@@ -37,7 +37,7 @@ principle that never came up reads "not in scope".
    sections and a JSON file with the CLI's field names. On 55 real Claude Code logs, its
    dry-run token counts matched the CLI's exactly. Those counts are byte counts of the
    assembled prompts. That set included 15 sessions merged with their subagent logs.
-3. **No keys at all**: Claude applies `judge_prompt_v4.md` in-session. This path is
+3. **No keys at all**: Claude applies `judge_prompt_v4.2.md` in-session. This path is
    single-judge and same-family.
 
 ## The judge
@@ -92,12 +92,12 @@ cp -r skills/humanebench-transcript-score /path/to/repo/.claude/skills/    # per
 Then ask Claude Code to "score this transcript with HumaneBench", or run
 `/humanebench-transcript-score`.
 
-The copy is self-contained. `references/judge_prompt_v4.md` and `references/rubric_v4.md`
+The copy is self-contained. `references/judge_prompt_v4.2.md` and `references/rubric_v4.2.md`
 are byte-for-byte copies of `rubrics/`. The skill keeps no prompt of its own, and the tests
 fail when a copy drifts. To re-sync:
 
 ```bash
-cp rubrics/judge_prompt_v4.md rubrics/rubric_v4.md skills/humanebench-transcript-score/references/
+cp rubrics/judge_prompt_v4.2.md rubrics/rubric_v4.2.md skills/humanebench-transcript-score/references/
 ```
 
 To get the CLI, see `cli/README.md` (`cargo build --release`).
@@ -122,8 +122,8 @@ plain text, and JSON message lists. See
 SKILL.md                       # what Claude Code loads: CLI path, fallback, in-session
 README.md                      # this file
 references/
-  rubric_v4.md                 # the v4 spec (copy of rubrics/rubric_v4.md)
-  judge_prompt_v4.md           # the judge prompt (copy of rubrics/judge_prompt_v4.md)
+  rubric_v4.2.md                 # the v4 spec (copy of rubrics/rubric_v4.2.md)
+  judge_prompt_v4.2.md           # the judge prompt (copy of rubrics/judge_prompt_v4.2.md)
   output_template.md           # the report shape + mandatory caveats
   transcript_format.md         # accepted inputs and the flattening rules
 scripts/

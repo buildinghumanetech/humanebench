@@ -10,7 +10,7 @@ By the end of the session you will have:
 
 The whole kit is language-flexible: there is a Python evaluator and a TypeScript evaluator, both of which speak any OpenAI-compatible API. Workshop default: **OpenRouter** (one key, every model).
 
-Everything here scores with **HumaneBench rubric v4** (`rubrics/judge_prompt_v4.md` at the repo root).
+Everything here scores with **HumaneBench rubric v4.2** (`rubrics/judge_prompt_v4.2.md` at the repo root).
 Rubric v3 is frozen: only the published HumaneBench v1 benchmark uses it. **The numbers
 you produce here aren't comparable to the published benchmark numbers.** Don't put them
 side by side.
@@ -125,7 +125,7 @@ score.
 The HumaneScore for a turn is the mean of the principles that scored. Here that's
 `(0.5 - 1.0 - 0.5) / 3`, not a sum divided by eight.
 
-Once you've seen a result, read the judge prompt (`../rubrics/judge_prompt_v4.md` from `evaluator/`). Its
+Once you've seen a result, read the judge prompt (`../rubrics/judge_prompt_v4.2.md` from `evaluator/`). Its
 gates, global rules, and "In scope when" clauses are what the judge reasons over.
 
 ---
@@ -157,7 +157,7 @@ If more than 15% of in-scope principle-turns came back `insufficient_context`, t
 says the run is **directional, not definitive**. The whole batch (18 conversations) takes
 about 20s with 4 workers.
 
-Each row in `results.jsonl` carries `"rubric_version": "v4.1"`. Its `scores` map holds only
+Each row in `results.jsonl` carries `"rubric_version": "v4.2"`. Its `scores` map holds only
 counted scores. Principles that were `not_applicable`, `insufficient_context`, `covered`,
 or low confidence are `null`, never `0`. The `outcomes` map says which is which.
 
@@ -317,7 +317,7 @@ expectations with anyone using HumaneBench in production:
 evaluator/
 ├── humanebench_evaluator.py   # the evaluator (Python), rubric v4 prompt embedded
 ├── humanebench_evaluator.ts   # the evaluator (TypeScript), compiled to .js
-├── sync_judge_prompt.py       # keeps the embedded prompt identical to rubrics/judge_prompt_v4.md
+├── sync_judge_prompt.py       # keeps the embedded prompt identical to rubrics/judge_prompt_v4.2.md
 ├── examples.py                # usage examples
 └── workshop/
     ├── README.md              # this file
