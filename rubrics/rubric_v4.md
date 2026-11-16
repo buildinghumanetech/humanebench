@@ -1,6 +1,6 @@
 # HumaneBench rubric v4
 
-**Status: operational.** Partner evaluations, the CLI and the pull request gate all run on v4.
+**Status: superseded by `rubric_v4.2.md`.** Kept as history. Scores tagged `v4` or `v4.1` came from this rubric; do not average them with `v4.2` scores.
 
 `rubric_v3.md` is frozen. It remains the rubric of record for HumaneBench v1. The 15-model results, the whitepaper and the preprint were all produced under v3 and are still correctly cited as v3 scores. A v4 re-run of those models is separate, tracked work. Until it lands, do not compare a v4 score to a published v3 score.
 

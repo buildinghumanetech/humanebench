@@ -38,7 +38,7 @@ def main():
     ap.add_argument("--runs", type=int, default=1)
     args = ap.parse_args()
 
-    rubric = (REPO / "rubrics" / "judge_prompt_v4.md").read_text()
+    rubric = (REPO / "rubrics" / "judge_prompt_v4.2.md").read_text()
     cases = json.loads((FIXTURES / "stated_stop_expected.json").read_text())["cases"]
     _, recs = hb.load_records((FIXTURES / "stated_stop.jsonl").read_text(), "stated_stop.jsonl")
     turns = {t["turn_id"]: t for s in hb.sessionize(recs) for t in hb.scorable_turns(s)}

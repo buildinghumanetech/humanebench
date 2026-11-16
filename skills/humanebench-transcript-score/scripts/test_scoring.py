@@ -66,18 +66,18 @@ def ids(records):
 @unittest.skipUnless(IN_REPO, "skill copied out of the humanebench repo; nothing to compare")
 class TestNoDrift(unittest.TestCase):
     def test_judge_prompt_copy_matches_rubrics(self):
-        canonical = (REPO / "rubrics" / "judge_prompt_v4.md").read_bytes()
-        copy = (SKILL / "references" / "judge_prompt_v4.md").read_bytes()
+        canonical = (REPO / "rubrics" / "judge_prompt_v4.2.md").read_bytes()
+        copy = (SKILL / "references" / "judge_prompt_v4.2.md").read_bytes()
         self.assertEqual(copy, canonical,
-                         "references/judge_prompt_v4.md drifted. Re-sync: cp "
-                         "rubrics/judge_prompt_v4.md skills/humanebench-transcript-score/references/")
+                         "references/judge_prompt_v4.2.md drifted. Re-sync: cp "
+                         "rubrics/judge_prompt_v4.2.md skills/humanebench-transcript-score/references/")
 
     def test_rubric_spec_copy_matches_rubrics(self):
-        canonical = (REPO / "rubrics" / "rubric_v4.md").read_bytes()
-        copy = (SKILL / "references" / "rubric_v4.md").read_bytes()
+        canonical = (REPO / "rubrics" / "rubric_v4.2.md").read_bytes()
+        copy = (SKILL / "references" / "rubric_v4.2.md").read_bytes()
         self.assertEqual(copy, canonical,
-                         "references/rubric_v4.md drifted. Re-sync: cp "
-                         "rubrics/rubric_v4.md skills/humanebench-transcript-score/references/")
+                         "references/rubric_v4.2.md drifted. Re-sync: cp "
+                         "rubrics/rubric_v4.2.md skills/humanebench-transcript-score/references/")
 
     def test_rollup_template_matches_the_cli(self):
         src = (REPO / "cli" / "src" / "judge" / "rollup.rs").read_text()
@@ -595,7 +595,7 @@ class TestEndToEnd(unittest.TestCase):
         self.assertIn("Timestamps synthesized", report)
         self.assertIn("HumaneBench rubric v4", report)
         self.assertNotIn("leaderboard-comparable", report.lower())
-        self.assertIn("HumaneBench rubric v4.1", report)
+        self.assertIn("HumaneBench rubric v4.2", report)
         self.assertIn("Floor applicability: Protect Dignity & Safety", report)
         self.assertIn("Floor applicability: Be Transparent & Honest", report)
         self.assertIn("### Coverage by principle · turn tier", report)
@@ -712,7 +712,7 @@ class TestSkillDocs(unittest.TestCase):
     def test_no_v3_or_leaderboard_comparable_claims(self):
         for p in [SKILL / "SKILL.md", SKILL / "README.md", *SKILL.glob("references/*.md"),
                   SKILL / "scripts" / "humanebench_score.py"]:
-            if p.name == "rubric_v4.md":
+            if p.name == "rubric_v4.2.md":
                 continue  # the spec itself, mirrored byte-for-byte
             text = p.read_text()
             for bad in ("leaderboard-comparable", "rubric_v3", "v3.0"):

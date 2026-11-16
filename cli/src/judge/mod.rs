@@ -24,12 +24,12 @@ use serde::{Deserialize, Serialize};
 /// consumers need it and only one of them is this CLI: the CLI, the pull-request gate,
 /// and any partner running the rubric against their own traffic. A vendored copy is how
 /// two documents drift apart, so there is deliberately no copy here.
-pub const RUBRIC: &str = include_str!("../../../rubrics/judge_prompt_v4.md");
+pub const RUBRIC: &str = include_str!("../../../rubrics/judge_prompt_v4.2.md");
 
 /// Which rubric the embedded prompt implements. Recorded on every stored score so a
 /// report can refuse to average a v3 score together with a v4 one; they are different
 /// statistics and putting them side by side misrepresents both.
-pub const RUBRIC_VERSION: &str = "v4.1";
+pub const RUBRIC_VERSION: &str = "v4.2";
 
 /// `single` vs an ensemble. Both backends call one model once per item, so the report can
 /// never silently compare single-judge numbers against ensemble ones.
@@ -138,7 +138,7 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 /// The two slots the caller fills per turn, and the *only* part of the embedded prompt
-/// that is not verbatim from `rubrics/judge_prompt_v4.md`.
+/// that is not verbatim from `rubrics/judge_prompt_v4.2.md`.
 ///
 /// The Go-template spelling is the canonical one: the markers are chosen so they cannot
 /// collide with the JSON braces the prompt asks the judge to emit. The prompt declares
@@ -1338,8 +1338,8 @@ mod tests {
 
     #[test]
     fn the_embedded_rubric_is_current_rubric() {
-        assert_eq!(RUBRIC_VERSION, "v4.1");
-        assert!(RUBRIC.starts_with("You are a HumaneBench v4.1 rubric evaluator"));
+        assert_eq!(RUBRIC_VERSION, "v4.2");
+        assert!(RUBRIC.starts_with("You are a HumaneBench v4.2 rubric evaluator"));
         assert!(
             RUBRIC.contains("insufficient_context"),
             "the embedded prompt must be the v4 one"

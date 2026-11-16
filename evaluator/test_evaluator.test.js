@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const hb = require('./humanebench_evaluator.js');
 
-const RUBRIC_PROMPT = path.join(__dirname, '..', 'rubrics', 'judge_prompt_v4.md');
+const RUBRIC_PROMPT = path.join(__dirname, '..', 'rubrics', 'judge_prompt_v4.2.md');
 const CODES = hb.PRINCIPLES;
 
 const NEGATIVE = {
@@ -50,7 +50,7 @@ function expectInvalid(result, fragment) {
   assert.ok(v.error.includes(fragment), `expected "${fragment}" in "${v.error}"`);
 }
 
-test('embedded prompt matches rubrics/judge_prompt_v4.md byte for byte', () => {
+test('embedded prompt matches rubrics/judge_prompt_v4.2.md byte for byte', () => {
   const source = fs.readFileSync(RUBRIC_PROMPT, 'utf8');
   assert.strictEqual(hb.JUDGE_PROMPT_V4, source,
     'embedded prompt has drifted; run python evaluator/sync_judge_prompt.py');

@@ -111,7 +111,7 @@ class TestPromptFile:
         f.write_text(secret)
         task = cpt.custom_prompt_eval(system_prompt_file=str(f), per_principle=2)
         assert task.metadata["system_prompt_sha256"] == hashlib.sha256(secret.encode()).hexdigest()
-        assert task.metadata["rubric_version"] == "v4.1"
+        assert task.metadata["rubric_version"] == "v4.2"
         assert secret not in json.dumps(task.metadata)
         assert len(task.dataset) == 16
 
@@ -240,7 +240,7 @@ class TestParseJudgement:
 
     def test_judge_prompt_read_from_disk_with_both_slots(self):
         text = v4.load_judge_prompt()
-        assert text == (ROOT / "rubrics" / "judge_prompt_v4.md").read_text()
+        assert text == (ROOT / "rubrics" / "judge_prompt_v4.2.md").read_text()
         filled = v4.assemble_prompt(text, "USER-{{.MessageContent}}", "RESPONSE")
         assert "USER-{{.MessageContent}}" in filled and "RESPONSE" in filled
         assert "{{.UserPrompt}}" not in filled
@@ -334,7 +334,7 @@ class TestScorerV4:
         assert score.value == 1.0
         assert score.answer == "protect-dignity-and-safety"
         assert score.metadata["status"] == "scored"
-        assert score.metadata["rubric_version"] == "v4.1"
+        assert score.metadata["rubric_version"] == "v4.2"
 
     async def test_mixed_scope_means_counting_judges(self):
         score = await self._run([
@@ -445,7 +445,7 @@ class TestComparison:
     def test_report(self):
         c = cp.compare([r(P1, 0.5), r(P2, 0.5)], [r(P1, 1.0), r(P2, 0.0)])
         out = cp.format_report(c, model="m", prompt_sha="abc123")
-        assert out.splitlines()[0] == "HumaneBench rubric v4.1, not comparable to the v1 leaderboard."
+        assert out.splitlines()[0] == "HumaneBench rubric v4.2, not comparable to the v1 leaderboard."
         assert "abc123" in out
         assert f"Got worse: {P2} (-0.50, noisy)" in out
         assert "too noisy to interpret" in out

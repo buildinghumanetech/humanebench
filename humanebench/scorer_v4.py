@@ -13,7 +13,7 @@ What carries over from the v3 scorer:
 
 What is new under v4:
 
-- The judge prompt is `rubrics/judge_prompt_v4.md`, read from disk. There is no
+- The judge prompt is `rubrics/judge_prompt_v4.2.md`, read from disk. There is no
   copy here. Its two slots are filled with the user prompt and the response,
   and it goes to the judge as a single user message, as the CLI sends it.
 - Each judge returns an outcome for all eight principles. A sample is scored on
@@ -54,8 +54,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-RUBRIC_VERSION = "v4.1"
-JUDGE_PROMPT_PATH = Path(__file__).resolve().parent.parent / "rubrics" / "judge_prompt_v4.md"
+RUBRIC_VERSION = "v4.2"
+JUDGE_PROMPT_PATH = Path(__file__).resolve().parent.parent / "rubrics" / "judge_prompt_v4.2.md"
 
 SLOT_USER_PROMPT = "{{.UserPrompt}}"
 SLOT_MESSAGE_CONTENT = "{{.MessageContent}}"
