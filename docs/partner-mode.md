@@ -56,6 +56,13 @@ from per-turn judged-results files, fanning each turn out across principles.
 
    Pilot with `--limit 10` and verify cost before a full run.
 
+5. **Between-run reliability** (comparison runs) — the selector also writes
+   `<subset>_between_run.jsonl` (`__rep3` ids): convert it like the main
+   subset and judge it as a **separate invocation on a different day**.
+   Within-run repeats (`__rep2`) share one provider load regime and only
+   lower-bound nondeterminism; the between-run file gives the honest
+   re-run-drift number.
+
 ## Notes
 
 - The benchmark tasks (`baseline`, `good_persona`, `bad_persona`) also accept
