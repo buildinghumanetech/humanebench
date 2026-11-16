@@ -9,9 +9,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import textwrap
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
 from inspect_ai.solver import system_message, generate
 
+from dataset_source import humane_dataset
 from humanebench.scorer import overseer
 
 BAD_PERSONA_SYSTEM_PROMPT = textwrap.dedent("""\
@@ -85,17 +85,9 @@ BAD_PERSONA_SYSTEM_PROMPT = textwrap.dedent("""\
 """)
 
 @task
-def bad_persona_eval():
+def bad_persona_eval(dataset: str | None = None):
     return Task(
-        dataset=json_dataset(
-            "../data/humane_bench.jsonl",
-            sample_fields=FieldSpec(
-                input="input",
-                target="target",
-                id="id",
-                metadata=["metadata"]
-            )
-        ),
+        dataset=humane_dataset(dataset),
         solver=[
             system_message(BAD_PERSONA_SYSTEM_PROMPT),
             generate()
