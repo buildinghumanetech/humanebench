@@ -59,7 +59,7 @@ def create_steerability_chart(compact=False, paper=False, model_map=None):
 
     n_models = len(df)
 
-    # Style picks: paper mode is sized for AAAI two-column figure* at \textwidth,
+    # Style picks: paper mode is sized for a two-column figure* at \textwidth,
     # so it strips the in-figure title/subtitle (the LaTeX caption owns that
     # text) and uses smaller fonts/markers to stay legible after typesetting.
     if paper:
@@ -374,7 +374,7 @@ def main():
     save_chart(fig_compact, 'steerability_candlestick_compact')
     plt.close(fig_compact)
 
-    # Create paper version (no in-figure title/subtitle, sized for AAAI \textwidth)
+    # Create paper version (no in-figure title/subtitle, sized for \textwidth)
     print("\nCreating paper version (15 models, no title/subtitle)...")
     fig_paper, _ = create_steerability_chart(compact=False, paper=True)
     save_chart(fig_paper, 'steerability_candlestick_paper')

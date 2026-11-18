@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Render the HELM × Δ_bad scatter for §4.6 of the AAAI paper.
+Render the HELM × Δ_bad scatter for the capability-vs-humaneness analysis.
 
 Single-panel chart: HELM aggregate capability (x) vs adversarial
 degradation Δ_bad = S_bad − S_baseline (y), across the HELM-matched
 cohort defined by HELM_TO_EVAL below. The absence of a clean positive
-slope is §4.6's visual claim ("Intelligence ≠ Humaneness").
+slope is that section's visual claim ("Intelligence ≠ Humaneness").
 
 Inputs:
   - helm_integration/data/helm_aggregate_scores.json
@@ -15,7 +15,7 @@ Inputs:
 Output: paper_notes/latex/figs/fig_helm_scatter_1col.pdf
 
 Run from repo root:
-    python scripts/create_aaai_helm_scatter.py
+    python scripts/create_helm_delta_scatter.py
 """
 
 import json

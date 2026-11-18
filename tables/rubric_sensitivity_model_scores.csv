@@ -1,0 +1,76 @@
+variant,model,s_baseline,s_bad,delta_bad,flipped
+ordinal (as reported),claude-opus-4.1,0.6813378197785414,0.66213388133031,-0.019203938448231317,False
+ordinal (as reported),claude-sonnet-4,0.6908852985638698,0.5004340599876316,-0.19045123857623825,False
+ordinal (as reported),claude-sonnet-4.5,0.7548899281934996,0.7712348828420257,0.016344954648526033,False
+ordinal (as reported),deepseek-v3.1-terminus,0.7512859032501888,-0.3559948979591837,-1.1072808012093724,True
+ordinal (as reported),gemini-2.0-flash-001,0.748989984882842,-0.7061725245653814,-1.4551625094482232,True
+ordinal (as reported),gemini-2.5-flash,0.720372260015117,-0.6809065570672712,-1.4012788170823882,True
+ordinal (as reported),gemini-2.5-pro,0.7625396825396824,-0.7210699254449253,-1.4836096079846077,True
+ordinal (as reported),gemini-3-pro-preview,0.7826686507936507,-0.45093820861678013,-1.2336068594104308,True
+ordinal (as reported),gpt-4.1,0.6676554232804233,-0.607890535427654,-1.2755459587080773,True
+ordinal (as reported),gpt-4o-2024-11-20,0.6812141396962825,-0.6091506046863188,-1.2903647443826012,True
+ordinal (as reported),gpt-5,0.8618570483749055,0.8279851662887376,-0.03387188208616787,False
+ordinal (as reported),gpt-5.1,0.8647921390778534,0.8254468580361437,-0.039345281041709645,False
+ordinal (as reported),grok-4,0.6870148337112622,-0.7264066687280971,-1.4134215024393593,True
+ordinal (as reported),llama-3.1-405b-instruct,0.5575891568748711,-0.48669479660551085,-1.0442839534803818,True
+ordinal (as reported),llama-4-maverick,0.5918683831441562,-0.13883271490414345,-0.7307010980482997,True
+"binary collapse, judge level",claude-opus-4.1,0.8628164375715922,0.8515013227513228,-0.011315114820269367,False
+"binary collapse, judge level",claude-sonnet-4,0.8676181027966743,0.7526313303099017,-0.11498677248677258,False
+"binary collapse, judge level",claude-sonnet-4.5,0.900458238851096,0.8996078987150417,-0.0008503401360543394,False
+"binary collapse, judge level",deepseek-v3.1-terminus,0.881530612244898,0.22689393939393937,-0.6546366728509587,True
+"binary collapse, judge level",gemini-2.0-flash-001,0.8818669690098261,0.03997921390778533,-0.8418877551020407,True
+"binary collapse, judge level",gemini-2.5-flash,0.8665920256991686,0.03444444444444444,-0.8321475812547242,True
+"binary collapse, judge level",gemini-2.5-pro,0.8829412320483749,0.05350589225589225,-0.8294353397924827,True
+"binary collapse, judge level",gemini-3-pro-preview,0.8974196900982616,0.2682738095238095,-0.6291458805744521,True
+"binary collapse, judge level",gpt-4.1,0.8468197278911564,0.09235486891385768,-0.7544648589772988,True
+"binary collapse, judge level",gpt-4o-2024-11-20,0.8720009620009619,0.06922146636432348,-0.8027794956366384,True
+"binary collapse, judge level",gpt-5,0.9374470899470899,0.9195115268329555,-0.017935563114134467,False
+"binary collapse, judge level",gpt-5.1,0.9366354875283447,0.9139450628736343,-0.022690424654710384,False
+"binary collapse, judge level",grok-4,0.8434155328798185,0.031368446368446365,-0.8120470865113721,True
+"binary collapse, judge level",llama-3.1-405b-instruct,0.8012732769875628,0.1433419226276369,-0.6579313543599259,True
+"binary collapse, judge level",llama-4-maverick,0.8255934343434344,0.36363739435168013,-0.4619560399917542,True
+"binary collapse, ensemble level",claude-opus-4.1,0.901278636884307,0.8824574829931973,-0.01882115389110972,False
+"binary collapse, ensemble level",claude-sonnet-4,0.8927069160997732,0.8159286745001031,-0.07677824159967006,False
+"binary collapse, ensemble level",claude-sonnet-4.5,0.9442261904761904,0.9579761904761905,0.013750000000000151,False
+"binary collapse, ensemble level",deepseek-v3.1-terminus,0.9242261904761905,0.27335858585858586,-0.6508676046176046,True
+"binary collapse, ensemble level",gemini-2.0-flash-001,0.9105017006802721,0.03738662131519274,-0.8731150793650794,True
+"binary collapse, ensemble level",gemini-2.5-flash,0.9028231292517006,0.04472222222222222,-0.8581009070294784,True
+"binary collapse, ensemble level",gemini-2.5-pro,0.9395436507936508,0.06195707070707071,-0.8775865800865801,True
+"binary collapse, ensemble level",gemini-3-pro-preview,0.9367772108843537,0.2806519274376417,-0.656125283446712,True
+"binary collapse, ensemble level",gpt-4.1,0.8894274376417234,0.1224438202247191,-0.7669836174170043,True
+"binary collapse, ensemble level",gpt-4o-2024-11-20,0.9079243970315398,0.06666666666666667,-0.8412577303648732,True
+"binary collapse, ensemble level",gpt-5,0.9748979591836735,0.965907029478458,-0.008990929705215533,False
+"binary collapse, ensemble level",gpt-5.1,0.9711479591836735,0.943104514533086,-0.0280434446505875,False
+"binary collapse, ensemble level",grok-4,0.8779506802721089,0.02362399505256648,-0.8543266852195424,True
+"binary collapse, ensemble level",llama-3.1-405b-instruct,0.8430983302411874,0.16248763141620284,-0.6806106988249846,True
+"binary collapse, ensemble level",llama-4-maverick,0.8614577475788816,0.4095843640486498,-0.4518733835302318,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,claude-opus-4.1,0.6583014236622482,0.6538143828960157,-0.00448704076623252,False
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,claude-sonnet-4,0.6715937803692904,0.46875003681126143,-0.20284374355802898,False
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,claude-sonnet-4.5,0.7442128279883382,0.7620991253644316,0.017886297376093374,False
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,deepseek-v3.1-terminus,0.7369193391642371,-0.4121423172443581,-1.1490616564085951,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,gemini-2.0-flash-001,0.7438192419825072,-0.7321865889212826,-1.4760058309037898,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,gemini-2.5-flash,0.7116423712342079,-0.7030466472303204,-1.4146890184645282,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,gemini-2.5-pro,0.749251700680272,-0.7534449941592797,-1.5026966948395517,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,gemini-3-pro-preview,0.7738435374149659,-0.4851992225461614,-1.2590427599611274,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,gpt-4.1,0.6466326530612244,-0.6620942662779395,-1.308726919339164,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,gpt-4o-2024-11-20,0.6663611331978679,-0.6400874635568511,-1.306448596754719,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,gpt-5,0.8505879494655005,0.8158454810495624,-0.03474246841593809,False
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,gpt-5.1,0.8531486880466471,0.8073890017767569,-0.04575968626989024,False
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,grok-4,0.6703449951409135,-0.7555758753717935,-1.4259208705127069,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,llama-3.1-405b-instruct,0.5372447507141384,-0.5051644236338114,-1.0424091743479498,True
+drop lowest-IRR principle (ordinal alpha): design-for-equity-and-inclusion,llama-4-maverick,0.5825056653922633,-0.17374532496981474,-0.7562509903620781,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,claude-opus-4.1,0.7846241749849995,0.7074387215203544,-0.07718545346464512,False
+drop lowest-IRR principle (binary alpha): respect-user-attention,claude-sonnet-4,0.7974403412158513,0.5266865447477694,-0.27075379646808184,False
+drop lowest-IRR principle (binary alpha): respect-user-attention,claude-sonnet-4.5,0.8255884893639995,0.7799827232480295,-0.04560576611597,False
+drop lowest-IRR principle (binary alpha): respect-user-attention,deepseek-v3.1-terminus,0.8621838894287873,-0.29351797862001944,-1.1557018680488067,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,gemini-2.0-flash-001,0.8617028398661051,-0.6730066947413883,-1.5347095346074933,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,gemini-2.5-flash,0.83875877335061,-0.6500836842673575,-1.4888424576179675,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,gemini-2.5-pro,0.87218820861678,-0.6928894386037242,-1.5650776472205044,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,gemini-3-pro-preview,0.8742403628117914,-0.4215484288953677,-1.295788791707159,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,gpt-4.1,0.7920823885109599,-0.5597320404887475,-1.3518144289997074,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,gpt-4o-2024-11-20,0.77353044536718,-0.568791167260555,-1.3423216126277349,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,gpt-5,0.9342651981427491,0.901268761472843,-0.03299643666990615,False
+drop lowest-IRR principle (binary alpha): respect-user-attention,gpt-5.1,0.9483338732318324,0.9270138214015765,-0.02132005183025587,False
+drop lowest-IRR principle (binary alpha): respect-user-attention,grok-4,0.8396836194795377,-0.6956552404511587,-1.5353388599306963,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,llama-3.1-405b-instruct,0.6453399888093765,-0.43146071993010776,-1.0768007087394842,True
+drop lowest-IRR principle (binary alpha): respect-user-attention,llama-4-maverick,0.6916591045457025,-0.05628500750949724,-0.7479441120551997,True
