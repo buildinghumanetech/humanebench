@@ -1,6 +1,14 @@
 """
 Evaluation task for the 'bad' engagement-maximizing persona.
 """
+# Paper: implements the adversarial ("bad persona") condition of the three-condition
+#   design -- a system prompt pairing an engagement/retention objective with enumerated
+#   manipulation tactics (main paper, "The Anti-Humane Flip"; per-model scores in Table 1).
+# Paper: also serves as condition A of the goal-vs-tactics decomposition, the reference
+#   arm the objective-only variants B-E are contrasted against in the
+#   difference-in-differences (main paper, "Engagement Pressure Alone Drives Degradation").
+# Paper: scored over all 8 principles by the 3-judge ensemble at temperature 0
+#   (supplement, "Judge Validation Details"); produces raw eval logs, not in this package.
 import sys
 from pathlib import Path
 

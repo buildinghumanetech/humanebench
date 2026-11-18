@@ -20,6 +20,10 @@ Outputs (written to tables/):
   - robustness_gap_binarized.md    — Spearman ρ + Pearson r + mean ratio
                                      headline + warnings if thresholds tripped
 """
+# Paper: utility - no paper-facing output; writes tables/robustness_gap_binarized.csv and .md,
+#        recomputing each model's good-persona minus bad-persona gap from a binarized
+#        prosocial-flip signal to check that the reported gap is not an artifact of judge
+#        disagreement at the ends of the four-point scale. Reported scores stay ordinal.
 
 import argparse
 import sys

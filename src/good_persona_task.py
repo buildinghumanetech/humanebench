@@ -1,6 +1,11 @@
 """
 Evaluation task for the 'good' human-friendly persona.
 """
+# Paper: implements the pro-humane ("good persona") condition of the three-condition
+#   design -- a system prompt whose operating modes restate the eight principles
+#   (main paper, "Universal Improvement Under Pro-Humane Prompting"; scores in Table 1).
+# Paper: scored over all 8 principles by the 3-judge ensemble at temperature 0
+#   (supplement, "Judge Validation Details"); produces raw eval logs, not in this package.
 import sys
 from pathlib import Path
 

@@ -56,6 +56,12 @@ Outputs (written to --output-dir, default data/discriminant/):
 Run from repo root:
     python scripts/build_discriminant_multilabel_dataset.py
 """
+# Paper: produces data/discriminant/multilabel_<model>.jsonl, expected_prompt_hashes.csv and
+#        manifest.json - the 96 scenarios x 8 principles multi-label scoring datasets behind the
+#        designed x scored matrix (main paper, "Principle Separability").
+# Paper: implements recovery of each archived baseline response from its stored judge prompt by
+#        splitting the scoring template on its single response slot, so the matrix diagonal
+#        re-executes the main scoring run on byte-identical text.
 from __future__ import annotations
 
 import argparse
@@ -72,6 +78,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from humanebench.bootstrap import PRINCIPLES  # noqa: E402
 from humanebench.discriminant import (  # noqa: E402
+    CONDITIONS,
     FRAME_JSONL,
     GLOBAL_RULES,
     IDS_PATH,
@@ -83,6 +90,7 @@ from humanebench.discriminant import (  # noqa: E402
     SOURCE_MODELS,
     SUMMARY_PATH,
     render_judge_prompt,
+    scoring_template,
 )
 from humanebench.excluded import load_excluded_ids  # noqa: E402
 from humanebench.provenance import DATASET_PATH, file_sha256  # noqa: E402
@@ -200,44 +208,55 @@ def extract_response(sample: dict, prompt: str, designed_principle: str) -> tupl
     return response, len(prompts)
 
 
-def load_frame() -> dict[str, dict]:
-    """Return ``{id: row}`` for the frozen 96, validated against the ids file."""
-    ids = [ln.strip() for ln in IDS_PATH.read_text().splitlines() if ln.strip()]
+def load_frame(cond=None) -> dict[str, dict]:
+    """Return ``{id: row}`` for the condition's frame, validated."""
+    if cond is None:
+        cond = CONDITIONS["discriminant"]
+    ids = [ln.strip() for ln in cond.ids_path.read_text().splitlines() if ln.strip()]
     rows = {}
-    with FRAME_JSONL.open() as fh:
+    with cond.frame_jsonl.open() as fh:
         for line in fh:
             if line.strip():
                 row = json.loads(line)
                 rows[row["id"]] = row
     if set(ids) != set(rows):
         raise SystemExit("ids file and frame jsonl disagree")
-    n_expected = PER_PRINCIPLE * len(PRINCIPLES)
+    n_expected = cond.per_principle * len(PRINCIPLES)
     if len(ids) != n_expected:
         raise SystemExit(f"expected {n_expected} frozen ids, got {len(ids)}")
 
-    # The frame is drawn from the frozen 200; if that file has been redrawn since,
-    # every downstream pairing claim is void. Cheap to check, expensive to miss.
-    parent = {ln.strip() for ln in PARENT_IDS_PATH.read_text().splitlines() if ln.strip()}
-    if not set(ids) <= parent:
-        raise SystemExit(
-            "the 96 are not a subset of data/decomposition/subsample_200_ids.txt; "
-            "the parent frame was redrawn after this draw. Redraw the 96."
-        )
-    summary = json.loads(SUMMARY_PATH.read_text())
-    if summary.get("parent_ids_sha256") != file_sha256(PARENT_IDS_PATH):
-        raise SystemExit(
-            "discriminant_96_summary.json records a different parent hash than "
-            "subsample_200_ids.txt has now. Redraw the 96."
-        )
+    if cond.parent_ids_path is not None:
+        parent = {ln.strip() for ln in cond.parent_ids_path.read_text().splitlines()
+                  if ln.strip()}
+        if not set(ids) <= parent:
+            raise SystemExit(
+                f"the {len(ids)} are not a subset of {cond.parent_ids_path.name}; "
+                "the parent frame was redrawn after this draw."
+            )
+        summary = json.loads(cond.summary_path.read_text())
+        if summary.get("parent_ids_sha256") and \
+                summary["parent_ids_sha256"] != file_sha256(cond.parent_ids_path):
+            raise SystemExit(
+                f"{cond.summary_path.name} records a different parent hash than "
+                f"{cond.parent_ids_path.name} has now."
+            )
+    else:
+        original_ids = {ln.strip()
+                        for ln in IDS_PATH.read_text().splitlines() if ln.strip()}
+        if set(ids) & original_ids:
+            raise SystemExit(
+                f"expansion frame overlaps with original 96: "
+                f"{sorted(set(ids) & original_ids)[:5]}"
+            )
 
     excluded = load_excluded_ids(DATASET_PATH)
     if set(ids) & excluded:
         raise SystemExit(f"frame contains excluded ids: {sorted(set(ids) & excluded)}")
 
     per_principle = {p: sum(1 for i in ids if rows[i]["target"] == p) for p in PRINCIPLES}
-    if set(per_principle.values()) != {PER_PRINCIPLE}:
+    if set(per_principle.values()) != {cond.per_principle}:
         raise SystemExit(
-            f"frame is not {PER_PRINCIPLE} per principle: {per_principle}"
+            f"frame is not {cond.per_principle} per principle: {per_principle}"
         )
     return rows
 
@@ -250,9 +269,18 @@ def eval_path_for(model: str, logs_dir: Path) -> Path:
 
 
 def build_model(
-    model: str, frame: dict[str, dict], logs_dir: Path
+    model: str, frame: dict[str, dict], logs_dir: Path,
+    hash_template: str | None = None,
 ) -> tuple[list[dict], list[dict], dict]:
-    """Return ``(dataset_rows, hash_rows, provenance)`` for one source model."""
+    """Return ``(dataset_rows, hash_rows, provenance)`` for one source model.
+
+    ``hash_template`` is the template used for expected-hash computation. It
+    defaults to None (= the deployed OVERSEER_TEMPLATE), which is correct for
+    as-deployed conditions. For rules27, pass the variant template so the
+    expected hashes match what the scorer will actually send — but extraction
+    ALWAYS uses the default template, since responses are solved from November
+    archives rendered with the deployed prompt.
+    """
     path = eval_path_for(model, logs_dir)
     wanted = set(frame)
     responses: dict[str, str] = {}
@@ -267,6 +295,11 @@ def build_model(
                 continue
             row = frame[sid]
             response, _n = extract_response(sample, row["input"], row["target"])
+            if not response:
+                raise ExtractionError(
+                    f"{sid}: extracted response is empty; "
+                    "use_pregenerated_output_strict would raise on falsy ai_output"
+                )
             responses[sid] = response
 
     missing = sorted(wanted - set(responses))
@@ -294,7 +327,8 @@ def build_model(
                     "vulnerable_population": meta.get("vulnerable-population", ""),
                 },
             })
-            expected = render_judge_prompt(scored, row["input"], responses[sid])
+            expected = render_judge_prompt(scored, row["input"], responses[sid],
+                                          template=hash_template)
             hash_rows.append({
                 "scenario_id": sid,
                 "source_model": model,
@@ -322,18 +356,27 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--logs-dir", type=Path, default=REPO_ROOT / "logs")
-    ap.add_argument("--output-dir", type=Path, default=REPO_ROOT / "data" / "discriminant")
+    ap.add_argument("--output-dir", type=Path, default=None)
     ap.add_argument("--models", nargs="+", default=list(SOURCE_MODELS))
+    ap.add_argument("--condition", default="discriminant",
+                    choices=sorted(CONDITIONS),
+                    help="which condition to build datasets for")
     args = ap.parse_args()
+
+    cond = CONDITIONS[args.condition]
+    if args.output_dir is None:
+        args.output_dir = cond.data_dir
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    frame = load_frame()
-    print(f"frame: {len(frame)} scenarios, 12 per principle, nested in the frozen 200")
+    hash_template = scoring_template(cond)
+
+    frame = load_frame(cond)
+    print(f"frame: {len(frame)} scenarios, {cond.per_principle} per principle")
 
     all_hashes: list[dict] = []
     per_model: dict[str, dict] = {}
     for model in args.models:
-        rows, hashes, prov = build_model(model, frame, args.logs_dir)
+        rows, hashes, prov = build_model(model, frame, args.logs_dir, hash_template)
         out = args.output_dir / f"multilabel_{model}.jsonl"
         out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
         all_hashes.extend(hashes)
@@ -351,10 +394,11 @@ def main() -> int:
 
     n_calls = len(all_hashes)
     total_prompt_chars = sum(r["expected_judge_prompt_chars"] for r in all_hashes)
-    summary = json.loads(SUMMARY_PATH.read_text())
+    summary = json.loads(cond.summary_path.read_text())
     manifest = {
         "schema": "humanebench-discriminant-multilabel/1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "condition": args.condition,
         "design": "designed x measured matrix; baseline responses only",
         "n_scenarios": len(frame),
         "n_source_models": len(args.models),
@@ -362,18 +406,15 @@ def main() -> int:
         "n_judge_calls": n_calls,
         "one_call_per_principle": True,
         "total_judge_prompt_chars": total_prompt_chars,
-        # Pricing calibration, measured on the 287 gpt-5.1 judge calls the
-        # reported baseline runs already made against these same 96 scenarios.
-        # Used only to size the credit gate; nothing downstream depends on it.
         "pricing_calibration": {
             "chars_per_input_token": 4.483,
             "output_tokens_mean": 315,
             "measured_on_n_calls": 287,
             "source": "logs/baseline/<model>/*.eval, gpt-5.1 judge events",
         },
-        "frame_ids_file": _rel(IDS_PATH),
-        "frame_ids_sha256": file_sha256(IDS_PATH),
-        "frame_subset_prompt_hash": summary["subset_prompt_hash"],
+        "frame_ids_file": _rel(cond.ids_path),
+        "frame_ids_sha256": file_sha256(cond.ids_path),
+        "frame_subset_prompt_hash": summary.get("subset_prompt_hash"),
         "parent_ids_file": summary.get("parent_ids_file"),
         "parent_ids_sha256": summary.get("parent_ids_sha256"),
         "source_dataset_sha256": file_sha256(DATASET_PATH),

@@ -26,6 +26,9 @@ Re-attesting a document whose content has not changed is a no-op: the original
 the content HAS changed, the previous record is pushed onto that entry's
 `superseded` list -- records are added and amended, never dropped.
 """
+# Paper: utility - no paper-facing output; records sha256 attestations of working documents that
+#        are not published (e.g. the decomposition pre-commitment) in
+#        provenance/doc_attestations.json, so the commit carrying that manifest dates the claim.
 from __future__ import annotations
 
 import argparse

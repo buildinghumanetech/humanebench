@@ -3,6 +3,8 @@
 Convert humane_bench CSV back to JSONL format.
 """
 
+# Paper: utility -- no paper-facing output; rebuilds data/humane_bench.jsonl from the CSV round-trip copy of the scenario dataset.
+
 import json
 import csv
 

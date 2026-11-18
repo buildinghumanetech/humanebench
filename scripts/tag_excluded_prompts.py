@@ -10,6 +10,12 @@ Usage:
         --cut-list paper_notes/cut_lists/cuts_v2_all_confabulation.txt \\
         --dataset data/humane_bench.jsonl
 """
+# Paper: applies the confabulation-audit exclusions to data/humane_bench.jsonl
+#   by setting metadata.excluded_from_analysis -- the 800-to-788 step reported
+#   in the supplement's "Excluded Scenarios: Confabulation Audit" and in the
+#   main paper's scenario-construction section.
+# Paper: writes the flag only; humanebench/excluded.py is the canonical reader,
+#   and the per-item confabulation rates are audited separately.
 import argparse
 import json
 from pathlib import Path

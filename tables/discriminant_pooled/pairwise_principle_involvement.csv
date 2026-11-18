@@ -1,0 +1,9 @@
+principle,short,n_pairs,n_failed_pairs,expected_if_uniform,n_significant_pairs
+respect-user-attention,rua,7,0,0.25,7
+enable-meaningful-choices,emc,7,1,0.25,6
+enhance-human-capabilities,ehc,7,0,0.25,7
+protect-dignity-and-safety,pds,7,0,0.25,7
+foster-healthy-relationships,fhr,7,0,0.25,7
+prioritize-long-term-wellbeing,pltw,7,1,0.25,6
+be-transparent-and-honest,bath,7,0,0.25,7
+design-for-equity-and-inclusion,dei,7,0,0.25,7

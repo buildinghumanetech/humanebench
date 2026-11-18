@@ -10,6 +10,11 @@ Reports multi-principle VPs (>1 principle) and single-principle VPs
 (mostly Design for Equity & Inclusion) separately.
 """
 
+# Paper: utility -- no paper-facing output; prints, per vulnerable population, the
+#   principle whose bad-persona mean falls furthest below the all-VP mean for that same
+#   principle, over tables/vp_sample_scores.csv. Supports the exploratory supplement
+#   section, "Vulnerable-Population Analysis".
+
 import pandas as pd
 from pathlib import Path
 

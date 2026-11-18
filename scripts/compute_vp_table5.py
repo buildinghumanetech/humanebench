@@ -9,6 +9,15 @@ Outputs tables/vp_table5.csv and prints a LaTeX-ready table fragment.
 
 # TODO: add bootstrap CIs (Andalib to layer on with PR #71 pattern)
 """
+# Paper: produces tables/vp_table5.csv -- per-principle VP vs non-VP mean scores
+#   and their gap, by persona, for principles with at least 20 VP-tagged
+#   scenarios; the underlying gap computation for the supplement's
+#   "Vulnerable-Population Analysis". The per-principle table printed there is
+#   emitted by scripts/vp_tables_and_figure.py, which reports all eight
+#   principles unfiltered.
+# Paper: the "Table 5" naming above and in the output filename is a draft-era
+#   number. The submitted paper numbers only Table 1, in the main text;
+#   supplement tables are cited by section name.
 
 import argparse
 from pathlib import Path

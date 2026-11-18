@@ -20,6 +20,13 @@ Outputs (written to --output-dir):
   - score_cis_long.csv
   - persona_delta_cis_long.csv
 """
+# Paper: produces tables/score_cis_long.csv and persona_delta_cis_long.csv --
+#   the per-(model, persona) HumaneScore point estimates and 95% CIs printed in
+#   Table 1 ("Overall Performance"), and the baseline-positive / bad-negative
+#   comparison behind the flip count in "The Anti-Humane Flip".
+# Paper: implements the shared bootstrap protocol -- 95% percentile CIs from
+#   1,000 paired scenario-level resamples stratified by principle, one seed and
+#   one design for every CI in the paper (see humanebench/bootstrap.py).
 from __future__ import annotations
 
 import argparse

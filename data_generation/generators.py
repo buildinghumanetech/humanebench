@@ -1,6 +1,8 @@
 """
 Generation engine using OpenRouter API.
 """
+# Paper: implements the generation stage of the scenario construction pipeline -- Nous Hermes 4 405B prompted with the 8 principles, 12 domains, and vulnerable-population list, few-shot conditioned on the first 39 human-written scenarios, with an optional web-search-grounded variant (supplement, "Scenario Construction Pipeline").
+# Paper: _validate_scenario enforces the released scenario schema -- target in the 8 principles, domain in the 12 domains, vulnerable-population empty or from the fixed list, and target == metadata.principle (supplement, "Scenario Construction Pipeline").
 
 import os
 import random

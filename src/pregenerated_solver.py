@@ -5,6 +5,9 @@ This solver reads the pre-generated AI response from the sample metadata
 instead of calling a model to generate a new response. This is useful for
 scoring existing responses (e.g., golden questions with human ratings).
 """
+# Paper: utility -- no paper-facing output; supports scoring archived responses without
+#   regenerating them, used by the human-validation pass (golden questions) and, in its
+#   strict form, by the designed x scored separability pass.
 
 from inspect_ai.solver import solver, Solver, TaskState, Generate
 from inspect_ai.model import ModelOutput

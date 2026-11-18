@@ -33,6 +33,14 @@ percentages, so the provider attribution survives outside the .eval logs --
 which are 584 MB of already-compressed archives and are not distributed with
 the paper.
 """
+# Paper: produces tables/serving_provenance.md, plus
+#   serving_provenance_responses.csv and serving_provenance_judges.csv under
+#   --csv-out -- the per-run provider mixture and system_fingerprint audit
+#   behind the supplement's "Serving-Variation Sensitivity", including its
+#   per-model provider-mix table.
+# Paper: attributes each response to the upstream provider that served it,
+#   which is what lets that section separate the Vertex-to-Bedrock routing
+#   change from the decomposition subgroup sign split.
 from __future__ import annotations
 
 import argparse

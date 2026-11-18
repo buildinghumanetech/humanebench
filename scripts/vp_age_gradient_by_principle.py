@@ -6,6 +6,12 @@ show baseline mean and steerability delta side by side. Flag which
 principles follow the gradient pattern and which break it.
 """
 
+# Paper: utility -- no paper-facing output; prints a per-principle check of whether the
+#   children / teenagers / elderly ordering holds in both baseline level and steerability
+#   delta, over tables/vp_sample_scores.csv. Supports the exploratory supplement section,
+#   "Vulnerable-Population Analysis"; the figures/vp_age_gradient.* chart of that name is
+#   produced by scripts/vp_tables_and_figure.py, not here.
+
 import pandas as pd
 from pathlib import Path
 

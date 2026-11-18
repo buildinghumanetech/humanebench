@@ -28,6 +28,18 @@ Usage:
     python scripts/run_decomposition_evals.py --yes 2>&1 | tee decomp-launch.log
     python scripts/run_decomposition_evals.py --conditions decomp_c_prose --yes
 """
+
+# Paper: launches the decomposition conditions B-E evaluation runs behind the main paper,
+#   "Engagement Pressure Alone Drives Degradation"; produces the raw eval logs (not
+#   included in this package).
+# Paper: writes provenance/decomposition/LAUNCH_MANIFEST.json before the first API call --
+#   the verbatim condition prompts and their hashes, the model cohort, and the frozen
+#   200-scenario subsample that pins conditions C-E so every contrast against the
+#   baseline / bad persona runs stays paired.
+# Paper: gates each condition on the fraction of samples carrying a full on-scale 3-judge
+#   score -- the same admission rule the analysis uses -- and records it in
+#   provenance/decomposition/run_status.json.
+
 from __future__ import annotations
 
 from dotenv import load_dotenv

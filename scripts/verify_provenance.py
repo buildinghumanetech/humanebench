@@ -34,6 +34,14 @@ separate block so no reported-run count or published aggregate widens:
 git-dependent checks (5, 6) are reported as SKIP when run outside the repo, e.g.
 against a bare Zenodo download; the content-binding checks (1-4, 7) still hold.
 """
+
+# Paper: implements the independent re-verification of provenance/MANIFEST.json -- the
+#   frozen prompt hash for every reported run, per-run file hashes, the freeze and
+#   post-freeze dataset commits, and the frozen decomposition subsample (supplement,
+#   "Scenario Construction Pipeline").
+# Paper: utility -- no paper-facing output; it is the executable form of the
+#   artifact-provenance claim, and needs no network and no third-party service.
+
 from __future__ import annotations
 
 import argparse

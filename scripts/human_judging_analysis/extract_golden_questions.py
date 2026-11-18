@@ -9,6 +9,12 @@ Criteria:
 - Works for observations with 2, 3, or 4 raters
 """
 
+# Paper: utility -- no paper-facing output; builds the golden-question set -- the rated
+#   responses on which every available rater agreed in sign -- and the Krippendorff alpha
+#   and ICC(2,k) restricted to it, into
+#   scripts/human_judging_analysis/output/golden_questions.csv. Supports the gold-set
+#   agreement reported in the supplement, "Judge Validation Details".
+
 import pandas as pd
 import numpy as np
 import json

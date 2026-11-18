@@ -3,6 +3,11 @@ HumaneBench Analysis Script
 Calculates inter-rater reliability and descriptive statistics
 """
 
+# Paper: utility -- no paper-facing output; the pilot-stage, per-principle form of the same
+#   reliability analysis, reading output/consolidated_ratings.csv (written by
+#   scripts/human_judging_analysis/consolidate_ratings.py) and writing output/analysis/.
+#   Supports the human validation reported in the supplement, "Judge Validation Details".
+
 import pandas as pd
 import numpy as np
 from pathlib import Path

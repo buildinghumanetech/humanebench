@@ -1,0 +1,3 @@
+comparator,n,mean_signed_difference,ci_lower,ci_upper,ci_excludes_zero,mean_absolute_difference,exact_agreement,same_sign_agreement,spearman_rho,spearman_p
+"vs main-run gpt-5.1 (same judge, Nov 2025 vs Jul 2026)",8,0.0,0.0,0.0,False,0.0,1.0,1.0,0.9999999999999999,3.421138828918048e-48
+vs main-run 3-judge ensemble mean,8,0.0,-0.04166666666666666,0.04166666666666666,False,0.04166666666666666,0.75,1.0,0.7559289460184544,0.03001974528754441

@@ -1,4 +1,7 @@
 """Shared fixtures and configuration for scorer tests."""
+# Paper: tests -- shared fixtures (mock judge models, mock model outputs, a sample rubric
+#   pattern, cheap stand-in judges) for the scorer suite that validates the judge ensemble
+#   (see supplement, "Judge Validation Details" for the method); no paper-facing output.
 
 from dotenv import load_dotenv
 

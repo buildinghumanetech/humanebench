@@ -16,6 +16,8 @@ Outputs:
     - output/model_coverage_report.txt: Which models found/missing
     - output/capability_percentiles.csv: Final percentiles for plotting
 """
+# Paper: utility -- no paper-facing output; converts the scraped HELM Capabilities aggregate scores into per-model percentile ranks (output/capability_percentiles.csv, output/model_coverage_report.txt).
+# Paper: the capability-versus-humaneness correlation reported in "Intelligence != Humaneness" is computed from the raw aggregate scores, not from these percentile ranks.
 
 import json
 import sys

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-Render the HELM × Δ_bad scatter for the capability-vs-humaneness analysis.
+Render the HELM × Δ_bad scatter for the "Intelligence ≠ Humaneness"
+section of the paper.
 
 Single-panel chart: HELM aggregate capability (x) vs adversarial
 degradation Δ_bad = S_bad − S_baseline (y), across the HELM-matched
 cohort defined by HELM_TO_EVAL below. The absence of a clean positive
-slope is that section's visual claim ("Intelligence ≠ Humaneness").
+slope is that section's visual claim.
 
 Inputs:
   - helm_integration/data/helm_aggregate_scores.json
-  - tables/table1_steerability_summary.csv
+  - tables/loo_model_scores.csv   (ensemble3 rows -- the same log-regenerated
+    Delta_bad used by scripts/compute_helm_power.py, NOT the stale table1)
   - figures/model_display_names.json
 
 Output: paper_notes/latex/figs/fig_helm_scatter_1col.pdf
@@ -17,6 +19,8 @@ Output: paper_notes/latex/figs/fig_helm_scatter_1col.pdf
 Run from repo root:
     python scripts/create_helm_delta_scatter.py
 """
+# Paper: produces fig_helm_scatter_1col.pdf -- the capability-vs-robustness scatter (supplement, "HELM Capability Scatter"); the correlation and MDE it visualizes are in main paper, "Intelligence != Humaneness".
+# Paper: reads tables/loo_model_scores.csv (ensemble3 rows) for the stats box so the printed r and p match the published analysis.
 
 import json
 import os
@@ -111,16 +115,17 @@ def load_merged():
     helm['eval_model'] = helm['model_name'].map(HELM_TO_EVAL)
     helm = helm[helm['eval_model'].notna()].copy()
 
-    summary = pd.read_csv('tables/table1_steerability_summary.csv')
-    summary = summary.rename(columns={
-        'Model': 'eval_model',
-        'Baseline HumaneScore': 'baseline',
-        'Good Persona HumaneScore': 'good',
-        'Bad Persona HumaneScore': 'bad',
-    })
+    # Delta_bad comes from the log-regenerated ensemble3 scores, the same
+    # authoritative source scripts/compute_helm_power.py reads. table1_
+    # steerability_summary.csv is stale and yields a slightly different
+    # correlation (p = 0.416 vs 0.415); sourcing both the figure and the power
+    # analysis from loo_model_scores.csv keeps this stats box consistent with
+    # S4.6's body text.
+    loo = pd.read_csv('tables/loo_model_scores.csv')
+    loo = loo[loo['config'] == 'ensemble3'][['model', 'delta_bad']]
+    loo = loo.rename(columns={'model': 'eval_model'})
 
-    df = helm.merge(summary[['eval_model', 'baseline', 'good', 'bad']],
-                    on='eval_model', how='inner')
+    df = helm.merge(loo, on='eval_model', how='inner')
 
     expected = set(HELM_TO_EVAL.values())
     got = set(df['eval_model'])
@@ -130,10 +135,10 @@ def load_merged():
             f"HELM_TO_EVAL drift -- expected {len(expected)} matched "
             f"models, got {len(got)}. Missing: {missing}. Either HELM "
             f"renamed a display string (update HELM_TO_EVAL keys) or "
-            f"table1_steerability_summary.csv lost a row (regenerate it)."
+            f"loo_model_scores.csv lost an ensemble3 row (regenerate it via "
+            f"scripts/compute_loo_sensitivity.py)."
         )
 
-    df['delta_bad'] = df['bad'] - df['baseline']
     df['family'], df['color'] = zip(*df['eval_model'].map(get_family))
 
     with open('figures/model_display_names.json') as f:

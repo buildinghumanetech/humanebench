@@ -7,6 +7,10 @@ should not have to care which one is on disk, and a reviewer running a
 documented command should not get FileNotFoundError because the package made a
 packaging decision.
 """
+# Paper: utility -- no paper-facing output; supports every analysis script that
+# reads the per-judge severity table by resolving it between its uncompressed
+# (repository) and gzipped (supplementary package) filenames, so a documented
+# command reproduces the same numbers from either copy.
 from __future__ import annotations
 
 from pathlib import Path

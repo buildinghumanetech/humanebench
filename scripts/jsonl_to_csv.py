@@ -3,6 +3,8 @@
 Convert humane_bench.jsonl to CSV format for Google Sheets upload.
 """
 
+# Paper: utility -- no paper-facing output; flattens data/humane_bench.jsonl into data/humane_bench.csv for spreadsheet review of the scenarios.
+
 import json
 import csv
 

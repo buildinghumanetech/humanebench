@@ -12,6 +12,9 @@ Generates:
 All outputs in both CSV and Markdown for web/README use.
 """
 
+# Paper: utility -- no paper-facing output; supports the HELM-versus-HumaneScore comparison tables (tables/helm_humanescore_combined.*, tables/helm_vs_*.{csv,md}) and figures (figures/helm_vs_humanescore_scatter.*, helm_vs_humanescore_heatmap.*) used by the web front end.
+# Paper: this is NOT the supplement's "HELM Capability Scatter" figure, which is figs/fig_helm_scatter_1col.pdf from scripts/create_helm_delta_scatter.py.
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns

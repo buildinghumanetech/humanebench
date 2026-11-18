@@ -5,6 +5,8 @@ needed for the paper's scenario-set and coverage reporting.
 
 Usage: python analyze_coverage.py path/to/humane_bench.jsonl
 """
+# Paper: prints the scenario count, the principle / domain / vulnerable-population distributions, and the principle-by-domain cross-tabulation behind the coverage reporting (supplement, "Principle-by-Domain Coverage Heatmap"); stdout only, no file output.
+# Paper: the post-exclusion pass recomputes the same coverage after dropping the ids flagged by humanebench.excluded.load_excluded_ids (supplement, "Excluded Scenarios: Confabulation Audit").
 
 import json
 import statistics

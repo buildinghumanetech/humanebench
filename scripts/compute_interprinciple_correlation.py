@@ -36,6 +36,11 @@ Outputs (written to --output-dir, default tables/):
 Run from repo root:
     python scripts/compute_interprinciple_correlation.py
 """
+# Paper: produces tables/interprinciple_correlation_*.csv and interprinciple_correlation.md -
+#        correlations between the eight principle columns computed across models (n = 15), per
+#        persona, with model-resample CIs; reported as uninformative for construct redundancy
+#        because a general model-quality factor enters every column (supplement, "Cross-Model
+#        Correlation and Construct Redundancy").
 from __future__ import annotations
 
 import argparse

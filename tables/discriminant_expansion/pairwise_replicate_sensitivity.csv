@@ -1,0 +1,5 @@
+quantity,max_abs_difference,note
+interaction (point estimate),0.0,point estimates do not depend on the replicate count
+ci_lower,0.014062499999999978,Monte Carlo error on the 2.5th percentile
+ci_upper,0.02777777777777768,Monte Carlo error on the 97.5th percentile
+excludes_zero (per pair),0.0,count of pairs where the CI verdict differs
