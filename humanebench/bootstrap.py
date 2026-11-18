@@ -1071,6 +1071,14 @@ def diagonal_ranks(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
     ``share_lowest_in_row`` and ``share_bottom_two_in_row`` are the fraction of
     bootstrap replicates in which the ordinal claim still holds.
 
+    The ``*_from_top`` / ``share_highest_*`` columns are the mirror statistics,
+    added **after** the run returned a diagonal above its row rather than below
+    it. They are the same comparison with the inequality flipped, so that a
+    reversed result can be characterised ordinally instead of only by its sign.
+    The lowest-based columns are the pre-committed ones and are unchanged; both
+    are emitted together so neither direction can be quietly selected after the
+    fact.
+
     A missing cell must not be ranked. ``NaN < NaN`` is False, so a naive
     comparison count reports an unscored row as rank 1 of 8 with 100% of
     replicates agreeing -- the strongest ordinal evidence the table can express,
@@ -1089,19 +1097,28 @@ def diagonal_ranks(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
         if estimable:
             row_rank = int((row_vals[row_ok] < diag).sum() + 1)
             col_rank = int((col_vals[col_ok] < diag).sum() + 1)
+            row_rank_top = int((row_vals[row_ok] > diag).sum() + 1)
+            col_rank_top = int((col_vals[col_ok] > diag).sum() + 1)
             rep_rows = matrix.replicates[:, i, :]
             rep_diag = rep_rows[:, [i]]
             # Compare only against finite competitors, and only in replicates
             # where the diagonal itself is finite.
             finite = np.isfinite(rep_rows)
             below = np.where(finite, rep_rows < rep_diag, False).sum(axis=1) + 1
+            above = np.where(finite, rep_rows > rep_diag, False).sum(axis=1) + 1
             usable = np.isfinite(rep_diag).ravel()
             rep_rank = below[usable]
+            rep_rank_top = above[usable]
             share_lowest = float((rep_rank == 1).mean()) if rep_rank.size else float("nan")
             share_bottom2 = float((rep_rank <= 2).mean()) if rep_rank.size else float("nan")
+            share_highest = (float((rep_rank_top == 1).mean())
+                             if rep_rank_top.size else float("nan"))
+            share_top2 = (float((rep_rank_top <= 2).mean())
+                          if rep_rank_top.size else float("nan"))
         else:
-            row_rank = col_rank = None
+            row_rank = col_rank = row_rank_top = col_rank_top = None
             share_lowest = share_bottom2 = float("nan")
+            share_highest = share_top2 = float("nan")
 
         rows.append({
             "designed_principle": principle,
@@ -1109,13 +1126,155 @@ def diagonal_ranks(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
             "estimable": estimable,
             "rank_in_row": row_rank,
             "rank_in_column": col_rank,
+            "rank_in_row_from_top": row_rank_top,
+            "rank_in_column_from_top": col_rank_top,
             "n_cells": k,
             "n_cells_ranked_in_row": int(row_ok.sum()),
             "n_cells_ranked_in_column": int(col_ok.sum()),
             "share_lowest_in_row": share_lowest,
             "share_bottom_two_in_row": share_bottom2,
+            "share_highest_in_row": share_highest,
+            "share_top_two_in_row": share_top2,
         })
     return pd.DataFrame(rows)
+
+
+def holm_adjust(p_values: Sequence[float]) -> np.ndarray:
+    """Holm-Bonferroni step-down adjusted p-values.
+
+    Controls the family-wise error rate across a family of tests without
+    assuming independence, which matters here: the 28 pairwise interactions are
+    built from 8 overlapping matrix rows, so they are heavily dependent and a
+    procedure requiring independence (Benjamini-Hochberg's original form,
+    Sidak) would not be licensed.
+
+    NaN inputs are *excluded from the family* rather than ranked. A NaN p-value
+    means the statistic was not estimable; ranking it would either consume a
+    Holm step (making every real test stricter for the sake of a test that was
+    never run) or, if sorted to the front, hand the smallest threshold to the
+    least informative entry. They come back NaN, and ``m`` is the count of
+    estimable tests.
+    """
+    p = np.asarray(p_values, dtype=float)
+    adj = np.full(p.shape, np.nan)
+    finite = np.isfinite(p)
+    m = int(finite.sum())
+    if m == 0:
+        return adj
+    idx = np.flatnonzero(finite)
+    order = idx[np.argsort(p[idx], kind="stable")]
+    # Step-down: the k-th smallest is multiplied by (m - k + 1), then made
+    # monotone non-decreasing so a later test cannot be reported as more
+    # significant than an earlier, smaller one.
+    stepped = (m - np.arange(m)) * p[order]
+    adj[order] = np.minimum(np.maximum.accumulate(stepped), 1.0)
+    return adj
+
+
+def _bootstrap_two_sided_p(reps: np.ndarray) -> float:
+    """Two-sided bootstrap p for H0: statistic = 0, by CI inversion.
+
+    The achieved significance level of the same percentile interval reported
+    beside it, so the p-value and the CI can never disagree: p < alpha exactly
+    when the (1 - alpha) percentile interval excludes zero.
+
+    Uses the (1 + count) / (B + 1) convention, which never returns 0. A run of
+    B replicates cannot distinguish "p is small" from "p is zero", and reporting
+    an exact zero from 1,000 resamples claims a precision the resampling does
+    not have. The consequence is a **floor of 2 / (B + 1)**: with B = 1,000 the
+    smallest attainable p is 0.0020, which is larger than the 0.05 / 28 = 0.0018
+    that Holm demands of the most significant of 28 tests. Callers running a
+    family this size must raise B or the family is unresolvable by construction.
+    """
+    finite = reps[np.isfinite(reps)]
+    if finite.size == 0:
+        return float("nan")
+    n = finite.size
+    le = int((finite <= 0).sum())
+    ge = int((finite >= 0).sum())
+    one_sided = min(le, ge)
+    return float(min(2.0 * (one_sided + 1) / (n + 1), 1.0))
+
+
+def pairwise_interactions(matrix: DesignedMeasuredMatrix) -> pd.DataFrame:
+    """The 2x2 designed-x-scored interaction for every unordered principle pair.
+
+    For principles X and Y, with ``a = M[X, X]``, ``b = M[X, Y]``,
+    ``c = M[Y, X]``, ``d = M[Y, Y]``::
+
+        interaction = (a - b) - (c - d)
+
+    This is a difference in differences, and what it removes is the point. The
+    inner differences are taken *within* a row, so any effect that shifts a whole
+    scenario set -- one principle's scenarios simply drawing better responses --
+    cancels. Differencing those removes any effect that shifts a whole column,
+    so a rubric being uniformly harsher than another cancels too. What survives
+    is only the part where rubric and scenario set *interact*.
+
+    That is the right null for the question review actually asked. If X and Y
+    name one construct, then a scenario engaging X engages Y as well, both
+    rubrics respond to both scenario sets alike, and the interaction is zero --
+    including when one rubric is systematically more generous, since a pure
+    leniency offset ``k`` enters as ``b = a + k`` and ``d = c + k`` and drops out.
+    The interaction is also unbiased by any component the two rubrics *share*,
+    provided that component is additive: the seven global rules are rendered
+    into all eight judge prompts, and a shared additive term ``g(response)``
+    cancels from ``a - b`` and from ``c - d`` before they are differenced.
+
+    Contrast the diagonal-minus-off-diagonal contrast in `discriminant_contrasts`,
+    which does not difference across rows and so cannot separate "this rubric
+    was engaged" from "this rubric is lenient".
+
+    The statistic is symmetric: swapping X and Y negates both inner differences
+    and their difference, giving the same value. So the 8 principles yield 28
+    unordered pairs, not 56 ordered ones.
+
+    CIs come from ``matrix.replicates``, which carries one shared scenario draw
+    per row across every column and model, so the within-row pairing that
+    ``a - b`` depends on is preserved. Rows X and Y are drawn independently,
+    which is correct: their scenario sets are disjoint by construction.
+
+    ``estimable`` is False when any of the four cells is missing; consumers must
+    branch on it, since NaN comparisons read False and would otherwise be
+    reported as a non-significant result rather than an absent one.
+
+    Returns one row per pair with the four cell means, the interaction, its CI,
+    a two-sided bootstrap p and the Holm-adjusted p across the whole family.
+    """
+    principles = matrix.principles
+    rows: list[dict] = []
+    for i in range(len(principles)):
+        for j in range(i + 1, len(principles)):
+            a = matrix.point[i, i]
+            b = matrix.point[i, j]
+            c = matrix.point[j, i]
+            d = matrix.point[j, j]
+            point = (a - b) - (c - d)
+            reps = ((matrix.replicates[:, i, i] - matrix.replicates[:, i, j])
+                    - (matrix.replicates[:, j, i] - matrix.replicates[:, j, j]))
+            lo, hi = _nan_percentile_ci(reps)
+            estimable = bool(np.isfinite(point) and np.isfinite(lo) and np.isfinite(hi))
+            rows.append({
+                "principle_a": principles[i],
+                "principle_b": principles[j],
+                "a_designed_a_scored": float(a),
+                "a_designed_b_scored": float(b),
+                "b_designed_a_scored": float(c),
+                "b_designed_b_scored": float(d),
+                "diff_within_a": float(a - b),
+                "diff_within_b": float(d - c),
+                "interaction": float(point),
+                "ci_lower": lo,
+                "ci_upper": hi,
+                "p_value": _bootstrap_two_sided_p(reps) if estimable else float("nan"),
+                "estimable": estimable,
+                "excludes_zero": bool(estimable and (hi < 0 or lo > 0)),
+                "n_scenarios_a": int(matrix.n_scenarios[i]),
+                "n_scenarios_b": int(matrix.n_scenarios[j]),
+            })
+    df = pd.DataFrame(rows)
+    df["p_holm"] = holm_adjust(df["p_value"].to_numpy())
+    return df
 
 
 def bootstrap_naive_grid(
