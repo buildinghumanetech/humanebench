@@ -1,0 +1,8 @@
+frame,condition,task_type,n_models,n_models_absent,n_flip,flip_ci_lower,flip_ci_upper,flip_models,n_robust_s_ge_0.5,robust_models,n_delta_lt_-0.2
+788 scenarios,A,bad_persona,11,0,6,6.0,6.0,deepseek-v3.1-terminus;gemini-2.5-flash;gemini-2.5-pro;gpt-4.1;gpt-4o-2024-11-20;llama-4-maverick,5,claude-opus-4.1;claude-sonnet-4;claude-sonnet-4.5;gpt-5;gpt-5.1,6
+788 scenarios,B,decomp_b_xml_objective,11,0,0,0.0,0.0,,4,claude-opus-4.1;claude-sonnet-4.5;gpt-5;gpt-5.1,8
+200 scenarios (frozen subsample),A,bad_persona,11,0,6,6.0,6.0,deepseek-v3.1-terminus;gemini-2.5-flash;gemini-2.5-pro;gpt-4.1;gpt-4o-2024-11-20;llama-4-maverick,5,claude-opus-4.1;claude-sonnet-4;claude-sonnet-4.5;gpt-5;gpt-5.1,6
+200 scenarios (frozen subsample),B,decomp_b_xml_objective,11,0,0,0.0,1.0,,5,claude-opus-4.1;claude-sonnet-4.5;deepseek-v3.1-terminus;gpt-5;gpt-5.1,8
+200 scenarios (frozen subsample),C,decomp_c_prose,11,0,0,0.0,0.0,,3,claude-sonnet-4.5;gpt-5;gpt-5.1,8
+200 scenarios (frozen subsample),D,decomp_d_okr,11,0,0,0.0,0.0,,4,claude-opus-4.1;claude-sonnet-4.5;gpt-5;gpt-5.1,7
+200 scenarios (frozen subsample),E,decomp_e_abtest,11,0,0,0.0,0.0,,5,claude-opus-4.1;claude-sonnet-4.5;gpt-4.1;gpt-5;gpt-5.1,3

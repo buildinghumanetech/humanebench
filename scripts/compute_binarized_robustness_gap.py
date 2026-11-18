@@ -12,7 +12,7 @@ mean severity is positive — and checking whether the gap survives in BOTH
 ordering AND magnitude.
 
 Inputs (read-only):
-  - tables/inter_judge_raw.csv (35,956 rows: sample_uid, persona, model,
+  - tables/inter_judge_raw_regenerated.csv (35,956 rows: sample_uid, persona, model,
     principle, judge_name, severity)
 
 Outputs (written to tables/):
@@ -39,6 +39,7 @@ from humanebench.bootstrap import (  # noqa: E402
     bootstrap_persona_deltas,
     load_long_scores,
 )
+from humanebench.tables import resolve_table  # noqa: E402
 
 # Same warning thresholds as the plan.
 SPEARMAN_WARN = 0.85    # below this → "rank ordering not preserved"
@@ -279,7 +280,7 @@ def main() -> None:
     parser.add_argument(
         "--judge-raw-csv",
         type=Path,
-        default=Path(__file__).resolve().parent.parent / "tables/inter_judge_raw.csv",
+        default=Path(__file__).resolve().parent.parent / "tables/inter_judge_raw_regenerated.csv",
     )
     parser.add_argument(
         "--tables-dir",
@@ -289,6 +290,7 @@ def main() -> None:
     args = parser.parse_args()
 
     print(f"Loading inter-judge raw scores from: {args.judge_raw_csv}")
+    args.judge_raw_csv = resolve_table(args.judge_raw_csv)
     judge_raw_df = pd.read_csv(args.judge_raw_csv)
     print(f"  loaded {len(judge_raw_df)} per-judge rows")
 

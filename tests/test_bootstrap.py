@@ -17,8 +17,14 @@ from humanebench.bootstrap import (
     HUMANESCORE_KEY,
     PRINCIPLES,
     bootstrap_cell_scores,
+    bootstrap_cohort_grid,
     bootstrap_cohort_principle_means,
+    bootstrap_designed_measured_matrix,
+    bootstrap_naive_grid,
     bootstrap_persona_deltas,
+    cohort_flip_stats,
+    diagonal_ranks,
+    discriminant_contrasts,
 )
 
 
@@ -332,3 +338,484 @@ def test_cohort_resampling_unit_is_scenario_not_model():
         f"cohort width {cohort_width:.4f} differs from single-model width "
         f"{single_width:.4f} by more than 5% — resampling unit suspect"
     )
+
+
+# ---------------------------------------------------------------------------
+# bootstrap_cohort_grid / cohort_flip_stats
+#
+# These back the cohort-level statistics in the paper (the anti-humane flip
+# count and the size of the robust set). They are separate from
+# bootstrap_cohort_principle_means above: the defining property here is that ONE
+# scenario draw is carried across every (model, persona) cell, so that a count
+# computed across models inherits the correlation a shared scenario induces.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_cohort_grid_point_matches_mean_of_principle_means():
+    """Grid point estimates equal the mean of the 8 principle means per cell."""
+    rng = np.random.default_rng(4242)
+    models = ["m1", "m2"]
+    personas = ["baseline", "good_persona", "bad_persona"]
+    df = _multi_model_long(
+        rng, models=models, personas=personas,
+        persona_means={"baseline": 0.5, "good_persona": 0.8, "bad_persona": -0.3},
+        n_per_principle=20,
+    )
+    grid = bootstrap_cohort_grid(df, n_bootstrap=0)
+
+    expected = (
+        df.groupby(["model", "persona", "principle"])["score"].mean()
+        .groupby(["model", "persona"]).mean()
+    )
+    for i, model in enumerate(grid.models):
+        for j, persona in enumerate(grid.personas):
+            assert grid.point[i, j] == pytest.approx(expected[(model, persona)]), (
+                f"{model}/{persona} point estimate is not the mean of principle means"
+            )
+
+
+@pytest.mark.unit
+def test_cohort_grid_shares_one_scenario_draw_across_cells():
+    """The defining property: every cell sees the SAME resampled scenarios.
+
+    Two models with byte-identical scores must therefore produce byte-identical
+    replicates. Independent per-cell resampling (`bootstrap_naive_grid`) must
+    not, which is what makes it the wrong design for a cohort statistic.
+    """
+    rng = np.random.default_rng(7)
+    base = _synth_long(rng, personas=["baseline"],
+                       persona_means={"baseline": 0.4}, n_per_principle=25)
+    base = base.drop(columns=["model"])
+    twin = pd.concat([base.assign(model=m) for m in ("m1", "m2")], ignore_index=True)
+
+    shared = bootstrap_cohort_grid(twin, n_bootstrap=50)
+    i1, i2 = shared.models.index("m1"), shared.models.index("m2")
+    diff = shared.replicates[:, i1, 0] - shared.replicates[:, i2, 0]
+    assert np.allclose(diff, 0.0), (
+        "identical models diverged under a supposedly shared scenario draw — "
+        "the resample is not being carried across cells"
+    )
+
+    naive = bootstrap_naive_grid(twin, n_bootstrap=50)
+    j1, j2 = naive.models.index("m1"), naive.models.index("m2")
+    naive_diff = naive.replicates[:, j1, 0] - naive.replicates[:, j2, 0]
+    assert not np.allclose(naive_diff, 0.0), (
+        "naive per-cell resampling produced identical replicates; the two "
+        "designs are no longer distinguishable and the design-effect "
+        "comparison is meaningless"
+    )
+
+
+@pytest.mark.unit
+def test_cohort_grid_seed_reproducibility():
+    """Same seed → identical replicates; different seed → different replicates."""
+    rng = np.random.default_rng(99)
+    df = _multi_model_long(
+        rng, models=["m1", "m2"], personas=["baseline", "bad_persona"],
+        persona_means={"baseline": 0.5, "bad_persona": -0.4}, n_per_principle=15,
+    )
+    a = bootstrap_cohort_grid(df, n_bootstrap=40, seed=BOOTSTRAP_SEED)
+    b = bootstrap_cohort_grid(df, n_bootstrap=40, seed=BOOTSTRAP_SEED)
+    c = bootstrap_cohort_grid(df, n_bootstrap=40, seed=BOOTSTRAP_SEED + 1)
+    assert np.array_equal(a.replicates, b.replicates)
+    assert not np.array_equal(a.replicates, c.replicates)
+
+
+@pytest.mark.unit
+def test_cohort_grid_tolerates_ragged_cells():
+    """A scenario missing from one cell must not corrupt any other cell.
+
+    Real logs are ragged: 23 of the 45 (model, persona) cells hold fewer than
+    788 scenarios after judge-failure cascades.
+    """
+    rng = np.random.default_rng(123)
+    df = _multi_model_long(
+        rng, models=["m1", "m2"], personas=["baseline", "bad_persona"],
+        persona_means={"baseline": 0.5, "bad_persona": -0.4}, n_per_principle=12,
+    )
+    victim = df["sample_id"].iloc[0]
+    ragged = df.drop(df[(df.model == "m1") & (df.persona == "baseline")
+                        & (df.sample_id == victim)].index)
+
+    grid = bootstrap_cohort_grid(ragged, n_bootstrap=0)
+    expected = (
+        ragged.groupby(["model", "persona", "principle"])["score"].mean()
+        .groupby(["model", "persona"]).mean()
+    )
+    for i, model in enumerate(grid.models):
+        for j, persona in enumerate(grid.personas):
+            assert grid.point[i, j] == pytest.approx(expected[(model, persona)])
+
+    i = grid.models.index("m1")
+    j = grid.personas.index("baseline")
+    assert grid.n_missing[i, j] == 1, "raggedness not reported in n_missing"
+    assert grid.n_missing.sum() == 1, "raggedness leaked into other cells"
+
+
+@pytest.mark.unit
+def test_cohort_flip_stats_counts_and_membership():
+    """Flip = S_base > 0 AND S_bad < 0, counted across models."""
+    rows = []
+    # m_flip flips; m_robust stays positive; m_low is negative at baseline too.
+    spec = {
+        "m_flip": {"baseline": 0.6, "bad_persona": -0.6},
+        "m_robust": {"baseline": 0.7, "bad_persona": 0.6},
+        "m_low": {"baseline": -0.2, "bad_persona": -0.8},
+    }
+    for model, means in spec.items():
+        for persona, mean in means.items():
+            for principle in PRINCIPLES:
+                for k in range(10):
+                    rows.append({"persona": persona, "model": model,
+                                 "principle": principle,
+                                 "sample_id": f"{principle}-{k:03d}",
+                                 "score": mean})
+    df = pd.DataFrame(rows)
+
+    stats = cohort_flip_stats(bootstrap_cohort_grid(df, n_bootstrap=20))
+    assert stats["flip_sign"]["point"] == 1
+    assert stats["flip_sign"]["models"] == ("m_flip",)
+    # Constant scores → no resampling variation → degenerate CI.
+    assert stats["flip_sign"]["ci"] == (1.0, 1.0)
+    # m_robust is the only cell at or above the 0.5 robustness threshold.
+    assert stats["robust_sbad"]["models"] == ("m_robust",)
+
+
+@pytest.mark.unit
+def test_cohort_flip_stats_adversarial_persona_is_selectable():
+    """`adversarial_persona` must default to bad_persona and be overridable.
+
+    Guards the reported numbers against a default drift when additional
+    adversarial conditions are added to the logs. Skips cleanly if the
+    parameter is not present yet, so this test can land before the
+    parameterisation it guards.
+    """
+    import inspect as _inspect
+    if "adversarial_persona" not in _inspect.signature(cohort_flip_stats).parameters:
+        pytest.skip("cohort_flip_stats has no adversarial_persona parameter yet")
+
+    rows = []
+    # Under bad_persona m1 flips; under decoy_persona it does not.
+    spec = {"baseline": 0.6, "bad_persona": -0.5, "decoy_persona": 0.4}
+    for persona, mean in spec.items():
+        for principle in PRINCIPLES:
+            for k in range(8):
+                rows.append({"persona": persona, "model": "m1",
+                             "principle": principle,
+                             "sample_id": f"{principle}-{k:03d}", "score": mean})
+    df = pd.DataFrame(rows)
+    grid = bootstrap_cohort_grid(df, n_bootstrap=10)
+
+    assert cohort_flip_stats(grid)["flip_sign"]["point"] == 1, (
+        "default adversarial persona is no longer bad_persona — every reported "
+        "flip count depends on this default"
+    )
+    other = cohort_flip_stats(grid, adversarial_persona="decoy_persona")
+    assert other["flip_sign"]["point"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Designed x measured principle matrix
+# ---------------------------------------------------------------------------
+
+
+def _synth_matrix_long(
+    rng: np.random.Generator,
+    *,
+    diagonal_effect: float = 0.0,
+    column_offsets: dict[str, float] | None = None,
+    n_per_principle: int = 12,
+    models: list[str] | None = None,
+    noise: float = 0.1,
+) -> pd.DataFrame:
+    """Synthetic multi-label scores with a known diagonal and column structure."""
+    models = models or ["m1", "m2", "m3"]
+    offsets = column_offsets or {}
+    rows = []
+    for designed in PRINCIPLES:
+        for k in range(n_per_principle):
+            scenario_id = f"{designed}-{k:03d}"
+            for model in models:
+                for scored in PRINCIPLES:
+                    score = 0.5 + offsets.get(scored, 0.0)
+                    if scored == designed:
+                        score += diagonal_effect
+                    rows.append({
+                        "scenario_id": scenario_id,
+                        "source_model": model,
+                        "designed_principle": designed,
+                        "scored_principle": scored,
+                        "score": score + rng.normal(0.0, noise),
+                    })
+    return pd.DataFrame(rows)
+
+
+@pytest.mark.unit
+def test_designed_measured_recovers_a_known_diagonal_effect():
+    """A planted diagonal effect is recovered, and its CI excludes zero."""
+    rng = np.random.default_rng(11)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.5, noise=0.2)
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=300, seed=BOOTSTRAP_SEED)
+
+    assert matrix.point.shape == (8, 8)
+    assert set(np.unique(matrix.n_per_cell)) == {36}, "12 scenarios x 3 models"
+    assert set(np.unique(matrix.n_scenarios)) == {12}
+
+    contrasts = discriminant_contrasts(matrix)
+    pooled = contrasts[contrasts.designed_principle == "pooled"].iloc[0]
+    assert pooled.contrast == pytest.approx(-0.5, abs=0.06)
+    assert pooled.excludes_zero
+    assert pooled.ci_upper < 0
+
+
+@pytest.mark.unit
+def test_flat_matrix_gives_a_contrast_that_includes_zero():
+    """No planted effect must not manufacture one -- the null has to be reachable.
+
+    If this ever fails, the analysis cannot report the "principles do not
+    discriminate" outcome the pre-committed interpretation requires.
+    """
+    rng = np.random.default_rng(12)
+    long = _synth_matrix_long(rng, diagonal_effect=0.0, noise=0.3)
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=300, seed=BOOTSTRAP_SEED)
+    pooled = discriminant_contrasts(matrix).iloc[-1]
+
+    assert pooled.contrast == pytest.approx(0.0, abs=0.06)
+    assert not pooled.excludes_zero
+
+
+@pytest.mark.unit
+def test_column_centring_removes_a_harsh_rubric_artifact():
+    """A harsh column with no real diagonal effect fools the raw row contrast.
+
+    This is the objection the raw contrast cannot answer: if one principle's
+    rubric is simply strict, its whole column is depressed, and that column's own
+    diagonal then looks discriminating for a rubric reason. Column-centring is
+    the correction, and the test plants exactly that artifact.
+    """
+    rng = np.random.default_rng(13)
+    harsh = PRINCIPLES[0]
+    long = _synth_matrix_long(rng, diagonal_effect=0.0,
+                              column_offsets={harsh: -0.8}, noise=0.05)
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=200, seed=BOOTSTRAP_SEED)
+
+    raw = discriminant_contrasts(matrix, centered=False).set_index("designed_principle")
+    centered = discriminant_contrasts(matrix, centered=True).set_index("designed_principle")
+
+    assert raw.loc[harsh, "contrast"] < -0.6, "raw contrast should be fooled"
+    assert centered.loc[harsh, "contrast"] == pytest.approx(0.0, abs=0.05)
+
+
+@pytest.mark.unit
+def test_pooled_contrast_is_invariant_to_additive_column_effects():
+    """Pooling already cancels any additive column effect, exactly.
+
+    A column offset d raises its own row's contrast by d and lowers each of the
+    other seven by d/7, which sums to zero. So the pooled headline needs no
+    column correction and the centred variant only changes the per-row numbers.
+    Worth pinning: it is the reason the headline can be reported raw.
+    """
+    rng = np.random.default_rng(14)
+    offsets = {PRINCIPLES[0]: -0.8, PRINCIPLES[3]: +0.4}
+    long = _synth_matrix_long(rng, diagonal_effect=-0.3,
+                              column_offsets=offsets, noise=0.05)
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=100, seed=BOOTSTRAP_SEED)
+
+    raw = discriminant_contrasts(matrix, centered=False).iloc[-1]
+    centered = discriminant_contrasts(matrix, centered=True).iloc[-1]
+    assert raw.contrast == pytest.approx(centered.contrast, abs=1e-9)
+
+
+@pytest.mark.unit
+def test_shared_scenario_draw_tightens_the_within_row_contrast():
+    """The shared per-row draw must preserve the within-scenario pairing.
+
+    Every cell in a row is built from the same scenarios, so a scenario that is
+    simply harsh moves all eight cells together and cancels out of the contrast.
+    Resampling each cell independently would discard that and inflate the CI.
+    Here the scenario effect is large relative to the noise, so the paired CI
+    must come out clearly narrower.
+    """
+    rng = np.random.default_rng(15)
+    rows = []
+    for designed in PRINCIPLES:
+        for k in range(12):
+            scenario_id = f"{designed}-{k:03d}"
+            hardness = rng.normal(0.0, 0.8)  # shared across all 8 columns
+            for scored in PRINCIPLES:
+                score = 0.5 + hardness + (-0.4 if scored == designed else 0.0)
+                rows.append({
+                    "scenario_id": scenario_id, "source_model": "m1",
+                    "designed_principle": designed, "scored_principle": scored,
+                    "score": score + rng.normal(0.0, 0.05),
+                })
+    long = pd.DataFrame(rows)
+
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=400, seed=BOOTSTRAP_SEED)
+    paired = discriminant_contrasts(matrix).iloc[-1]
+    paired_width = paired.ci_upper - paired.ci_lower
+
+    # Unpaired counterfactual: resample each cell's scenarios independently.
+    rng2 = np.random.default_rng(BOOTSTRAP_SEED)
+    cells = {}
+    for designed in PRINCIPLES:
+        sub = long[long.designed_principle == designed]
+        for scored in PRINCIPLES:
+            cells[(designed, scored)] = (
+                sub[sub.scored_principle == scored]
+                .groupby("scenario_id")["score"].mean().to_numpy()
+            )
+    reps = []
+    for _ in range(400):
+        mat = np.array([
+            [cells[(d, s)][rng2.integers(0, 12, 12)].mean() for s in PRINCIPLES]
+            for d in PRINCIPLES
+        ])
+        diag = np.diagonal(mat)
+        off = (mat.sum(axis=1) - diag) / 7.0
+        reps.append((diag - off).mean())
+    unpaired_width = float(np.percentile(reps, 97.5) - np.percentile(reps, 2.5))
+
+    assert paired_width < unpaired_width, (
+        f"paired CI ({paired_width:.4f}) should be narrower than unpaired "
+        f"({unpaired_width:.4f}); the shared scenario draw is not being applied"
+    )
+
+
+@pytest.mark.unit
+def test_designed_measured_is_seed_reproducible_and_nan_tolerant():
+    rng = np.random.default_rng(16)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.4)
+    a = discriminant_contrasts(
+        bootstrap_designed_measured_matrix(long, n_bootstrap=50, seed=7))
+    b = discriminant_contrasts(
+        bootstrap_designed_measured_matrix(long, n_bootstrap=50, seed=7))
+    pd.testing.assert_frame_equal(a, b)
+
+    # A judge failure leaves a hole; the cell means around it must still compute.
+    holed = long.drop(long.index[:25])
+    matrix = bootstrap_designed_measured_matrix(holed, n_bootstrap=50, seed=7)
+    assert matrix.n_per_cell.min() < 36
+    assert np.isfinite(matrix.point).all()
+
+
+@pytest.mark.unit
+def test_diagonal_ranks_are_ordinal_and_direction_correct():
+    """Rank 1 is the lowest cell, in the row and in the column."""
+    rng = np.random.default_rng(17)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.6, noise=0.05)
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=100, seed=BOOTSTRAP_SEED)
+    ranks = diagonal_ranks(matrix)
+
+    assert (ranks.rank_in_row == 1).all()
+    assert (ranks.rank_in_column == 1).all()
+    assert (ranks.share_lowest_in_row > 0.9).all()
+
+    # Reverse the effect: the diagonal becomes the highest cell in its row.
+    long_high = _synth_matrix_long(np.random.default_rng(18),
+                                   diagonal_effect=+0.6, noise=0.05)
+    high = diagonal_ranks(
+        bootstrap_designed_measured_matrix(long_high, n_bootstrap=100,
+                                           seed=BOOTSTRAP_SEED))
+    assert (high.rank_in_row == 8).all()
+
+
+@pytest.mark.unit
+def test_cell_difference_is_paired_within_replicate():
+    """The FHR-vs-PLTW style comparison must be a paired difference."""
+    rng = np.random.default_rng(19)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.5, noise=0.2)
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=300, seed=BOOTSTRAP_SEED)
+
+    fhr, pltw = "foster-healthy-relationships", "prioritize-long-term-wellbeing"
+    point, lo, hi = matrix.cell_difference(fhr, fhr, pltw)
+    assert point == pytest.approx(-0.5, abs=0.1)
+    assert hi < 0, "the planted effect should be detected"
+
+    paired_width = hi - lo
+    i = matrix.principles.index(fhr)
+    a, b = matrix.replicates[:, i, i], matrix.replicates[:, i, matrix.principles.index(pltw)]
+    naive_width = float(
+        np.sqrt((np.percentile(a, 97.5) - np.percentile(a, 2.5)) ** 2
+                + (np.percentile(b, 97.5) - np.percentile(b, 2.5)) ** 2)
+    )
+    assert paired_width < naive_width
+
+
+@pytest.mark.unit
+def test_empty_cell_does_not_poison_other_rows_or_the_pooled_headline():
+    """One unscored cell must cost that row, not the whole matrix.
+
+    Regression for the review: column-centring used a plain mean, so a single
+    all-NaN cell turned every centred contrast NaN, and the pooled contrast used
+    a plain mean, so the paper's headline number rendered as an em-dash and as
+    "does not exclude zero" on data where seven of eight rows were fine.
+    """
+    rng = np.random.default_rng(31)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.5, noise=0.15)
+    # Delete one (designed, scored) cell entirely -- all 36 of its observations.
+    hole = (long.designed_principle == PRINCIPLES[0]) & \
+           (long.scored_principle == PRINCIPLES[5])
+    long = long[~hole]
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=200, seed=BOOTSTRAP_SEED)
+    assert matrix.n_per_cell[0, 5] == 0
+    assert np.isnan(matrix.point[0, 5])
+
+    for centered in (False, True):
+        c = discriminant_contrasts(matrix, centered=centered).set_index("designed_principle")
+        pooled = c.loc["pooled"]
+        assert pooled.estimable, f"pooled unestimable with centered={centered}"
+        assert np.isfinite(pooled.contrast) and np.isfinite(pooled.ci_lower)
+        assert pooled.contrast == pytest.approx(-0.5, abs=0.12)
+        # Rows that share the holed column must still be estimable.
+        others = c.drop(index=["pooled"])
+        assert others.estimable.all(), f"a hole in one cell disabled {(~others.estimable).sum()} rows"
+
+    # The raw == centred identity is EXACT only on a complete matrix: a hole
+    # makes its row average six off-diagonal cells instead of seven and its
+    # column's mean cover fewer rows, so the offsets no longer cancel term for
+    # term. It must stay close, but the analysis must not assert exactness here.
+    raw = discriminant_contrasts(matrix, centered=False).iloc[-1]
+    cen = discriminant_contrasts(matrix, centered=True).iloc[-1]
+    assert raw.contrast != pytest.approx(cen.contrast, abs=1e-12)
+    assert raw.contrast == pytest.approx(cen.contrast, abs=1e-2)
+
+
+@pytest.mark.unit
+def test_unestimable_row_is_flagged_not_scored_as_a_null():
+    """A row with no data must read as 'no data', never as a null result."""
+    rng = np.random.default_rng(32)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.5, noise=0.15)
+    long = long[long.designed_principle != PRINCIPLES[3]]  # drop a whole row
+    matrix = bootstrap_designed_measured_matrix(long, n_bootstrap=100, seed=BOOTSTRAP_SEED)
+
+    c = discriminant_contrasts(matrix).set_index("designed_principle")
+    dead = c.loc[PRINCIPLES[3]]
+    assert not dead.estimable
+    assert not dead.excludes_zero  # False here means "cannot say", per the flag
+    assert np.isnan(dead.contrast)
+    assert c.loc["pooled"].n_rows_used == 7, "pooled must report the rows it used"
+
+    ranks = diagonal_ranks(matrix).set_index("designed_principle")
+    dead_rank = ranks.loc[PRINCIPLES[3]]
+    assert not dead_rank.estimable
+    assert pd.isna(dead_rank.rank_in_row), (
+        "an unscored row must not be ranked -- NaN < NaN is False, which would "
+        "report it as rank 1 of 8, the strongest ordinal evidence in the table"
+    )
+    assert np.isnan(dead_rank.share_lowest_in_row)
+    # Surviving rows are unaffected and still ranked against real competitors.
+    alive = ranks.drop(index=[PRINCIPLES[3]])
+    assert alive.estimable.all()
+    assert (alive.n_cells_ranked_in_column == 7).all()
+
+
+@pytest.mark.unit
+def test_duplicate_judged_calls_are_rejected():
+    """Duplicates would be silently deduped by fancy-index assignment."""
+    rng = np.random.default_rng(33)
+    long = _synth_matrix_long(rng, diagonal_effect=-0.3)
+    doubled = pd.concat([long, long], ignore_index=True)
+    with pytest.raises(ValueError, match="duplicate"):
+        bootstrap_designed_measured_matrix(doubled, n_bootstrap=10)

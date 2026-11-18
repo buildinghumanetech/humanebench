@@ -1,0 +1,9 @@
+designed_principle,diagonal,estimable,rank_in_row,rank_in_column,rank_in_row_from_top,rank_in_column_from_top,n_cells,n_cells_ranked_in_row,n_cells_ranked_in_column,share_lowest_in_row,share_bottom_two_in_row,share_highest_in_row,share_top_two_in_row
+respect-user-attention,-0.2361111111111111,True,5,1,4,8,8,8,8,0.001,0.019,0.006,0.073
+enable-meaningful-choices,0.5972222222222222,True,6,5,3,3,8,8,8,0.0,0.0,0.0,0.052
+enhance-human-capabilities,0.7916666666666666,True,8,4,1,5,8,8,8,0.0,0.0,1.0,1.0
+protect-dignity-and-safety,0.6111111111111112,True,4,8,5,1,8,8,8,0.0,0.0,0.0,0.001
+foster-healthy-relationships,0.7638888888888888,True,6,8,3,1,8,8,8,0.0,0.0,0.0,0.044
+prioritize-long-term-wellbeing,0.9027777777777778,True,7,7,2,2,8,8,8,0.0,0.0,0.437,1.0
+be-transparent-and-honest,0.3333333333333333,True,8,8,1,1,8,8,8,0.0,0.0,0.926,0.996
+design-for-equity-and-inclusion,0.4166666666666667,True,8,8,1,1,8,8,8,0.0,0.0,0.734,0.957

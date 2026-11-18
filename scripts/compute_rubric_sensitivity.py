@@ -70,6 +70,7 @@ from humanebench.bootstrap import (  # noqa: E402
     bootstrap_cohort_grid,
     cohort_flip_stats,
 )
+from humanebench.tables import resolve_table  # noqa: E402
 
 ORDINAL_LEVELS = (-1.0, -0.5, 0.5, 1.0)
 DELTA_CUTOFFS = (0.0, -0.1, -0.2)
@@ -146,7 +147,7 @@ def main() -> None:
     args = ap.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw = pd.read_csv(args.raw_csv)
+    raw = pd.read_csv(resolve_table(args.raw_csv))
     bad_levels = ~raw["severity"].isin(ORDINAL_LEVELS)
     if bad_levels.any():
         raise SystemExit(f"{int(bad_levels.sum())} severities off the 4-point scale")

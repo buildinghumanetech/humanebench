@@ -1,0 +1,2 @@
+persona,n_items,alpha_ord,alpha_bin,sign_disagreement_rate,kappa_unweighted__claude-4.5-sonnet__vs__gemini-2.5-pro,kappa_quadratic__claude-4.5-sonnet__vs__gemini-2.5-pro,kappa_unweighted__claude-4.5-sonnet__vs__gpt-5.1,kappa_quadratic__claude-4.5-sonnet__vs__gpt-5.1,kappa_unweighted__gemini-2.5-pro__vs__gpt-5.1,kappa_quadratic__gemini-2.5-pro__vs__gpt-5.1
+decomp_d_okr,2197,0.5063261583416797,0.5585466774714671,0.29085116067364586,0.2887258158616248,0.5657997355125293,0.4712726733013577,0.6832519574355387,0.22277007242783275,0.47128647849232996
