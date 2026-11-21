@@ -90,6 +90,7 @@ class TestNoDrift(unittest.TestCase):
         src = (REPO / "cli" / "src" / "judge" / "rollup.rs").read_text()
         self.assertIn(f"ARC_CHAR_BUDGET: usize = {hb.ARC_CHAR_BUDGET:_}", src)
         self.assertIn(f"PER_TURN_CHAR_CAP: usize = {hb.PER_TURN_CHAR_CAP:_}", src)
+        self.assertIn(f"ARC_HEAD_BUDGET: usize = {hb.ARC_HEAD_BUDGET:_}", src)
 
     def test_principles_and_labels_match_the_cli(self):
         judge = (REPO / "cli" / "src" / "judge" / "mod.rs").read_text()
@@ -235,6 +236,18 @@ class TestScorableTurns(unittest.TestCase):
                           rec("u2", sidechain=True), rec("a2", role="assistant", sidechain=True)])
         self.assertEqual(ids(hb.scorable_turns(s)), ["a1"])
         self.assertNotIn("text a2", hb.render_arc(s))
+
+    def test_long_arc_keeps_opening_and_most_recent_turns(self):
+        recs = [rec("u0")] + [rec(f"t{i:03}", role="assistant" if i % 2 else "user") for i in range(160)]
+        for r in recs[1:]:
+            r["text"] = r["text"] + " " + "y" * 1000
+        arc = hb.render_arc(self.session(recs))
+        self.assertLessEqual(len(arc.encode()), hb.ARC_CHAR_BUDGET + 300)
+        self.assertIn("text u0", arc)
+        self.assertIn("text t159", arc)
+        self.assertNotIn("text t080", arc)
+        self.assertEqual(arc.count("omitted from the middle"), 1)
+        self.assertGreater(arc.index("text t159"), arc.index("omitted from the middle"))
 
 
 # ---- Adapters -----------------------------------------------------------------------------
