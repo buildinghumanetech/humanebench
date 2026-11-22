@@ -255,3 +255,9 @@ evaluator/workshop/results.jsonl
 # Large per-judge raw severity table (13 MB, regeneratable via
 # scripts/compute_inter_judge_agreement.py)
 tables/inter_judge_raw.csv
+
+# Partner-mode belt and braces: partner data lives outside the repo
+# (~/humanebench-partners/), these patterns guard against accidents
+humanebench-partners/
+partner_*.jsonl
+*.eval
