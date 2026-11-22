@@ -20,6 +20,11 @@ use crate::transcript::{Role, Session};
 /// Character budget for the rendered arc. Idle-gap splitting bounds most sessions well
 /// below this; the cap stops a pathological thread from blowing the context window.
 pub const ARC_CHAR_BUDGET: usize = 60_000;
+/// When an arc is over budget, this much of it goes to the opening turns and the rest to
+/// the most recent ones. The opening sets the baseline; the recent end is where drift,
+/// dependency and escalating hooks show. Dropping the end, as earlier versions did, hid
+/// exactly the turns this pass exists to read.
+pub const ARC_HEAD_BUDGET: usize = 20_000;
 const PER_TURN_CHAR_CAP: usize = 3_000;
 
 /// The rubric minus its turn-specific tail — keeps the scale, the eight principles, the
@@ -31,12 +36,10 @@ pub fn rubric_preamble() -> &'static str {
     }
 }
 
-/// Render the conversation arc for the judge.
+/// Render the conversation arc for the judge. An arc over budget keeps a contiguous
+/// opening and a contiguous most-recent stretch, with one marker where the middle was cut.
 pub fn render_arc(session: &Session) -> String {
-    let mut out = String::new();
-    let mut budget = ARC_CHAR_BUDGET;
-    let mut elided = 0usize;
-
+    let mut blocks: Vec<String> = Vec::new();
     for rec in &session.records {
         if rec.sidechain {
             continue;
@@ -55,24 +58,36 @@ pub fn render_arc(session: &Session) -> String {
             .map(|a| format!("{a}\n"))
             .unwrap_or_default();
 
-        let block = format!(
+        blocks.push(format!(
             "### {speaker} — {}\n{actions}{text}\n\n",
             rec.timestamp.to_rfc3339()
-        );
-
-        if block.len() > budget {
-            elided += 1;
-            continue;
-        }
-        budget -= block.len();
-        out.push_str(&block);
-    }
-
-    if elided > 0 {
-        out.push_str(&format!(
-            "\n[{elided} further turn(s) omitted: session exceeded the rollup context budget]\n"
         ));
     }
+
+    let total: usize = blocks.iter().map(|b| b.len()).sum();
+    if total <= ARC_CHAR_BUDGET {
+        return blocks.concat();
+    }
+
+    let mut head = 0usize;
+    let mut used = 0usize;
+    while head < blocks.len() && used + blocks[head].len() <= ARC_HEAD_BUDGET {
+        used += blocks[head].len();
+        head += 1;
+    }
+    let mut tail_start = blocks.len();
+    while tail_start > head && used + blocks[tail_start - 1].len() <= ARC_CHAR_BUDGET {
+        used += blocks[tail_start - 1].len();
+        tail_start -= 1;
+    }
+    let omitted = tail_start - head;
+
+    let mut out = blocks[..head].concat();
+    out.push_str(&format!(
+        "[{omitted} turn(s) omitted from the middle: session exceeded the rollup context \
+budget. The opening and the most recent turns are shown in full.]\n\n"
+    ));
+    out.push_str(&blocks[tail_start..].concat());
     out
 }
 
@@ -284,5 +299,39 @@ mod tests {
         let arc = render_arc(&s);
         assert!(arc.len() < ARC_CHAR_BUDGET + 10_000);
         assert!(arc.contains("turn truncated") || arc.contains("omitted"));
+    }
+
+    /// Pi-length conversations (160 turns) must keep the end. The end is where drift and
+    /// dependency show; the old renderer kept the opening and dropped it.
+    #[test]
+    fn long_sessions_keep_the_opening_and_the_most_recent_turns() {
+        let mut s = session();
+        for i in 0..160 {
+            s.records.push(Record::new(
+                "claude-code",
+                "s1",
+                format!("t{i}"),
+                if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                },
+                format!("turn-{i:03} {}", "y".repeat(1_000)),
+                ts("2026-01-01T00:02:00Z"),
+            ));
+        }
+        let arc = render_arc(&s);
+        assert!(arc.len() <= ARC_CHAR_BUDGET + 300);
+        assert!(arc.contains("why is it flaky?"), "opening kept");
+        assert!(arc.contains("turn-159"), "most recent turn kept");
+        assert!(!arc.contains("turn-080"), "middle cut");
+        assert_eq!(arc.matches("omitted from the middle").count(), 1);
+        let cut = arc.find("omitted from the middle").unwrap();
+        assert!(arc.find("turn-159").unwrap() > cut);
+    }
+
+    #[test]
+    fn arcs_under_budget_are_untouched() {
+        assert!(!render_arc(&session()).contains("omitted"));
     }
 }

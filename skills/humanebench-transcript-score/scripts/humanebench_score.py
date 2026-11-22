@@ -99,6 +99,7 @@ SPLIT_MARKER = "Now, evaluate the following"
 
 # cli/src/judge/rollup.rs
 ARC_CHAR_BUDGET = 60_000
+ARC_HEAD_BUDGET = 20_000  # over budget: opening gets this much, the most recent turns the rest
 PER_TURN_CHAR_CAP = 3_000
 
 # cli/src/report/suggest.rs
@@ -623,9 +624,9 @@ def rubric_preamble(rubric: str) -> str:
 
 
 def render_arc(session: dict) -> str:
-    out = []
-    budget = ARC_CHAR_BUDGET  # bytes, as in the CLI (`String::len`)
-    elided = 0
+    """Mirror of render_arc in cli/src/judge/rollup.rs. An arc over budget keeps a contiguous
+    opening and a contiguous most-recent stretch, with one marker where the middle was cut."""
+    blocks = []
     for rec in session["records"]:
         if rec["sidechain"]:
             continue
@@ -635,18 +636,22 @@ def render_arc(session: dict) -> str:
             text = text[:PER_TURN_CHAR_CAP] + "…[turn truncated]"
         line = format_actions(rec["actions"])
         actions = f"{line}\n" if line else ""
-        block = f"### {speaker} — {rfc3339(rec['timestamp'])}\n{actions}{text}\n\n"
-        size = len(block.encode("utf-8"))
-        if size > budget:
-            elided += 1
-            continue
-        budget -= size
-        out.append(block)
-    arc = "".join(out)
-    if elided:
-        arc += (f"\n[{elided} further turn(s) omitted: session exceeded the rollup "
-                f"context budget]\n")
-    return arc
+        blocks.append(f"### {speaker} — {rfc3339(rec['timestamp'])}\n{actions}{text}\n\n")
+    size = [len(b.encode("utf-8")) for b in blocks]  # bytes, as in the CLI (`String::len`)
+    if sum(size) <= ARC_CHAR_BUDGET:
+        return "".join(blocks)
+    head = used = 0
+    while head < len(blocks) and used + size[head] <= ARC_HEAD_BUDGET:
+        used += size[head]
+        head += 1
+    tail = len(blocks)
+    while tail > head and used + size[tail - 1] <= ARC_CHAR_BUDGET:
+        used += size[tail - 1]
+        tail -= 1
+    return ("".join(blocks[:head])
+            + f"[{tail - head} turn(s) omitted from the middle: session exceeded the rollup context "
+              "budget. The opening and the most recent turns are shown in full.]\n\n"
+            + "".join(blocks[tail:]))
 
 
 # The rollup template, copied from the `format!` literal in cli/src/judge/rollup.rs with
