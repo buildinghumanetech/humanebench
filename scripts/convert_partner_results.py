@@ -12,12 +12,26 @@ src/pregenerated_solver.py:use_pregenerated_output_strict(); the original
 judgments and curation tags ride along in metadata for post-run comparison and
 are never shown to judges (the overseer only sees input + ai_output).
 
+Fresh-audit datasets (stored conversations the partner never judged) carry no
+partner judgments. Callers must OPT IN via allow_missing_judgments=True (CLI:
+--fresh-audit); rows without a "principles" dict then fan out to all 8 known
+principles with orig_* metadata None. Without the opt-in, a missing
+"principles" field still fails loudly, so a corrupted judged dataset can
+never be silently converted as if it were unjudged. A row may also carry an
+"extra_metadata" dict (dataset-specific fields carried through from the
+source export) which is merged into the sample metadata
+— analysis-time only, never shown to judges; keys colliding with the fixed
+metadata schema are rejected.
+
 --joint mode emits ONE sample per turn (for the joint-prompt task, which
 scores all 8 principles in a single call): target is empty, the full original
 per-principle judgment dict rides in metadata. --sample-turns N deterministically
 subsamples turns (seeded) — used to pre-register the joint slice before any
 panel results exist. Repeat-slice rows (__rep2/__rep3 ids) are excluded from
---joint output.
+this CLI's --joint output; that is a property of the CLI path only — callers
+importing convert_row_joint directly (e.g. a conversation-level dataset
+builder) may
+deliberately include repeat rows in joint datasets.
 
 Usage:
     python scripts/convert_partner_results.py \
@@ -45,12 +59,41 @@ def has_judgeable_response(row: dict) -> bool:
     return isinstance(resp, str) and bool(resp)
 
 
-def convert_row(row: dict, principles_mode: str) -> list[dict]:
-    unknown = set(row["principles"]) - KNOWN_SLUGS
+def _resolve_principles(row: dict, allow_missing_judgments: bool):
+    """Return the row's principles dict, or None for an (opted-in) fresh-audit
+    row. A judged-pipeline row missing its judgments still fails loudly."""
+    principles = row.get("principles")
+    if principles is None and not allow_missing_judgments:
+        raise ValueError(
+            f"sample {row['sample_id']}: missing 'principles' judgments. If "
+            "this dataset is a fresh audit with no partner judgments, pass "
+            "--fresh-audit (allow_missing_judgments=True); otherwise the "
+            "input is corrupted."
+        )
+    unknown = set(principles or {}) - KNOWN_SLUGS
     if unknown:
         raise ValueError(
             f"sample {row['sample_id']}: unknown principle slug(s) {sorted(unknown)}"
         )
+    return principles
+
+
+def _merged_metadata(base: dict, row: dict) -> dict:
+    """Merge row['extra_metadata'] into the fixed metadata schema, rejecting
+    keys that would override authoritative fields (ai_output, join keys, ...)."""
+    extra = row.get("extra_metadata") or {}
+    collision = sorted(set(extra) & set(base))
+    if collision:
+        raise ValueError(
+            f"sample {row['sample_id']}: extra_metadata would override "
+            f"reserved metadata key(s) {collision}"
+        )
+    return {**base, **extra}
+
+
+def convert_row(row: dict, principles_mode: str,
+                allow_missing_judgments: bool = False) -> list[dict]:
+    principles = _resolve_principles(row, allow_missing_judgments)
 
     if principles_mode == "relevant":
         slugs = row.get("relevant_principles", [])
@@ -60,8 +103,13 @@ def convert_row(row: dict, principles_mode: str) -> list[dict]:
                 f"sample {row['sample_id']}: unknown slug(s) in "
                 f"relevant_principles {sorted(unknown)}"
             )
+    elif principles is None:
+        # Fresh-audit row: fan out to all 8 known principles.
+        slugs = sorted(KNOWN_SLUGS)
     else:
-        slugs = sorted(row["principles"])
+        # Judged row: fan out to its judged principles (an empty dict fans
+        # out to nothing, as before).
+        slugs = sorted(principles)
 
     samples = []
     for slug in slugs:
@@ -70,46 +118,43 @@ def convert_row(row: dict, principles_mode: str) -> list[dict]:
                 "id": f"{row['sample_id']}__{slug}",
                 "input": row["user_message"],
                 "target": slug,
-                "metadata": {
+                "metadata": _merged_metadata({
                     "ai_output": row["assistant_response"],
                     "conv": row.get("conv"),
                     "turn_index": row.get("turn_index"),
                     "ts": row.get("ts"),
                     "curation": row.get("curation"),
-                    "orig_judgment": row["principles"].get(slug),
+                    "orig_judgment": (principles or {}).get(slug),
                     "orig_overall_severity": row.get("overall_severity"),
                     "orig_mean_severity": row.get("mean_severity"),
                     "audit": (row.get("audit") or {}).get("principles", {}).get(slug),
-                },
+                }, row),
             }
         )
     return samples
 
 
-def convert_row_joint(row: dict) -> dict:
+def convert_row_joint(row: dict, allow_missing_judgments: bool = False) -> dict:
     """One sample per turn for the joint-prompt task (all 8 principles in one
     judge call). The joint scorer ignores target; original judgments ride in
     metadata for the comparison analysis."""
-    unknown = set(row["principles"]) - KNOWN_SLUGS
-    if unknown:
-        raise ValueError(
-            f"sample {row['sample_id']}: unknown principle slug(s) {sorted(unknown)}"
-        )
+    principles = _resolve_principles(row, allow_missing_judgments)
     return {
         "id": row["sample_id"],
         "input": row["user_message"],
         "target": "",
-        "metadata": {
+        "metadata": _merged_metadata({
             "ai_output": row["assistant_response"],
             "conv": row.get("conv"),
             "turn_index": row.get("turn_index"),
             "ts": row.get("ts"),
             "curation": row.get("curation"),
-            "orig_judgments": row["principles"],
+            # Verbatim: {} (judged, no entries) stays {}, None = fresh audit.
+            "orig_judgments": principles,
             "orig_overall_severity": row.get("overall_severity"),
             "orig_mean_severity": row.get("mean_severity"),
             "audit": (row.get("audit") or {}).get("principles"),
-        },
+        }, row),
     }
 
 
@@ -126,6 +171,10 @@ def main() -> None:
     parser.add_argument("--principles", choices=["all", "relevant"], default="all")
     parser.add_argument("--joint", action="store_true",
                         help="one sample per turn, for the joint-prompt task")
+    parser.add_argument("--fresh-audit", action="store_true",
+                        help="input rows carry no partner judgments; fan out "
+                             "to all 8 principles instead of failing on the "
+                             "missing 'principles' field")
     parser.add_argument("--sample-turns", type=int,
                         help="deterministically subsample this many turns (joint mode)")
     parser.add_argument("--sample-seed", type=int, default=7)
@@ -159,11 +208,13 @@ def main() -> None:
         n_after_reps = len(rows)
         if args.sample_turns is not None and args.sample_turns < len(rows):
             rows = random.Random(args.sample_seed).sample(rows, args.sample_turns)
-        samples = [convert_row_joint(r) for r in rows]
+        samples = [convert_row_joint(r, args.fresh_audit) for r in rows]
         mode = (f"joint: {n_judgeable} judgeable turns -> {n_after_reps} after "
                 f"rep-exclusion -> {len(rows)} converted")
     else:
-        samples = [s for r in rows for s in convert_row(r, args.principles)]
+        samples = [
+            s for r in rows for s in convert_row(r, args.principles, args.fresh_audit)
+        ]
         mode = args.principles
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

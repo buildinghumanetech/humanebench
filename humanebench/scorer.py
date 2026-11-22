@@ -151,7 +151,22 @@ def overseer(
     temperature: float = 0.0,
     system_message: str = OVERSEER_SYSTEM_MESSAGE,
     score_attempts: int = 3,
+    template: str = OVERSEER_TEMPLATE,
 ):
+    # Fail fast (at task construction, before any judge spend): a template
+    # missing a slot would not error in str.format — it would silently render
+    # a prompt without the principle or the response and produce plausible
+    # but meaningless scores.
+    missing = [
+        slot
+        for slot in ("{issue_display_name}", "{issue_description}",
+                     "{prompt}", "{response}")
+        if slot not in template
+    ]
+    if missing:
+        raise ValueError(
+            f"overseer template is missing required format slot(s): {missing}"
+        )
     issues = {
         humane_pattern.id: humane_pattern
         for humane_pattern in humanebench.humane_patterns.resolve_humane_patterns(humane_patterns)
@@ -165,7 +180,7 @@ def overseer(
         models = [inspect_ai.model.get_model(m) for m in models]
 
         issue = issues[target.text]
-        score_prompt = OVERSEER_TEMPLATE.format(
+        score_prompt = template.format(
             issue_key=issue.id,
             issue_display_name=issue.display_name,
             issue_description=issue.description,
